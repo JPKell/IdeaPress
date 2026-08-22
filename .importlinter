@@ -1,0 +1,39 @@
+[importlinter]
+root_packages = ideapress
+
+[importlinter:contract:layers]
+name = IdeaPress internal layering
+type = layers
+layers =
+    ideapress.web
+    ideapress.cli
+    ideapress.services
+    ideapress.domain
+containers = ideapress
+
+[importlinter:contract:web-cli-independence]
+name = Web and CLI never import each other
+type = independence
+modules =
+    ideapress.web
+    ideapress.cli
+
+[importlinter:contract:domain-purity]
+name = Domain imports no frameworks
+type = forbidden
+source_modules = ideapress.domain
+forbidden_modules =
+    fastapi
+    starlette
+    sqlalchemy
+    typer
+    httpx
+    jinja2
+
+[importlinter:contract:no-other-applications]
+name = IdeaPress must not import other applications
+type = forbidden
+source_modules = ideapress
+forbidden_modules =
+    freeweight
+    loadcoach
