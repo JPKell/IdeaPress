@@ -1,9 +1,8 @@
 # IdeaPress — Specification
 
 **Type:** Application · **Import/distribution name:** `ideapress` · **Default port:** 8767 · **Env prefix:** `IDEAPRESS_`
-**Status:** Specified, not implemented. Corrected 2026-08-21 by the
-[final architecture audit](../../reviews/final_architecture_audit.md) (ADR-0025, ADR-0026).
-**Related:** [Workflows](workflows.md) · [API](api.md) · [Data Model](data-model.md) · [Development Plan](development-plan.md) · [Risks](risks.md)
+**Status:** Specified, not implemented.
+**Related:** [API](api.md) · [Development Plan](development-plan.md)
 
 ---
 
@@ -136,7 +135,7 @@ directory. Reads nothing belonging to another application.
 5. **LoadCoach contract.** The adapter uses only LoadCoach's documented `/api/v1`, checks version
    compatibility, and degrades explicitly. It sends the rendered prompt as `system` + `prompt`, and
    LoadCoach passes that text to the provider unmodified — which is what keeps the per-attempt
-   `prompt_sha256` provenance truthful ([LoadCoach Spec §9](../loadcoach/spec.md)).
+   `prompt_sha256` provenance truthful (LoadCoach Spec §9).
 
 ## 12. Configuration
 
@@ -168,7 +167,7 @@ critique           = "ollama/qwen3.5:9b-q8_0"
 revise             = "ollama/qwen3.5:9b-q8_0"
 project_review     = "ollama/qwen3.5:9b-q8_0"
 
-# One key per model-using stage in [Workflows §2](workflows.md), spelled exactly as the stage is.
+# One key per model-using stage in Workflows §2, spelled exactly as the stage is.
 # A binding for a stage that does not exist, or a model-using stage with no binding, fails startup
 # validation naming the stage — the audit found the previous list used `edit` and `audit`, neither of
 # which is a stage identifier.
@@ -181,7 +180,7 @@ project_review     = "ollama/qwen3.5:9b-q8_0"
 ```
 
 Stage → LoadCoach task profile mapping lives in the adapter, in one place
-([Workflows §6](workflows.md)), never scattered through workflow code.
+(Workflows §6), never scattered through workflow code.
 
 ## 13. Error behaviour
 
@@ -208,7 +207,7 @@ Behavioural rules:
 * Loopback default; LAN exposure requires tokens, acknowledgement and `server.allowed_hosts`; the
   `Host` header is validated on every request before routing. This is the application holding the
   user's private work, and an unauthenticated loopback service is reachable from any page the user
-  visits without that check ([ADR-0026](../../adr/0026-local-http-hardening.md)).
+  visits without that check (ADR-0026).
 * **Model output is never executed**, never used to build a path, never rendered unescaped. Markdown
   is sanitized with an allowlist.
 * Project and export paths are containment-checked; project IDs and unit IDs are validated against a
@@ -238,7 +237,7 @@ Long documents stream to disk rather than being held in memory more than once.
 ## 16. Cross-platform considerations
 
 Fully portable — no platform-specific code beyond the shared path handling. Optional telemetry display
-degrades per [Cross-Platform Standards](../../standards/cross-platform-standards.md). IdeaPress is the
+degrades per Cross-Platform Standards. IdeaPress is the
 most likely component to be used on Windows or macOS, which is why it takes no hard dependency on
 `sweatmeter`.
 
@@ -289,7 +288,7 @@ most likely component to be used on Windows or macOS, which is why it takes no h
 9. Exports are deterministic and byte-stable for the same committed project.
 10. Model output containing scripts, template syntax or path traversal is stored and rendered inert.
 11. Full test suite passes with no backend reachable and no network.
-12. All IdeaPress gold standards in [Gold Standards §2](../../standards/gold-standards.md) are met.
+12. All IdeaPress gold standards in Gold Standards §2 are met.
 
 ## 21. Future extensions
 
