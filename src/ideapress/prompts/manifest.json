@@ -8,7 +8,12 @@
       "prompt_id": "stages.hello",
       "version": "1.0.0",
       "sha256": "sha256:b9f17cf04bb076bcd7a660e169a73238e41e63987fead814d52bb36d6d7e1cb5"
+    },
+    {
+      "prompt_id": "stages.requirements.compile",
+      "version": "1.0.0",
+      "sha256": "sha256:6c3ffef99b24d7b2cd49211e6ddd18fd397776bf988de7a23042d2a406f30713"
     }
   ],
-  "pack_sha256": "sha256:073a8dc4ec97318a58c887d788f08df6666a6635a711a2a904b59c76d0351236"
+  "pack_sha256": "sha256:28dcd853388430b18cd3f84567abb6954cfba526b6da6395e1aff5e7a658bedb"
 }

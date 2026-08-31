@@ -8,6 +8,11 @@ packaging and release standards §3.
 ## [Unreleased]
 
 ### Added
+- Requirement compilation: every requirement carries a verbatim quotation from the author material,
+  and one that cannot be quoted is refused and shown as refused. Check kinds are a closed set of
+  literal-string and numeric comparisons; there is deliberately no pattern check.
+- The plan gate: every blocking requirement must be assigned to at least one unit, and an empty
+  requirement list or an empty plan does not satisfy it.
 - The inference port (`InferenceBackend`, `StageRequest`, `StageResult`, `StageEvent`,
   `BackendHealth`) and three adapters: Ollama over ModelRack, a deterministic offline fake, and an
   OpenAI-compatible one. Switching between them is configuration.
