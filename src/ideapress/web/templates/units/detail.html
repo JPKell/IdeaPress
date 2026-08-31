@@ -1,0 +1,91 @@
+{# One unit: its content, what was checked, what covered its requirements, and what produced it.
+   The content is model output and is rendered as escaped text inside <pre> — never as markup, and
+   never through `| safe` (risk S1). #}
+{% extends "base.html" %}
+{% from "mirrorwall/components.html" import badge, kv_list, empty_state %}
+{% block content %}
+<h2>{{ unit_key }} — {{ title }}</h2>
+{{ kv_list([
+  {"label": "State", "value": state},
+  {"label": "Goal", "value": goal},
+  {"label": "Version", "value": version if version is not none else "not committed"},
+  {"label": "Words", "value": word_count if word_count is not none else "—"},
+  {"label": "Content hash", "value": content_hash or "—"},
+  {"label": "Committed", "value": committed_at or "—"},
+]) }}
+{% if paused_reason %}<p class="notice"><strong>Paused:</strong> {{ paused_reason }}</p>{% endif %}
+
+<h3>Content</h3>
+{% if content %}<pre class="unit-content">{{ content }}</pre>
+{% else %}{{ empty_state("No committed content yet.") }}{% endif %}
+
+<h3>Requirements</h3>
+{% if requirements %}
+  <div class="table-scroll"><table>
+    <thead><tr><th scope="col">Key</th><th scope="col">Requirement</th><th scope="col">Class</th><th scope="col">Checked by</th></tr></thead>
+    <tbody>
+    {% for requirement in requirements %}
+      <tr><td>{{ requirement.key }}</td><td>{{ requirement.text }}</td>
+          <td>{{ badge("blocking" if requirement.blocking else "advisory", tone="warning" if requirement.blocking else "neutral") }}</td>
+          <td>{{ requirement.checks }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+{% else %}{{ empty_state("No requirements assigned.") }}{% endif %}
+
+<h3>Coverage</h3>
+{% if coverage %}
+  <div class="table-scroll"><table>
+    <thead><tr><th scope="col">Requirement</th><th scope="col">Satisfied</th><th scope="col">Decided by</th><th scope="col">Detail</th></tr></thead>
+    <tbody>
+    {% for entry in coverage %}
+      <tr><td>{{ entry.requirement_key }}</td>
+          <td>{{ badge("yes" if entry.satisfied else "no", tone="success" if entry.satisfied else "danger") }}</td>
+          <td>{{ entry.satisfied_by }}{% if entry.satisfied_by != "deterministic_check" %} {{ badge("model-assisted", tone="neutral") }}{% endif %}</td>
+          <td>{{ entry.detail }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+{% else %}{{ empty_state("No coverage recorded.") }}{% endif %}
+
+<h3>Validation</h3>
+{% if validation %}
+  <div class="table-scroll"><table>
+    <thead><tr><th scope="col">Family</th><th scope="col">Check</th><th scope="col">Result</th><th scope="col">Detail</th></tr></thead>
+    <tbody>
+    {% for check in validation %}
+      <tr><td>{{ check.kind }}</td><td>{{ check.key }}</td>
+          <td>{{ badge("pass" if check.passed else ("blocking" if check.blocking else "advisory"),
+                       tone="success" if check.passed else ("danger" if check.blocking else "warning")) }}</td>
+          <td>{{ check.detail }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+{% else %}{{ empty_state("No validation recorded.") }}{% endif %}
+
+<h3>Provenance</h3>
+{% if attempts %}
+  <div class="table-scroll"><table>
+    <caption>Every attempt that produced this unit</caption>
+    <thead><tr><th scope="col">Stage</th><th scope="col">Attempt</th><th scope="col">Outcome</th><th scope="col">Backend</th><th scope="col">Model</th><th scope="col">Prompt</th><th scope="col">Tokens</th><th scope="col">Degradations</th></tr></thead>
+    <tbody>
+    {% for attempt in attempts %}
+      <tr><td>{{ attempt.stage }}</td><td>{{ attempt.attempt }}</td><td>{{ attempt.outcome }}</td>
+          <td>{{ attempt.backend }}</td><td>{{ attempt.model_canonical_id or "—" }}</td>
+          <td>{{ attempt.prompt_id }} {{ attempt.prompt_version }}</td>
+          <td>{{ attempt.input_tokens }}/{{ attempt.output_tokens }}</td>
+          <td>{{ attempt.degradations | join("; ") or "—" }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+{% else %}{{ empty_state("No attempts recorded.") }}{% endif %}
+
+<h3>History</h3>
+{% if history %}
+  <ul>{% for entry in history %}
+    <li>Version {{ entry.version }} — {{ entry.word_count }} words, {{ entry.content_hash }}{% if entry.committed %} (committed {{ entry.committed_at }}){% endif %}</li>
+  {% endfor %}</ul>
+{% else %}{{ empty_state("No versions yet.") }}{% endif %}
+
+<p><a href="/projects/{{ project_id }}/plan">Back to the plan</a></p>
+{% endblock %}

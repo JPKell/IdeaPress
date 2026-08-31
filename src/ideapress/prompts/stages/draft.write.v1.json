@@ -1,0 +1,28 @@
+{
+  "prompt_id": "stages.draft.write",
+  "version": "1.0.0",
+  "schema_version": "1.0",
+  "purpose": "Write one unit of a document against its specification and the requirements assigned to it.",
+  "task": "content.article_draft",
+  "capability": "instruction_following",
+  "system": "You write one section of a document. You write prose, not a description of prose: never say what you are about to do, never introduce yourself, never close with an offer to help. Write only the section. Do not add a title unless the specification asks for one.",
+  "template": "{{ context }}\n\nWrite the section now. Satisfy every requirement marked MUST; the checks listed beside each one are exactly what will be run against what you write, so write text those checks will find rather than text that means the same thing in other words.\n\nWrite the section and nothing else.",
+  "variables": {
+    "context": {
+      "type": "string",
+      "required": true,
+      "description": "The assembled context, built by Python within a token budget: the unit specification, its requirements and their checks, the glossary and style, and whatever neighbouring units and research notes fit."
+    }
+  },
+  "response": {
+    "format": "text",
+    "json_schema_ref": null,
+    "expectations": [
+      "Prose. No preamble, no sign-off."
+    ]
+  },
+  "metadata": {
+    "change_reason": "First version. Telling the model which checks will run is deliberate: a model marked against a rubric it was not given fails for reasons nobody can act on.",
+    "owner": "ideapress"
+  }
+}

@@ -215,3 +215,114 @@ def test_a_task_belonging_to_another_project_is_not_disclosed(client: TestClient
     _wait(client, first, task["task_id"])
     response = client.get(f"/api/v1/projects/{second}/tasks/{task['task_id']}")
     assert response.status_code == 404
+
+
+def test_the_unit_page_renders_model_output_inert(client: TestClient) -> None:
+    """Risk S1 at the rendering boundary: hostile text is shown as text, in every view."""
+
+    from modelrack.testing import FakeGeneration, FakeScript
+
+    from ideapress.infrastructure.backends import fake as fake_module
+    from ideapress.services.inference import InferenceGateway
+    from ideapress.services.stages import StageRunner
+
+    project_id = _project(client)
+    task = client.post(f"/api/v1/projects/{project_id}/plan").json()
+    _wait(client, project_id, task["task_id"])
+
+    # Script tags and template syntax are *advisory*: an article about web security quotes them
+    # legitimately, and escaping is the control. A path traversal would be blocking and the unit
+    # would pause instead of committing — which is the subject of the next test, not this one.
+    hostile = (
+        "Everything runs on your own machine. <script>alert(1)</script> {{ 7*7 }} "
+        "and the rest reads normally enough for a section. " * 4
+    )
+    runtime = client.app.state.runtime  # type: ignore[attr-defined]  # the served runtime
+    backend = fake_module.FakeBackend(
+        script=FakeScript(
+            models=fake_module.default_fake_script().models,
+            capabilities=fake_module.default_fake_script().capabilities,
+            generations=(FakeGeneration(text=hostile),),
+            repeat_final_generation=True,
+        ),
+        seed=5,
+    )
+    gateway = InferenceGateway(
+        backend=backend,
+        bindings=runtime.settings.models.stages,
+        execution=runtime.settings.execution,
+    )
+    runtime._gateway = gateway  # noqa: SLF001 — substituting the backend is the point
+    runtime._runner = StageRunner(  # noqa: SLF001
+        runtime.storage, gateway=gateway, sink=runtime.events
+    )
+
+    run = client.post(f"/api/v1/projects/{project_id}/stages/draft/run", json={}).json()
+    _wait(client, project_id, run["task_id"])
+
+    page = client.get(f"/projects/{project_id}/units/U-01", headers={"accept": "text/html"})
+    assert page.status_code == 200
+    assert "<script>alert(1)</script>" not in page.text
+    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in page.text
+    assert "{{ 7*7 }}" in page.text, "template syntax survives as text, never evaluated"
+
+
+def test_the_unit_api_reports_the_full_provenance(client: TestClient) -> None:
+    project_id = _project(client)
+    task = client.post(f"/api/v1/projects/{project_id}/plan").json()
+    _wait(client, project_id, task["task_id"])
+    listed = client.get(f"/api/v1/projects/{project_id}/units").json()["units"]
+    assert [u["unit_key"] for u in listed] == ["U-01", "U-02"]
+    assert all(u["state"] == "planned" for u in listed)
+
+    detail = client.get(f"/api/v1/projects/{project_id}/units/U-01").json()
+    assert detail["unit_key"] == "U-01"
+    assert detail["requirements"][0]["key"] == "R-001"
+    assert detail["content"] == ""
+    history = client.get(f"/api/v1/projects/{project_id}/units/U-01/history").json()
+    assert history["versions"] == []
+
+
+def test_a_path_traversal_in_model_output_blocks_the_commit(client: TestClient) -> None:
+    """Risk S2: the one safety finding that is blocking, because no prose needs it."""
+    from modelrack.testing import FakeGeneration, FakeScript
+
+    from ideapress.infrastructure.backends import fake as fake_module
+    from ideapress.services.inference import InferenceGateway
+    from ideapress.services.stages import StageRunner
+
+    project_id = _project(client)
+    task = client.post(f"/api/v1/projects/{project_id}/plan").json()
+    _wait(client, project_id, task["task_id"])
+
+    traversal = (
+        "Everything runs on your own machine and nothing is uploaded. "
+        "Read ../../etc/passwd for the details. " * 4
+    )
+    runtime = client.app.state.runtime  # type: ignore[attr-defined]  # the served runtime
+    backend = fake_module.FakeBackend(
+        script=FakeScript(
+            models=fake_module.default_fake_script().models,
+            capabilities=fake_module.default_fake_script().capabilities,
+            generations=(FakeGeneration(text=traversal),),
+            repeat_final_generation=True,
+        ),
+        seed=5,
+    )
+    gateway = InferenceGateway(
+        backend=backend,
+        bindings=runtime.settings.models.stages,
+        execution=runtime.settings.execution,
+    )
+    runtime._gateway = gateway  # noqa: SLF001 — substituting the backend is the point
+    runtime._runner = StageRunner(  # noqa: SLF001
+        runtime.storage, gateway=gateway, sink=runtime.events
+    )
+
+    run = client.post(f"/api/v1/projects/{project_id}/stages/draft/run", json={}).json()
+    _wait(client, project_id, run["task_id"])
+
+    detail = client.get(f"/api/v1/projects/{project_id}/units/U-01").json()
+    assert detail["state"] == "paused"
+    assert detail["version"] is None, "nothing was committed"
+    assert "no_path_traversal" in (detail["paused_reason"] or "")

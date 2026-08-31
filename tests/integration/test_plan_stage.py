@@ -359,6 +359,7 @@ def test_a_run_left_running_by_a_dead_process_is_marked_interrupted(runtime: Run
 
 
 def test_a_stage_with_no_implementation_is_refused_by_name(runtime: Runtime) -> None:
+    """`draft` is implemented now; `critique` is not until P5, and the refusal names it."""
     from ideapress.errors import StagePreconditionFailed
     from ideapress.services.stage_bodies import start_plan, start_stage
 
@@ -368,8 +369,9 @@ def test_a_stage_with_no_implementation_is_refused_by_name(runtime: Runtime) -> 
     _wait(runtime, task.run_id)
 
     with pytest.raises(StagePreconditionFailed) as caught:
-        start_stage(runtime, project_id=project_id, stage="draft")
-    assert "draft" in caught.value.message
+        start_stage(runtime, project_id=project_id, stage="critique")
+    assert "critique" in caught.value.message
+    assert "draft" in caught.value.message, "the message lists what *is* implemented"
 
 
 def test_planning_a_project_with_no_brief_is_refused(runtime: Runtime) -> None:

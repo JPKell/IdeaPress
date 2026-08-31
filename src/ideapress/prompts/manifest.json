@@ -5,6 +5,11 @@
   "generated_at": "2026-08-31T00:00:00Z",
   "prompts": [
     {
+      "prompt_id": "stages.draft.write",
+      "version": "1.0.0",
+      "sha256": "sha256:a9d0040b8b39516126407d6d4b9ed69e76abec93e77167ed166652aff6580c89"
+    },
+    {
       "prompt_id": "stages.hello",
       "version": "1.0.0",
       "sha256": "sha256:b9f17cf04bb076bcd7a660e169a73238e41e63987fead814d52bb36d6d7e1cb5"
@@ -15,10 +20,15 @@
       "sha256": "sha256:ddbcdc9cd38d7deb737350e592db6744cae2717e430a7add86f8696e04a33e82"
     },
     {
+      "prompt_id": "stages.repair.fix",
+      "version": "1.0.0",
+      "sha256": "sha256:0e6ca304295c8259ae96a8217e11e8a68c28b7af7bb6ed9a5e6584ba0ab63536"
+    },
+    {
       "prompt_id": "stages.requirements.compile",
       "version": "1.0.0",
       "sha256": "sha256:6c3ffef99b24d7b2cd49211e6ddd18fd397776bf988de7a23042d2a406f30713"
     }
   ],
-  "pack_sha256": "sha256:da68409d7d910c2bcbac4b45cbd0ea3bed67778141691d208b81ca9dd59581ef"
+  "pack_sha256": "sha256:f58c3be0c1c96d4797024f3450e19be6a379f48c680fea363e3a0a274dc1daf9"
 }

@@ -174,7 +174,7 @@ def test_stage_status_reports_a_finished_run() -> None:
 def test_stage_run_refuses_a_stage_with_no_implementation() -> None:
     project_id = _project()
     runner.invoke(cli_app, ["plan", "build", project_id])
-    result = runner.invoke(cli_app, ["stage", "run", project_id, "draft"])
+    result = runner.invoke(cli_app, ["stage", "run", project_id, "critique"])
     assert result.exit_code != 0
 
 
@@ -185,3 +185,65 @@ def test_stage_cancel_on_a_finished_task_is_not_an_error() -> None:
     cancelled = runner.invoke(cli_app, ["stage", "cancel", project_id, task_id])
     assert cancelled.exit_code == 0
     assert "not running" in cancelled.stdout
+
+
+GOOD_DRAFT = (
+    "Everything happens on your own machine. The model reads what you wrote, and nothing you "
+    "wrote is uploaded to anyone: no account, no sync, no telemetry carrying your sentences "
+    "somewhere else. The trade-off is that the hardware is yours to provide."
+)
+
+
+def _drafted(monkeypatch: pytest.MonkeyPatch) -> str:
+    """A project planned and then drafted, with the backend swapped between the two."""
+
+    from modelrack.testing import FakeGeneration, FakeScript
+
+    from ideapress.infrastructure.backends import fake as fake_module
+
+    project_id = _project()
+    assert runner.invoke(cli_app, ["plan", "build", project_id]).exit_code == 0
+
+    script = FakeScript(
+        models=fake_module.default_fake_script().models,
+        capabilities=fake_module.default_fake_script().capabilities,
+        generations=(FakeGeneration(text=GOOD_DRAFT),),
+        repeat_final_generation=True,
+    )
+    monkeypatch.setattr(
+        "ideapress.services.runtime.build_backend",
+        lambda settings, mode=None: fake_module.FakeBackend(script=script, seed=5),
+    )
+    assert runner.invoke(cli_app, ["stage", "run", project_id, "draft"]).exit_code == 0
+    return project_id
+
+
+def test_unit_list_and_show(monkeypatch: pytest.MonkeyPatch) -> None:
+    project_id = _drafted(monkeypatch)
+    listed = runner.invoke(cli_app, ["unit", "list", project_id])
+    assert listed.exit_code == 0
+    assert "U-01" in listed.stdout
+    assert "committed" in listed.stdout
+
+    shown = runner.invoke(cli_app, ["unit", "show", project_id, "U-01"])
+    assert shown.exit_code == 0
+    assert "own machine" in shown.stdout
+
+
+def test_unit_show_provenance_names_everything_workflows_8_asks_for(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project_id = _drafted(monkeypatch)
+    shown = runner.invoke(cli_app, ["unit", "show", project_id, "U-01", "--provenance"])
+    assert shown.exit_code == 0
+    for expected in ("COVERAGE", "VALIDATION", "ATTEMPTS", "stages.draft.write", "sha256:"):
+        assert expected in shown.stdout, expected
+    assert "deterministic_check" in shown.stdout
+
+
+def test_unit_history_reports_each_version(monkeypatch: pytest.MonkeyPatch) -> None:
+    project_id = _drafted(monkeypatch)
+    shown = runner.invoke(cli_app, ["unit", "history", project_id, "U-01"])
+    assert shown.exit_code == 0
+    assert "v1" in shown.stdout
+    assert "committed" in shown.stdout

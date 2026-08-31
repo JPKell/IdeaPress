@@ -21,7 +21,13 @@ from typing import TYPE_CHECKING, Any
 
 from baseaicore import ValidationError
 
-from ideapress.domain.inference import Correlation, ResponseFormat, StageLimits, StageRequest
+from ideapress.domain.inference import (
+    Correlation,
+    ResponseFormat,
+    StageLimits,
+    StageRequest,
+    StageResult,
+)
 from ideapress.domain.requirements import (
     MIN_QUOTE_CHARS,
     CompiledBy,
@@ -50,6 +56,15 @@ __all__ = [
 logger = logging.getLogger(__name__)
 
 COMPILE_PROMPT_ID = "stages.requirements.compile"
+
+STRUCTURED_OUTPUT_TOKENS = 8192
+"""The output budget for a structured-extraction stage.
+
+**Includes the model's reasoning**, which is why it is this large. Measured on the reference
+machine: `qwen3.5:9b-q8_0` compiling requirements from a six-line brief produced **nothing at all**
+at 4 096 tokens — the whole allowance went on thinking — and completed in 278 tokens of answer at
+8 192. A budget that a reasoning model cannot finish thinking inside returns an empty string, which
+a JSON parser then reports as a malformed answer rather than as an absent one."""
 
 _REQUIREMENTS_SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -111,6 +126,9 @@ class CompilationResult:
         rejected: Candidates that failed grounding, with the reason.
         prompt_id, prompt_version, prompt_sha256: Provenance for the compilation itself.
         raw_text: What the model actually said, for the attempt record.
+        result: The full stage result, so the attempt records the model, usage and timing that
+            produced the compilation — workflows §8 wants those on *every* attempt, and a plan
+            attempt with no model identity is a hole in the provenance of everything built on it.
     """
 
     requirements: tuple[Requirement, ...]
@@ -119,6 +137,7 @@ class CompilationResult:
     prompt_version: str
     prompt_sha256: str
     raw_text: str
+    result: StageResult
 
     @property
     def blocking(self) -> tuple[Requirement, ...]:
@@ -250,7 +269,7 @@ def compile_requirements(
             system=prompt.system or "",
             user=prompt.user,
             response_format=ResponseFormat(kind="json_schema", schema=_REQUIREMENTS_SCHEMA),
-            limits=StageLimits(temperature=0.0, max_output_tokens=4096),
+            limits=StageLimits(temperature=0.0, max_output_tokens=STRUCTURED_OUTPUT_TOKENS),
             correlation=Correlation(project_id=project_id, attempt=attempt),
             prompt_id=prompt.prompt_id,
             prompt_version=prompt.version,
@@ -300,4 +319,5 @@ def compile_requirements(
         prompt_version=prompt.version,
         prompt_sha256=prompt.sha256,
         raw_text=result.text,
+        result=result,
     )

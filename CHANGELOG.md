@@ -8,6 +8,11 @@ packaging and release standards §3.
 ## [Unreleased]
 
 ### Added
+- The core loop: draft, validate, repair (bounded, then pause the unit), coverage and an atomic
+  commit, with complete provenance on every committed version.
+- Migration `0003`: `unit_versions`, `validations`, `coverage`, `exports`.
+- The unit page and `ideapress unit list|show|history`, showing content, coverage, validation and
+  the attempts that produced it.
 - Deterministic validation: all seven families from workflows §4 — structural, length, format,
   content constraints, reference integrity, consistency and safety — with failures classed blocking
   or advisory, and no model involved anywhere.

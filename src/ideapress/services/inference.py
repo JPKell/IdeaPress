@@ -27,7 +27,7 @@ from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING
 
 from ideapress.domain.inference import StageRequest, StageResult
-from ideapress.errors import ModelNotConfigured
+from ideapress.errors import ContextLimitExceeded, ModelNotConfigured
 from ideapress.observability.logging import correlation
 
 if TYPE_CHECKING:
@@ -236,6 +236,26 @@ class InferenceGateway:
             extra={"model_canonical_id": request.model_hint, "stage": request.stage},
         )
         retried = self.backend.generate(request)
+        if not retried.text.strip() and retried.truncated:
+            # The retry produced nothing either, so this is not a cold load: the budget is genuinely
+            # too small for this model's reasoning on this task. Say that, with the number. Letting
+            # it through would surface as "Expecting value: line 1 column 1" from a JSON parser,
+            # which sends the reader looking for a malformed answer when there was no answer at all.
+            message = (
+                f"The model produced no text at all in {request.limits.max_output_tokens} output "
+                f"tokens, twice, for the {request.stage!r} stage. A reasoning model spends output "
+                "tokens on thinking before its first word; this budget was exhausted before it "
+                "reached one. Raise the stage's output budget."
+            )
+            raise ContextLimitExceeded(
+                message,
+                details={
+                    "stage": request.stage,
+                    "max_output_tokens": request.limits.max_output_tokens,
+                    "output_tokens": retried.usage.output_tokens,
+                    "model_canonical_id": request.model_hint,
+                },
+            )
         return replace(
             retried,
             degradations=(

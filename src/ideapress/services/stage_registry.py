@@ -34,6 +34,18 @@ class StageBodyFactory(Protocol):
         ...
 
 
-STAGE_BODIES: Final[dict[StageId, StageBodyFactory]] = {}
-"""Populated as each phase lands its stages. Empty here; P4 registers `draft`, `validate`,
-`repair`, `coverage` and `commit`, and P5 the review stages."""
+def _draft(
+    runtime: Runtime, *, project_id: str, unit_keys: Sequence[str], resume: bool
+) -> Callable[[StageTask], None]:
+    """The core loop: draft, validate, repair, coverage, commit."""
+    from ideapress.services.unit_loop import draft_body
+
+    return draft_body(runtime, project_id=project_id, unit_keys=unit_keys, resume=resume)
+
+
+STAGE_BODIES: Final[dict[StageId, StageBodyFactory]] = {"draft": _draft}
+"""Populated as each phase lands its stages.
+
+`draft` is the whole core loop rather than one step of it, because `validate`, `repair`, `coverage`
+and `commit` are not separately startable: they are decided *within* a unit's attempt, and a user
+who could run `commit` on its own could commit a unit that never passed validation."""

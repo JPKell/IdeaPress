@@ -15,7 +15,13 @@ from typing import TYPE_CHECKING, Any
 from baseaicore import ValidationError
 from sqlalchemy import delete, select
 
-from ideapress.domain.inference import Correlation, ResponseFormat, StageLimits, StageRequest
+from ideapress.domain.inference import (
+    Correlation,
+    ResponseFormat,
+    StageLimits,
+    StageRequest,
+    StageResult,
+)
 from ideapress.domain.plan import Plan, PlanUnit, check_plan, unit_key
 from ideapress.domain.requirements import (
     CompiledBy,
@@ -26,7 +32,11 @@ from ideapress.domain.requirements import (
 from ideapress.infrastructure.db.models import Requirement as RequirementRow
 from ideapress.infrastructure.db.models import Unit as UnitRow
 from ideapress.services.prompts import render
-from ideapress.services.requirements import CompilationResult, compile_requirements
+from ideapress.services.requirements import (
+    STRUCTURED_OUTPUT_TOKENS,
+    CompilationResult,
+    compile_requirements,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -86,6 +96,7 @@ class PlanResult:
     outline_prompt_version: str
     outline_prompt_sha256: str
     outline_raw_text: str
+    outline_result: StageResult
 
 
 def _render_requirements(requirements: Sequence[Requirement]) -> str:
@@ -166,7 +177,7 @@ def build_plan(
             system=prompt.system or "",
             user=prompt.user,
             response_format=ResponseFormat(kind="json_schema", schema=_PLAN_SCHEMA),
-            limits=StageLimits(temperature=0.0, max_output_tokens=4096),
+            limits=StageLimits(temperature=0.0, max_output_tokens=STRUCTURED_OUTPUT_TOKENS),
             correlation=Correlation(project_id=project_id),
             prompt_id=prompt.prompt_id,
             prompt_version=prompt.version,
@@ -203,6 +214,7 @@ def build_plan(
         outline_prompt_version=prompt.version,
         outline_prompt_sha256=prompt.sha256,
         outline_raw_text=result.text,
+        outline_result=result,
     )
 
 

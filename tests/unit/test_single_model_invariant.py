@@ -244,9 +244,17 @@ def test_an_empty_truncated_generation_is_retried_exactly_once() -> None:
     assert any(d.startswith("empty_generation_retried:") for d in result.degradations)
 
 
-def test_a_second_empty_generation_is_not_retried_again() -> None:
-    """Bounded means bounded: a backend that always returns nothing does not loop forever."""
+def test_a_second_empty_generation_fails_with_the_budget_rather_than_looping() -> None:
+    """Bounded means bounded — and the failure names the real cause.
+
+    Letting an empty answer through would surface downstream as "Expecting value: line 1 column 1"
+    from a JSON parser, which sends the reader looking for a malformed answer when there was no
+    answer at all. Measured on the reference machine: both default models spend more than 4 096
+    output tokens reasoning before their first word on a short structured task.
+    """
     from dataclasses import replace as dataclass_replace
+
+    from ideapress.errors import ContextLimitExceeded
 
     gateway, backend = _gateway()
     calls = 0
@@ -259,14 +267,19 @@ def test_a_second_empty_generation_is_not_retried_again() -> None:
 
     backend.generate = always_empty  # type: ignore[method-assign]  # simulates a stuck model
 
-    result = gateway.run(
-        StageRequest(
-            stage="draft", system="s", user="u", correlation=Correlation(project_id="01PROJECT")
+    with pytest.raises(ContextLimitExceeded) as caught:
+        gateway.run(
+            StageRequest(
+                stage="draft",
+                system="s",
+                user="u",
+                correlation=Correlation(project_id="01PROJECT"),
+            )
         )
-    )
-    assert calls == 2, "one retry, then the empty result is returned for validation to reject"
-    assert result.text == ""
-    assert result.truncated
+    assert calls == 2, "one retry, and then it stops"
+    assert "no text at all" in caught.value.message
+    assert caught.value.details["max_output_tokens"] == 2048
+    assert caught.value.details["stage"] == "draft"
 
 
 def test_a_non_empty_truncation_is_not_retried() -> None:

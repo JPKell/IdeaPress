@@ -129,7 +129,7 @@ def record_attempt(
             row.thinking_tokens = result.usage.thinking_tokens
             row.provider_ms = result.timing.duration_ms
             row.ttft_ms = result.timing.ttft_ms
-            row.response_hash = sha256_of(result.text.encode("utf-8"))
+            row.response_hash = f"sha256:{sha256_of(result.text)}"
             row.degradations_json = list(result.degradations)
             row.rejection_reason = result.refusal_reason
             row.routing_json = dict(result.routing) if result.routing else None

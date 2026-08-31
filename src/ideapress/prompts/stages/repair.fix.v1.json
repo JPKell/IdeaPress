@@ -1,0 +1,38 @@
+{
+  "prompt_id": "stages.repair.fix",
+  "version": "1.0.0",
+  "schema_version": "1.0",
+  "purpose": "Repair a unit that failed deterministic validation, changing only what the failures name.",
+  "task": "content.rewrite",
+  "capability": "instruction_following",
+  "system": "You repair a section that failed specific, mechanical checks. Change what the failures name and as little else as possible: a rewrite that fixes the fault and loses the writing is not a repair. Return only the corrected section.",
+  "template": "{{ context }}\n\nTHE SECTION AS IT STANDS\n{{ current_text }}\n\nWHAT FAILED\nThese are mechanical checks, already run. Each line says exactly what was looked for and what was found.\n\n{{ failures }}\n\nReturn the corrected section in full. Keep every sentence that is not implicated in a failure.",
+  "variables": {
+    "context": {
+      "type": "string",
+      "required": true,
+      "description": "The assembled context, including the previous attempt's findings, which are never dropped to fit the budget."
+    },
+    "current_text": {
+      "type": "string",
+      "required": true,
+      "description": "The text that failed, so the repair edits rather than regenerates."
+    },
+    "failures": {
+      "type": "string",
+      "required": true,
+      "description": "One line per failing check, naming what was sought and what was observed \u2014 rendered by Python from the validation report, not summarised by a model."
+    }
+  },
+  "response": {
+    "format": "text",
+    "json_schema_ref": null,
+    "expectations": [
+      "The corrected section, in full."
+    ]
+  },
+  "metadata": {
+    "change_reason": "First version. The failures are rendered from the deterministic report rather than described, so the model is repairing the actual defect and not a paraphrase of it.",
+    "owner": "ideapress"
+  }
+}

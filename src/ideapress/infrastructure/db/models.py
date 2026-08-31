@@ -11,7 +11,7 @@ and the parity check (database standards §5.2) fails forever on a schema that i
 
 ``projects``, ``sources``, ``settings`` and ``api_tokens`` come from Phase 1's migration ``0001``;
 ``requirements``, ``units``, ``stage_runs``, ``attempts`` and ``stage_events`` from Phase 3's
-``0002``.
+``0002``; ``unit_versions``, ``validations``, ``coverage`` and ``exports`` from Phase 4's ``0003``.
 SQLAlchemy models never leave the repository layer: a service returns a frozen domain value object,
 never one of these.
 """
@@ -44,8 +44,12 @@ __all__ = [
     "Setting",
     "Source",
     "StageEvent",
+    "Coverage",
+    "Export",
     "StageRun",
     "Unit",
+    "UnitVersion",
+    "Validation",
     "utcnow",
 ]
 
@@ -334,3 +338,106 @@ class StageEvent(Base):
         # Data model §5: event replay uses `(stage_run_id, sequence)`.
         Index("ix_stage_events_stage_run_id_sequence", "stage_run_id", "sequence"),
     )
+
+
+class UnitVersion(Base):
+    """One version of a unit's content.
+
+    A committed version is **immutable**. A revision creates version *n+1* and the history is
+    retained, which is what makes "history that can be trusted" (risks §8) a property rather than a
+    promise.
+    """
+
+    __tablename__ = "unit_versions"
+
+    id: Mapped[str] = ulid_primary_key()
+    unit_id: Mapped[str] = mapped_column(
+        String(26), ForeignKey("units.id", ondelete="CASCADE"), nullable=False
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    content_text: Mapped[str] = mapped_column(Text, nullable=False)
+    content_hash: Mapped[str] = mapped_column(String(71), nullable=False)
+    word_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    char_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    committed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    committed_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
+    created_from_attempt_id: Mapped[str | None] = mapped_column(String(26), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, nullable=False, default=utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("unit_id", "version", name="uq_unit_versions_unit_id_version"),
+        # Data model §5: unit history uses `(unit_id, version DESC)`.
+        Index("ix_unit_versions_unit_id_version", "unit_id", "version"),
+    )
+
+
+class Validation(Base):
+    """One deterministic check's verdict, recorded against the attempt that produced the text."""
+
+    __tablename__ = "validations"
+
+    id: Mapped[str] = ulid_primary_key()
+    attempt_id: Mapped[str] = mapped_column(
+        String(26), ForeignKey("attempts.id", ondelete="CASCADE"), nullable=False
+    )
+    check_kind: Mapped[str] = mapped_column(String(40), nullable=False)
+    check_key: Mapped[str] = mapped_column(String(120), nullable=False)
+    passed: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    blocking: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    detail_json: Mapped[dict[str, Any]] = mapped_column(PortableJSON, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, nullable=False, default=utcnow)
+
+    __table_args__ = (Index("ix_validations_attempt_id", "attempt_id"),)
+
+
+class Coverage(Base):
+    """Whether one requirement was satisfied in one version, and by what.
+
+    ``satisfied_by`` distinguishes ``deterministic_check`` from ``audit`` and ``manual``, which is
+    the distinction workflows §3 says the user must be able to see: which guarantees are mechanical
+    and which are model-assisted.
+    """
+
+    __tablename__ = "coverage"
+
+    id: Mapped[str] = ulid_primary_key()
+    unit_version_id: Mapped[str] = mapped_column(
+        String(26), ForeignKey("unit_versions.id", ondelete="CASCADE"), nullable=False
+    )
+    requirement_id: Mapped[str] = mapped_column(
+        String(26), ForeignKey("requirements.id", ondelete="CASCADE"), nullable=False
+    )
+    satisfied: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    satisfied_by: Mapped[str] = mapped_column(String(30), nullable=False)
+    detail_json: Mapped[dict[str, Any]] = mapped_column(PortableJSON, nullable=False, default=dict)
+    evaluated_at: Mapped[datetime] = mapped_column(UtcDateTime, nullable=False, default=utcnow)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "unit_version_id", "requirement_id", name="uq_coverage_version_requirement"
+        ),
+        # Data model §5: the coverage report uses `(unit_version_id, requirement_id)`.
+        Index("ix_coverage_unit_version_id_requirement_id", "unit_version_id", "requirement_id"),
+    )
+
+
+class Export(Base):
+    """One rendered document written to the project directory."""
+
+    __tablename__ = "exports"
+
+    id: Mapped[str] = ulid_primary_key()
+    project_id: Mapped[str] = mapped_column(
+        String(26), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    )
+    format: Mapped[str] = mapped_column(String(20), nullable=False)
+    path: Mapped[str] = mapped_column(Text, nullable=False)
+    sha256: Mapped[str] = mapped_column(String(71), nullable=False)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    unit_version_ids_json: Mapped[list[Any]] = mapped_column(
+        PortableJSON, nullable=False, default=list
+    )
+    export_format_version: Mapped[str] = mapped_column(String(20), nullable=False, default="1.0")
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, nullable=False, default=utcnow)
+
+    __table_args__ = (Index("ix_exports_project_id_created_at", "project_id", "created_at"),)
