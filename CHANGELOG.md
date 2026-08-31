@@ -24,6 +24,9 @@ packaging and release standards §3.
   refuses a binding for a stage that does not exist or a model-using stage with none.
 
 ### Fixed
+- The CI workflow parses again: an edit had left a duplicate `env:` key on one step, which GitHub
+  refuses and PyYAML accepts, so the whole workflow was invalid and no job ran. A test now loads it
+  with a loader that refuses duplicate keys the way GitHub does.
 - The PostgreSQL CI job now names the server `weightsdb.testing` looks for, passes
   `WEIGHTSDB_POSTGRES_URL` rather than `DATABASE_URL`, and uses the `+psycopg` driver this project
   installs; it previously could not connect at all.

@@ -50,6 +50,10 @@ dev = [
     "ruff>=0.6,<1",
     "import-linter>=2.0,<3",
     "respx>=0.21,<1",
+    # The CI workflow is parsed by a test: GitHub refuses a duplicate mapping key and PyYAML
+    # does not, so a workflow that runs zero jobs is otherwise invisible until it is pushed.
+    "pyyaml>=6,<7",
+    "types-PyYAML>=6,<7",
 ]
 # P7's LoadCoach-adapter contract tests read LoadCoach's OpenAPI snapshot, so they need the
 # package installed — but it is deliberately NOT in `dev`. Gold Standards §2's first IdeaPress

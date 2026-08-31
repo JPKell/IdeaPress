@@ -96,9 +96,6 @@ jobs:
           # A silently skipped dialect is an untested dialect: this turns the skip into a failure.
           WEIGHTSDB_REQUIRE_POSTGRES: "1"
           WEIGHTSDB_POSTGRES_URL: postgresql+psycopg://weightsdb:weightsdb@localhost:5432/weightsdb_test
-        env:
-          WEIGHTSDB_REQUIRE_POSTGRES: "1"
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
 
   coverage:
     needs: [tests]
