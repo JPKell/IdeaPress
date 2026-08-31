@@ -70,6 +70,8 @@ packaging and release standards §3.
   refuses a binding for a stage that does not exist or a model-using stage with none.
 
 ### Fixed
+- An export's recorded `sha256` is now the file's own digest, so `sha256sum` on the exported file
+  reproduces it.
 - A second process opening the database no longer marks a running stage as interrupted. Migration
   `0005` records which process owns a stage run, and only a run whose owner is gone is marked.
 - `/api/v1/docs` and `/api/v1/openapi.json` work: response annotations imported only under

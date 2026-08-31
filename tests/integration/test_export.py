@@ -331,3 +331,22 @@ def test_a_regex_free_check_that_no_absolute_url_appears(
 
     html = render(build_document(runtime, project_id=committed_project), "html")
     assert not re.search(r"https?://", html)
+
+
+@pytest.mark.parametrize("fmt", ["markdown", "html", "json"])
+def test_the_recorded_hash_is_one_sha256sum_reproduces(
+    runtime: Runtime, committed_project: str, fmt: str
+) -> None:
+    """A hash a reader cannot reproduce is a hash they cannot use.
+
+    The first version recorded BaseAiCore's `sha256_of`, which hashes a value's *canonical JSON* —
+    right for a structure, wrong for a file. `sha256sum` on the export disagreed with the number
+    the export record and the CLI both printed, so the one check anybody would actually run to
+    verify determinism said the file was wrong.
+    """
+    from ideapress.services.export import export_project
+
+    written = export_project(runtime, project_id=committed_project, fmt=fmt)
+    on_disk = hashlib.sha256(Path(str(written["path"])).read_bytes()).hexdigest()
+    assert written["sha256"] == f"sha256:{on_disk}"
+    assert written["size_bytes"] == Path(str(written["path"])).stat().st_size

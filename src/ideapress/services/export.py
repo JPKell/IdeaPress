@@ -210,7 +210,7 @@ def export_project(runtime: Runtime, *, project_id: str, fmt: str) -> dict[str, 
     The path comes from the project's **slug**, which IdeaPress generated and validated — never
     from a title and never from anything a model produced (risk S2).
     """
-    from baseaicore import sha256_of
+    import hashlib
 
     document = build_document(runtime, project_id=project_id)
     if not document.units:
@@ -233,7 +233,12 @@ def export_project(runtime: Runtime, *, project_id: str, fmt: str) -> dict[str, 
         message = f"Could not write {path}: {exc}"
         raise ExportFailed(message, details={"path": str(path), "format": fmt}) from exc
 
-    digest = f"sha256:{sha256_of(text)}"
+    # The **file's own** digest, over the bytes on disk, so `sha256sum <file>` reproduces it.
+    # BaseAiCore's `sha256_of` hashes a value's canonical JSON, which is the right thing for a
+    # structure and the wrong thing here: a reader who runs `sha256sum` to check an export against
+    # its record must get the same number, and a hash they cannot reproduce is a hash they cannot
+    # use.
+    digest = f"sha256:{hashlib.sha256(path.read_bytes()).hexdigest()}"
     size = path.stat().st_size
     with runtime.storage.write() as session:
         session.add(
