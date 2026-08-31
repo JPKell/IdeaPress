@@ -13,6 +13,8 @@ from typing import Annotated
 import typer
 
 from ideapress.cli.commands import config as config_commands
+from ideapress.cli.commands import db as db_commands
+from ideapress.cli.commands import project as project_commands
 from ideapress.cli.commands import system as system_commands
 
 __all__ = ["app"]
@@ -55,3 +57,5 @@ app.command(name="version", help="Print the application and API versions.")(syst
 app.command(name="doctor", help="Diagnose a broken installation.")(system_commands.doctor)
 
 app.add_typer(config_commands.app, name="config")
+app.add_typer(db_commands.app, name="db")
+app.add_typer(project_commands.app, name="project")

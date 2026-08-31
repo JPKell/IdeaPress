@@ -1,0 +1,23 @@
+{# One project. The plan, units and stages arrive in later phases; this is the shell they hang on. #}
+{% extends "base.html" %}
+{% from "mirrorwall/components.html" import kv_list, badge, empty_state %}
+{% block content %}
+<h2>{{ project.title }}</h2>
+{{ kv_list([
+  {"label": "Status", "value": project.status},
+  {"label": "Content type", "value": project.content_type ~ " " ~ project.content_type_version},
+  {"label": "Workflow", "value": project.workflow_id ~ " " ~ project.workflow_version},
+  {"label": "Slug", "value": project.slug},
+  {"label": "Created", "value": project.created_at | timestamp},
+  {"label": "Updated", "value": project.updated_at | timestamp},
+]) }}
+
+<h3>Brief</h3>
+{% if project.brief_text %}<pre class="brief">{{ project.brief_text }}</pre>
+{% else %}{{ empty_state("No brief yet. A project needs one before requirements can be compiled.") }}{% endif %}
+
+<h3>Plan</h3>
+{{ empty_state("No plan yet.") }}
+
+<p><a href="/">Back to projects</a></p>
+{% endblock %}

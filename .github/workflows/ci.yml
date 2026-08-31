@@ -70,20 +70,32 @@ jobs:
     services:
       postgres:
         image: postgres:16
+        # Credentials and database name match `weightsdb.testing`'s documented default URL, so the
+        # service this job starts is the one the package looks for. The scaffold named a
+        # `postgres`/`postgres` server nothing ever connected to, and passed it as
+        # `DATABASE_URL` — a variable `temporary_postgres` does not read — in the bare
+        # `postgresql://` form, which resolves to the psycopg2 driver this project does not
+        # install. LoadCoach fixed the same three defects in its own job.
         env:
-          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: weightsdb
+          POSTGRES_PASSWORD: weightsdb
+          POSTGRES_DB: weightsdb_test
         ports: ["5432:5432"]
         options: >-
-          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+          --health-cmd "pg_isready -U weightsdb -d weightsdb_test" --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
       - run: pip install -e ".[dev,postgres]"
-        # `-m integration` selects on a marker this repo never declares or applies, so it collects
-        # zero tests and exits 5 — the job would be red on every commit while appearing to test
+        # `-m integration` selects on a marker this repo never declares or applies, so it collected
+        # zero tests and exited 5 — the job would be red on every commit while appearing to test
         # PostgreSQL (M4 handoff HR2, defect 2, which is why both siblings select by path).
       - run: pytest -m "not live and not performance" tests/integration
+        env:
+          # A silently skipped dialect is an untested dialect: this turns the skip into a failure.
+          WEIGHTSDB_REQUIRE_POSTGRES: "1"
+          WEIGHTSDB_POSTGRES_URL: postgresql+psycopg://weightsdb:weightsdb@localhost:5432/weightsdb_test
         env:
           WEIGHTSDB_REQUIRE_POSTGRES: "1"
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres

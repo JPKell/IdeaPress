@@ -1,0 +1,42 @@
+{# The project list. Every value reaches the macros as a plain string and is escaped once; no
+   `| safe` appears anywhere in this package on content a user or a model produced. #}
+{% extends "base.html" %}
+{% from "mirrorwall/components.html" import table, empty_state, button, input, badge %}
+{% block content %}
+<h2>Projects</h2>
+
+{% if projects %}
+  <div class="table-scroll">
+    <table>
+      <caption>Projects, most recently updated first</caption>
+      <thead>
+        <tr><th scope="col">Title</th><th scope="col">Type</th><th scope="col">Status</th><th scope="col">Updated</th></tr>
+      </thead>
+      <tbody>
+      {% for project in projects %}
+        <tr>
+          <td><a href="/projects/{{ project.id }}">{{ project.title }}</a></td>
+          <td>{{ project.content_type }}</td>
+          <td>{{ badge(project.status, tone="neutral") }}</td>
+          <td>{{ project.updated_at | timestamp }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% else %}
+  {{ empty_state("No projects yet. Create one below to begin.") }}
+{% endif %}
+
+<p>
+  {% if show_archived %}<a href="/">Hide archived</a>{% else %}<a href="/?show_archived=true">Show archived</a>{% endif %}
+</p>
+
+<h3>New project</h3>
+<form method="post" action="/projects">
+  <input type="hidden" name="{{ csrf_field_name }}" value="{{ csrf_token }}">
+  {{ input("title", "Title", required=True, hint="The slug is derived from this; it is never taken from your input directly.") }}
+  {{ input("brief", "Brief", hint="One page. The requirement compiler reads this and nothing else.") }}
+  {{ button("Create project", variant="primary", type="submit") }}
+</form>
+{% endblock %}

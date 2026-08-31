@@ -109,7 +109,17 @@ def test_help_does_not_import_the_web_layer() -> None:
         "import sys; from ideapress.cli.main import app; "
         "print(','.join(m for m in ('fastapi','uvicorn','sqlalchemy','httpx') if m in sys.modules))"
     )
+    # `cwd` is the repository root, not the test's temporary directory. pytest-cov starts
+    # coverage inside a subprocess through a `.pth` hook, and that hook reads `pyproject.toml`
+    # relative to the working directory: from anywhere else it measures without `branch = true`
+    # and writes a data file the parent's cannot combine with, which fails the whole run inside
+    # pytest-cov rather than as a test failure. Only the `--cov` invocation sees it, so the
+    # default gate is green while the coverage job is red.
     output = subprocess.run(  # noqa: S603 — fixed argv, no shell
-        [sys.executable, "-c", probe], capture_output=True, text=True, check=True
+        [sys.executable, "-c", probe],
+        capture_output=True,
+        text=True,
+        check=True,
+        cwd=Path(__file__).resolve().parents[2],
     )
     assert output.stdout.strip() == ""

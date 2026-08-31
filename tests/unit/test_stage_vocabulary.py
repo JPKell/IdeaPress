@@ -10,8 +10,9 @@ test exists to make impossible.
 from __future__ import annotations
 
 import re
+from dataclasses import replace
 from pathlib import Path
-from typing import cast
+from typing import cast, get_args
 
 import pytest
 from pydantic import BaseModel
@@ -22,7 +23,9 @@ from ideapress.domain.stages import (
     MODEL_STAGES,
     NO_MODEL_STAGES,
     STAGES,
+    StageDefinition,
     StageId,
+    check_table_matches_type,
     is_stage,
     stage_definition,
 )
@@ -114,6 +117,22 @@ def test_stage_definition_refuses_an_unknown_stage() -> None:
 
 
 def test_stage_id_literal_is_the_table() -> None:
-    from typing import get_args
-
     assert set(get_args(StageId)) == set(STAGES)
+
+
+def test_the_drift_check_refuses_a_table_that_lost_a_stage() -> None:
+    """The invariant is load-bearing, so it is tested rather than trusted."""
+    trimmed: dict[StageId, StageDefinition] = {
+        name: row for name, row in STAGES.items() if name != "draft"
+    }
+    with pytest.raises(RuntimeError) as caught:
+        check_table_matches_type(get_args(StageId), trimmed)
+    assert "draft" in str(caught.value)
+
+
+def test_the_drift_check_refuses_out_of_order_ordinals() -> None:
+    shuffled: dict[StageId, StageDefinition] = dict(STAGES)
+    shuffled["draft"] = replace(STAGES["draft"], ordinal=99)
+    with pytest.raises(RuntimeError) as caught:
+        check_table_matches_type(get_args(StageId), shuffled)
+    assert "ordinals" in str(caught.value)

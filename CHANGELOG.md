@@ -8,6 +8,13 @@ packaging and release standards §3.
 ## [Unreleased]
 
 ### Added
+- Projects: create, list, open, update, archive, and delete with a preview of exactly what will be
+  removed. Slugs are derived from the title and never taken from input, and a project's artifact
+  directory is created private and containment-checked.
+- Migration `0001` on WeightsDB's runner: `projects`, `sources`, `settings`, `api_tokens`, verified
+  against both SQLite and PostgreSQL 16 including the Alembic-to-models parity check.
+- `ideapress project create|list|show|archive|delete` and `ideapress db upgrade|status|backup|restore`.
+- Project list and detail pages, with the shared CSRF token on every form.
 - Application skeleton on the shared packages: typed settings with the documented precedence and
   refusals, structured logging with the suite's correlation fields, `/health`, `/version`,
   `/system/status`, the system page, and the `serve`/`health`/`doctor`/`version`/`config` commands.
@@ -17,6 +24,9 @@ packaging and release standards §3.
   refuses a binding for a stage that does not exist or a model-using stage with none.
 
 ### Fixed
+- The PostgreSQL CI job now names the server `weightsdb.testing` looks for, passes
+  `WEIGHTSDB_POSTGRES_URL` rather than `DATABASE_URL`, and uses the `+psycopg` driver this project
+  installs; it previously could not connect at all.
 - `pytest` now collects under the bare console script as well as `python -m pytest`
   (`pythonpath = ["."]`), which is the invocation CI runs.
 - Coverage measures the importable `ideapress` package rather than the `src/ideapress` path, so a

@@ -13,6 +13,7 @@ documentation back, is the mechanical version of that audit.
 
 from __future__ import annotations
 
+from collections.abc import Collection, Mapping
 from dataclasses import dataclass
 from typing import Final, Literal, cast, get_args
 
@@ -22,6 +23,7 @@ __all__ = [
     "NO_MODEL_STAGES",
     "STAGES",
     "StageDefinition",
+    "check_table_matches_type",
     "StageId",
     "is_stage",
     "stage_definition",
@@ -158,23 +160,30 @@ def stage_definition(stage: str) -> StageDefinition:
     return STAGES[cast("StageId", stage)]
 
 
-def _check_table_matches_type() -> None:
-    """Fail at import if :data:`StageId` and :data:`STAGES` have drifted apart.
+def check_table_matches_type(
+    declared: Collection[str], table: Mapping[StageId, StageDefinition]
+) -> None:
+    """Fail if the stage type and the stage table have drifted apart.
 
-    The Literal and the table are two spellings of one list. An edit to either that forgets the
-    other should fail here, not at whichever call site happened to touch the missing stage — and
-    not only under ``assert``, which ``python -O`` removes.
+    Args:
+        declared: The identifiers :data:`StageId` names.
+        table: The transcribed rows of workflows §2.
+
+    Raises:
+        RuntimeError: The two name different stages, or the ordinals are not ``1..n`` in order.
+            Called at import with this module's own values, so an edit to either spelling that
+            forgets the other fails immediately rather than at whichever call site happened to
+            touch the missing stage — and it raises rather than asserting, because ``python -O``
+            removes an assertion and this invariant is load-bearing.
     """
-    declared = set(get_args(StageId))
-    tabled = set(STAGES)
-    if declared != tabled:
-        missing = ", ".join(sorted(declared ^ tabled))
-        message = f"StageId and STAGES disagree about: {missing}"
+    if set(declared) != set(table):
+        drifted = ", ".join(sorted(set(declared) ^ set(table)))
+        message = f"StageId and STAGES disagree about: {drifted}"
         raise RuntimeError(message)
-    ordinals = [definition.ordinal for definition in STAGES.values()]
-    if ordinals != list(range(1, len(STAGES) + 1)):
-        message = f"STAGES ordinals are not workflows §2's 1..{len(STAGES)}: {ordinals}"
+    ordinals = [definition.ordinal for definition in table.values()]
+    if ordinals != list(range(1, len(table) + 1)):
+        message = f"STAGES ordinals are not workflows §2's 1..{len(table)}: {ordinals}"
         raise RuntimeError(message)
 
 
-_check_table_matches_type()
+check_table_matches_type(get_args(StageId), STAGES)
