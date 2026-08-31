@@ -12,7 +12,8 @@ and the parity check (database standards §5.2) fails forever on a schema that i
 ``projects``, ``sources``, ``settings`` and ``api_tokens`` come from Phase 1's migration ``0001``;
 ``requirements``, ``units``, ``stage_runs``, ``attempts`` and ``stage_events`` from Phase 3's
 ``0002``; ``unit_versions``, ``validations``, ``coverage`` and ``exports`` from Phase 4's
-``0003``; ``audit_findings`` and ``critiques`` from Phase 5's ``0004``.
+``0003``; ``audit_findings`` and ``critiques`` from Phase 5's ``0004``; ``stage_runs``
+gained its ownership columns in ``0005``.
 SQLAlchemy models never leave the repository layer: a service returns a frozen domain value object,
 never one of these.
 """
@@ -255,6 +256,10 @@ class StageRun(Base):
     options_json: Mapped[dict[str, Any]] = mapped_column(PortableJSON, nullable=False, default=dict)
     backend: Mapped[str] = mapped_column(String(40), nullable=False, default="")
     backend_mode: Mapped[str] = mapped_column(String(40), nullable=False, default="")
+    # Which process owns this run. A run left `running` is only *interrupted* if its owner is gone
+    # — without this, any second process that opens the database marks a live run as dead.
+    owner_pid: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    owner_boot_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     __table_args__ = (Index("ix_stage_runs_project_id_started_at", "project_id", "started_at"),)
 

@@ -17,10 +17,12 @@ on the attempt record and never committed.
 from __future__ import annotations
 
 import logging
+import os
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from baseaicore import SuiteError
@@ -39,7 +41,50 @@ if TYPE_CHECKING:
     from ideapress.services.events import StageEventSink
     from ideapress.services.inference import InferenceGateway
 
-__all__ = ["StageRunner", "StageTask", "record_attempt"]
+__all__ = ["StageRunner", "StageTask", "boot_id", "process_is_alive", "record_attempt"]
+
+
+def boot_id() -> str:
+    """An identifier for this boot of this machine.
+
+    Read from ``/proc/sys/kernel/random/boot_id`` where it exists, and the machine's name
+    otherwise. It is what makes a recorded PID meaningful: PIDs are reused, and a PID recorded
+    before a reboot says nothing about a process running after one.
+    """
+    try:
+        return Path("/proc/sys/kernel/random/boot_id").read_text(encoding="utf-8").strip()
+    except OSError:
+        # No /proc: fall back to the machine's name. That does not distinguish boots, so a run
+        # recorded before a reboot will look like it belongs to this one — and the check then rests
+        # on the PID alone, which is the conservative direction: an un-marked dead run stays
+        # visible, while a marked live one loses work.
+        import platform
+
+        return f"host:{platform.node()}"
+
+
+def process_is_alive(pid: int) -> bool:
+    """Whether a process with this identifier exists.
+
+    Args:
+        pid: The recorded owner.
+
+    Returns:
+        Whether the process exists **now**. ``signal 0`` checks existence without delivering
+        anything; a process we do not own answers `PermissionError`, which still means it exists.
+    """
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:  # pragma: no cover — a platform without signals
+        return True
+    return True
+
 
 logger = logging.getLogger(__name__)
 
@@ -243,6 +288,8 @@ class StageRunner:
                     options_json=dict(options or {}),
                     backend=self._gateway.backend.name,
                     backend_mode=self._gateway.backend.name,
+                    owner_pid=os.getpid(),
+                    owner_boot_id=boot_id(),
                 )
                 session.add(run)
                 session.flush()
@@ -347,22 +394,44 @@ class StageRunner:
             raise StageCancelled(message, details={"task_id": task.run_id})
 
     def mark_interrupted(self) -> int:
-        """Mark every run left ``running`` by a dead process as ``interrupted``.
+        """Mark runs left ``running`` **by a dead process** as ``interrupted``.
 
         Returns:
             How many runs were marked.
 
-        Called at startup (workflows §9). A run whose process died is not ``failed`` — nothing went
-        wrong with it — and it is not ``running`` either, because nothing is running it. The
-        distinction is what lets ``--resume`` pick it up rather than treat it as a defeat.
+        Called whenever a runtime is built (workflows §9). A run whose process died is not
+        ``failed`` — nothing went wrong with it — and it is not ``running`` either, because nothing
+        is running it. The distinction is what lets ``--resume`` pick it up rather than treat it as
+        a defeat.
+
+        **Only a run whose owner is gone.** The first version marked every ``running`` row, and the
+        M7 demonstration found what that costs: a read-only inspection from a second process marked
+        a live draft — three units in — as interrupted, after which the runner refused the next
+        stage because the thread was still going. A row is marked only when its ``owner_boot_id``
+        matches this boot *and* its ``owner_pid`` names no living process; a row from an earlier
+        boot is marked too, because nothing from that boot can still be running. A row with no
+        recorded owner is left alone: it predates this column, and refusing to guess is the safe
+        direction — an un-marked dead run is visible and resumable by hand, while a marked live one
+        corrupts work in progress.
+
+        PID reuse within one boot could in principle make a dead run look alive. The consequence is
+        that it stays ``running`` until someone looks, which is the harmless failure.
         """
+        current_boot = boot_id()
         with self._database.write() as session:
             rows = session.scalars(
                 select(StageRunRow).where(StageRunRow.state.in_(("running", "queued")))
             ).all()
+            marked = 0
             for row in rows:
+                if row.owner_pid is None:
+                    continue
+                same_boot = row.owner_boot_id == current_boot
+                if same_boot and process_is_alive(row.owner_pid):
+                    continue
                 row.state = "interrupted"
-            return len(rows)
+                marked += 1
+            return marked
 
     def run_state(self, run_id: str) -> str | None:
         """The stored state of a run, or ``None`` when there is no such run."""

@@ -345,11 +345,18 @@ def test_a_failed_stage_records_the_error_and_leaves_the_project_resumable(
 def test_a_run_left_running_by_a_dead_process_is_marked_interrupted(runtime: Runtime) -> None:
     """Workflows §9: `interrupted` is not `failed`, which is what lets --resume pick it up."""
     from ideapress.infrastructure.db.models import StageRun as StageRunRow
+    from ideapress.services.stages import boot_id
 
     _with_backend(runtime, _scripted(GOOD_REQUIREMENTS, GOOD_PLAN))
     project_id = _project(runtime)
     with runtime.storage.write() as session:
-        run = StageRunRow(project_id=project_id, stage="draft", state="running")
+        run = StageRunRow(
+            project_id=project_id,
+            stage="draft",
+            state="running",
+            owner_pid=4_194_305,  # above the kernel maximum: nothing can be running there
+            owner_boot_id=boot_id(),
+        )
         session.add(run)
         session.flush()
         run_id = run.id
@@ -410,3 +417,105 @@ def test_the_rejected_requirements_reach_the_event_stream(runtime: Runtime) -> N
     assert compiled.data["compiled"] == 2
     assert len(compiled.data["rejected"]) == 1
     assert "testimonials" in compiled.data["rejected"][0]["text"]
+
+
+def test_opening_a_second_runtime_does_not_kill_a_running_stage(runtime: Runtime) -> None:
+    """The bug the M7 demonstration found, three units into a real drafting run.
+
+    `mark_interrupted` runs whenever a Runtime is built, and the first version marked **every** row
+    still `running`. So `ideapress unit list` in another terminal — or any second process opening
+    the same database — marked a live stage as interrupted, after which the runner refused the next
+    stage because the thread was still going. A run is only interrupted when its owner is gone.
+    """
+    from ideapress.services.stages import StageTask
+
+    _with_backend(runtime, _scripted(GOOD_REQUIREMENTS, GOOD_PLAN))
+    project_id = _project(runtime)
+
+    started = threading.Event()
+    release = threading.Event()
+
+    def slow(task: StageTask) -> None:
+        started.set()
+        release.wait(timeout=15)
+
+    task = runtime.runner.start(project_id=project_id, stage="outline", body=slow)
+    assert started.wait(timeout=5)
+    assert runtime.runner.run_state(task.run_id) == "running"
+
+    # A second runtime over the same database — exactly what a CLI command in another terminal is.
+    second = build_runtime(runtime.settings)
+    try:
+        assert runtime.runner.run_state(task.run_id) == "running", (
+            "a second process marked a live run as interrupted"
+        )
+        assert second.runner.run_state(task.run_id) == "running"
+    finally:
+        second.close()
+        release.set()
+        if task.thread:
+            task.thread.join(timeout=15)
+
+
+def test_a_run_owned_by_a_dead_process_is_still_marked_interrupted(runtime: Runtime) -> None:
+    """The other half: ownership must not make the check vacuous."""
+    from ideapress.infrastructure.db.models import StageRun as StageRunRow
+    from ideapress.services.stages import boot_id
+
+    _with_backend(runtime, _scripted(GOOD_REQUIREMENTS, GOOD_PLAN))
+    project_id = _project(runtime)
+    with runtime.storage.write() as session:
+        run = StageRunRow(
+            project_id=project_id,
+            stage="draft",
+            state="running",
+            # A PID that cannot be running: the kernel's maximum is well below this.
+            owner_pid=4_194_305,
+            owner_boot_id=boot_id(),
+        )
+        session.add(run)
+        session.flush()
+        dead_id = run.id
+
+    assert runtime.runner.mark_interrupted() >= 1
+    assert runtime.runner.run_state(dead_id) == "interrupted"
+
+
+def test_a_run_from_an_earlier_boot_is_marked_interrupted(runtime: Runtime) -> None:
+    """Nothing from a previous boot can still be running, whatever its PID says."""
+    import os
+
+    from ideapress.infrastructure.db.models import StageRun as StageRunRow
+
+    _with_backend(runtime, _scripted(GOOD_REQUIREMENTS, GOOD_PLAN))
+    project_id = _project(runtime)
+    with runtime.storage.write() as session:
+        run = StageRunRow(
+            project_id=project_id,
+            stage="draft",
+            state="running",
+            owner_pid=os.getpid(),  # alive — but from a boot that is not this one
+            owner_boot_id="a-different-boot-entirely",
+        )
+        session.add(run)
+        session.flush()
+        stale_id = run.id
+
+    runtime.runner.mark_interrupted()
+    assert runtime.runner.run_state(stale_id) == "interrupted"
+
+
+def test_a_run_with_no_recorded_owner_is_left_alone(runtime: Runtime) -> None:
+    """Rows predating the ownership columns: refusing to guess is the safe direction."""
+    from ideapress.infrastructure.db.models import StageRun as StageRunRow
+
+    _with_backend(runtime, _scripted(GOOD_REQUIREMENTS, GOOD_PLAN))
+    project_id = _project(runtime)
+    with runtime.storage.write() as session:
+        run = StageRunRow(project_id=project_id, stage="draft", state="running")
+        session.add(run)
+        session.flush()
+        legacy_id = run.id
+
+    runtime.runner.mark_interrupted()
+    assert runtime.runner.run_state(legacy_id) == "running"
