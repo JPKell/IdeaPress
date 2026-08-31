@@ -98,3 +98,9 @@ node_modules/
 
 # ---- Build artifacts from docs generation ----
 docs/api/openapi-v1.json.tmp
+
+# ---- Milestone evidence (transcripts, exports and hashes from a build run) ----
+# M7's exit condition is a demonstration, and the artefacts it produces — briefs, generated
+# documents, three export formats, hash comparisons, resident-model polls — are evidence for a
+# handoff, not source. They stay on disk for the reader of that handoff and out of the history.
+.m7-evidence/

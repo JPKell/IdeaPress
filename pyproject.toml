@@ -49,7 +49,17 @@ dev = [
     "ruff>=0.6,<1",
     "import-linter>=2.0,<3",
     "respx>=0.21,<1",
-    "loadcoach  # test-only: OpenAPI snapshot for contract tests, never imported under src/",
+]
+# P7's LoadCoach-adapter contract tests read LoadCoach's OpenAPI snapshot, so they need the
+# package installed — but it is deliberately NOT in `dev`. Gold Standards §2's first IdeaPress
+# bullet is "runs a complete workflow with no LoadCoach and no FreeWeight installed", and risk I2
+# names "the standalone e2e suite is the default CI path" as its mitigation. A `dev` extra that
+# pulls in `loadcoach` would put the package in every developer and CI environment, so the
+# property would be claimed by a suite that never runs without it. Install
+# `.[dev,loadcoach-contract]` for that one job; never imported under `src/` either way, which
+# `.importlinter`'s `no-other-applications` contract enforces independently.
+loadcoach-contract = [
+    "loadcoach",
 ]
 postgres = [
     "psycopg[binary]>=3.2,<4",
@@ -73,6 +83,12 @@ packages = ["src/ideapress"]
 line-length = 100
 target-version = "py312"
 src = ["src", "tests"]
+# `docs/` is a byte-identical mirror of `~/ai/suite/docs`, and ruff formats fenced Python inside
+# Markdown. Without this, `ruff format` rewrites the aligned `LOADCOACH_TASK_MAP` literal in
+# `workflows.md` and the mirror silently diverges from canonical — mechanising exactly the
+# downstream-first drift that corrupted eight repos' mirrors (SUITE_REVIEW F-3). Workspace
+# CLAUDE.md states this exclusion as the rule; ModelRack already carries it.
+extend-exclude = ["docs"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "S", "T20", "DTZ", "PTH", "D1", "BLE"]
@@ -80,6 +96,9 @@ ignore = ["D100", "D104"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101", "D1"]
+# Alembic-generated: upgrade()/downgrade() carry no behaviour beyond the revision's own
+# docstring, and their bodies are op.* DDL calls Alembic itself generated.
+"src/ideapress/infrastructure/db/migrations/versions/*.py" = ["D1"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
@@ -88,9 +107,16 @@ convention = "google"
 python_version = "3.12"
 strict = true
 warn_unused_configs = true
+mypy_path = "src"
+explicit_package_bases = true
 
 [tool.pytest.ini_options]
 addopts = "-m 'not live and not performance'"
+# Test modules import shared fixtures as `tests.…`. Under the default `prepend` import mode pytest
+# puts the *test file's* directory on sys.path, not the repository root, so `import tests` resolves
+# only when the runner happens to insert the cwd — `python -m pytest` does, the bare `pytest`
+# console script does not, and CI runs the bare one. Stating the root here makes both agree.
+pythonpath = ["."]
 markers = [
     "live: requires a real provider/GPU, never in default CI",
     "performance: performance budget assertions, excluded by default",
@@ -99,8 +125,16 @@ markers = [
 testpaths = ["tests"]
 
 [tool.coverage.run]
-source = ["src/ideapress"]
+# The **importable package**, not the source path. A path-based source measures nothing against a
+# non-editable install (`pip install dist/*.whl`): every test passes and the gate reports 0 % — a
+# number that looks like a catastrophe instead of a configuration error (M6-17).
+source = ["ideapress"]
 branch = true
+
+[tool.coverage.paths]
+# Maps the installed package back onto the checkout, so a report produced against site-packages
+# names files a reader can open.
+source = ["src/ideapress", "*/site-packages/ideapress"]
 
 [tool.coverage.report]
 fail_under = 85

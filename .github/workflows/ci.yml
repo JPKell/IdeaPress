@@ -80,7 +80,10 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
       - run: pip install -e ".[dev,postgres]"
-      - run: pytest -m integration
+        # `-m integration` selects on a marker this repo never declares or applies, so it collects
+        # zero tests and exits 5 — the job would be red on every commit while appearing to test
+        # PostgreSQL (M4 handoff HR2, defect 2, which is why both siblings select by path).
+      - run: pytest -m "not live and not performance" tests/integration
         env:
           WEIGHTSDB_REQUIRE_POSTGRES: "1"
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres

@@ -1,14 +1,15 @@
 [importlinter]
-root_packages = ideapress
+root_package = ideapress
+include_external_packages = True
 
 [importlinter:contract:layers]
 name = IdeaPress internal layering
 type = layers
 layers =
-    ideapress.web
-    ideapress.cli
-    ideapress.services
-    ideapress.domain
+    web
+    cli
+    services
+    domain
 containers = ideapress
 
 [importlinter:contract:web-cli-independence]
