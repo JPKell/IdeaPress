@@ -22,7 +22,7 @@ SRC = Path(__file__).resolve().parents[2] / "src" / "ideapress"
 ADAPTER_ONLY = SRC / "infrastructure" / "backends"
 
 # How many generated modules are still a docstring and a TODO. Ratcheted down by each unit.
-SCAFFOLD_REMAINING = 9
+SCAFFOLD_REMAINING = 4
 
 
 def _python_files() -> Iterator[Path]:
@@ -110,3 +110,33 @@ def test_scaffold_modules_are_disappearing() -> None:
         f"{SCAFFOLD_REMAINING - len(remaining)} scaffold module(s) implemented since this was "
         f"last updated; set SCAFFOLD_REMAINING to {len(remaining)}."
     )
+
+
+def test_every_subprocess_in_the_suite_names_its_working_directory() -> None:
+    """M7-9's trap, closed by a ratchet rather than by remembering.
+
+    pytest-cov starts coverage inside a subprocess through a `.pth` hook that reads
+    `pyproject.toml` **relative to the working directory**. The autouse fixtures `chdir` into a
+    temporary directory, so a subprocess spawned without an explicit `cwd` measures coverage
+    without `branch = true` and writes a data file the parent's cannot combine with. That aborts
+    the whole `--cov` run inside pytest-cov — an INTERNALERROR, not a test failure — and only the
+    coverage job sees it. It has now happened twice.
+    """
+    tests_root = Path(__file__).resolve().parents[1]
+    offenders: list[str] = []
+    for path in sorted(tests_root.rglob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            target = node.func
+            name = (
+                f"{target.value.id}.{target.attr}"
+                if isinstance(target, ast.Attribute) and isinstance(target.value, ast.Name)
+                else ""
+            )
+            if name not in {"subprocess.run", "subprocess.Popen", "subprocess.check_output"}:
+                continue
+            if not any(keyword.arg == "cwd" for keyword in node.keywords):
+                offenders.append(f"{path.relative_to(tests_root)}:{node.lineno} {name}")
+    assert offenders == [], f"subprocess call(s) with no explicit cwd: {offenders}"

@@ -36,6 +36,7 @@ if TYPE_CHECKING:
     from ideapress.services.inference import InferenceGateway
 
 __all__ = [
+    "FINDINGS_SCHEMA",
     "parse_critique",
     "parse_findings",
     "render_findings",
@@ -47,7 +48,7 @@ __all__ = [
 
 logger = logging.getLogger(__name__)
 
-_FINDINGS_SCHEMA: dict[str, Any] = {
+FINDINGS_SCHEMA: dict[str, Any] = {
     "type": "object",
     "required": ["findings"],
     "additionalProperties": False,
@@ -248,7 +249,7 @@ def run_audit(
             stage=stage,
             system=prompt.system or "",
             user=prompt.user,
-            response_format=ResponseFormat(kind="json_schema", schema=_FINDINGS_SCHEMA),
+            response_format=ResponseFormat(kind="json_schema", schema=FINDINGS_SCHEMA),
             limits=StageLimits(temperature=0.0, max_output_tokens=STRUCTURED_OUTPUT_TOKENS),
             correlation=Correlation(project_id=project_id, unit_id=unit_key, round=round_number),
             prompt_id=prompt.prompt_id,

@@ -22,6 +22,7 @@ import subprocess
 import sys
 import textwrap
 import time
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
@@ -39,7 +40,6 @@ from ideapress.services.units import commit_unit, load_unit
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
-    from pathlib import Path
 
 COMPILED_BY = CompiledBy(prompt_id="stages.requirements.compile", version="1.0.0")
 TEXT = "Everything runs on your own machine and nothing is uploaded anywhere at all."
@@ -261,7 +261,10 @@ def test_a_killed_process_mid_commit_leaves_the_database_untouched(tmp_path: Pat
     )
 
     child = subprocess.Popen(  # noqa: S603 — fixed argv, no shell
-        [sys.executable, "-c", program], cwd=str(tmp_path)
+        [sys.executable, "-c", program],
+        # The repository root, not tmp_path: see M7-9. A subprocess started elsewhere measures
+        # coverage without `branch = true` and aborts the parent's coverage run.
+        cwd=Path(__file__).resolve().parents[2],
     )
     try:
         deadline = time.monotonic() + 20

@@ -35,6 +35,11 @@
       "sha256": "sha256:ddbcdc9cd38d7deb737350e592db6744cae2717e430a7add86f8696e04a33e82"
     },
     {
+      "prompt_id": "stages.project_review.consistency",
+      "version": "1.0.0",
+      "sha256": "sha256:ea241b71ab63e3a15fab7e60ad6348eaa77cc107535f634dacda3d66f8e197f7"
+    },
+    {
       "prompt_id": "stages.repair.fix",
       "version": "1.0.0",
       "sha256": "sha256:0e6ca304295c8259ae96a8217e11e8a68c28b7af7bb6ed9a5e6584ba0ab63536"
@@ -50,5 +55,5 @@
       "sha256": "sha256:3a3fcd74a9da646be2a2c2c46095911887119a7c9ff655555940877cc7ba5330"
     }
   ],
-  "pack_sha256": "sha256:6bbecd68b1322ce72adef7f165d6b2000f3b9a746ee15675ed52fe435da14131"
+  "pack_sha256": "sha256:f67bd07a873a24c53bc02944a3984c269a05abc7245a2f656e0e6f999d036d96"
 }

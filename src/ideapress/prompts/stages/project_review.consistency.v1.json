@@ -1,0 +1,28 @@
+{
+  "prompt_id": "stages.project_review.consistency",
+  "version": "1.0.0",
+  "schema_version": "1.0",
+  "purpose": "Read every committed unit together and report cross-unit inconsistencies. Advisory only.",
+  "task": "general.reasoning",
+  "capability": "structured_output",
+  "system": "You read a whole document, section by section, looking only for things that are wrong ACROSS sections: a term used two ways, a fact stated differently in two places, a promise made in one section and contradicted in another, an order that does not follow. Do not report anything that is a problem within a single section \u2014 a per-section review already ran. You report; you do not rewrite. Return only the JSON document.",
+  "template": "THE DOCUMENT\n{{ units }}\n\nFOR EACH FINDING\n- category: one or two words.\n- severity: critical, major, minor or nit.\n- problem_text: what is inconsistent, naming the sections involved.\n- evidence_text: the passages, quoted.\n- required_fix_text: what would resolve it, described.\n\nRETURN\n{\"findings\": [ ... ]}\nand nothing else. An empty list is a valid and common answer.",
+  "variables": {
+    "units": {
+      "type": "string",
+      "required": true,
+      "description": "Every committed unit, in reading order, rendered by Python with its key and title so a finding can name the sections it is about."
+    }
+  },
+  "response": {
+    "format": "json",
+    "json_schema_ref": null,
+    "expectations": [
+      "A single JSON object with a `findings` array."
+    ]
+  },
+  "metadata": {
+    "change_reason": "First version. Findings here are advisory by design: the project review runs after every unit has already committed, and letting it block would mean un-committing work that passed its own gates.",
+    "owner": "ideapress"
+  }
+}

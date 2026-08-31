@@ -43,7 +43,19 @@ def _draft(
     return draft_body(runtime, project_id=project_id, unit_keys=unit_keys, resume=resume)
 
 
-STAGE_BODIES: Final[dict[StageId, StageBodyFactory]] = {"draft": _draft}
+def _project_review(
+    runtime: Runtime, *, project_id: str, unit_keys: Sequence[str], resume: bool
+) -> Callable[[StageTask], None]:
+    """Cross-unit consistency findings over every committed unit. Advisory."""
+    from ideapress.services.project_review import project_review_body
+
+    return project_review_body(runtime, project_id=project_id)
+
+
+STAGE_BODIES: Final[dict[StageId, StageBodyFactory]] = {
+    "draft": _draft,
+    "project_review": _project_review,
+}
 """Populated as each phase lands its stages.
 
 `draft` is the whole core loop rather than one step of it, because `validate`, `repair`, `coverage`

@@ -15,6 +15,7 @@ import typer
 from ideapress.cli.commands import backend as backend_commands
 from ideapress.cli.commands import config as config_commands
 from ideapress.cli.commands import db as db_commands
+from ideapress.cli.commands import export as export_commands
 from ideapress.cli.commands import plan as plan_commands
 from ideapress.cli.commands import project as project_commands
 from ideapress.cli.commands import stage as stage_commands
@@ -67,3 +68,4 @@ app.add_typer(backend_commands.app, name="backend")
 app.add_typer(plan_commands.app, name="plan")
 app.add_typer(stage_commands.app, name="stage")
 app.add_typer(unit_commands.app, name="unit")
+app.add_typer(export_commands.app, name="export")

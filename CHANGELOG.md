@@ -8,6 +8,13 @@ packaging and release standards §3.
 ## [Unreleased]
 
 ### Added
+- Exporters for Markdown, HTML and JSON, byte-identical for the same committed project across
+  repeats, locales, timezones and hash seeds. The HTML is a single self-contained file with no
+  external reference of any kind, so it opens with no network.
+- Export format versioning, recorded on every export and embedded in every rendered document.
+- `GET`/`POST /projects/{id}/export`, `GET /export/formats`, and `ideapress export run|formats`.
+- The `project_review` stage: cross-unit consistency findings, advisory by design.
+- The open content-type registry, with `article` and `report` shipped.
 - Review: `audit_fast`, `audit_deep` (escalation only, once per unit per round), `critique` with
   "leave it alone" as a first-class verdict, and `revise` bounded by the round limit or by
   diminishing returns computed from deterministic finding counts. Which stop applied is recorded.
