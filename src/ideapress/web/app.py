@@ -37,7 +37,9 @@ from ideapress.config import LOOPBACK_HOSTS, Settings
 from ideapress.web.limits import BodySizeLimitMiddleware, SameOriginMiddleware
 from ideapress.web.rendering import render, templates
 from ideapress.web.routes import backends as backend_routes
+from ideapress.web.routes import plan as plan_routes
 from ideapress.web.routes import projects as project_routes
+from ideapress.web.routes import stages as stage_routes
 from ideapress.web.routes import system as system_routes
 
 __all__ = ["create_app", "register_exception_handlers"]
@@ -270,6 +272,8 @@ def create_app(settings: Settings, *, runtime_builder: Any | None = None) -> Fas
     app.include_router(project_routes.router, prefix="/api/v1")
     app.include_router(backend_routes.router, prefix="/api/v1")
     app.include_router(backend_routes.ui_router)
+    app.include_router(stage_routes.router, prefix="/api/v1")
+    app.include_router(plan_routes.ui_router)
     app.include_router(project_routes.ui_router)
     app.include_router(system_routes.ui_router)
 

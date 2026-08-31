@@ -112,3 +112,10 @@ def test_units_for_reports_every_carrier() -> None:
 def test_unit_keys_are_generated_not_taken() -> None:
     assert unit_key(1) == "U-01"
     assert unit_key(12) == "U-12"
+
+
+def test_plan_unit_lookup_by_key() -> None:
+    plan = _plan(("R-001",), ("R-002",))
+    assert plan.unit("U-02").title == "Unit 2"
+    with pytest.raises(KeyError):
+        plan.unit("U-99")

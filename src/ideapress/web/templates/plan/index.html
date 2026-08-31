@@ -1,0 +1,63 @@
+{# The plan. Every requirement is shown WITH its source quote: that pairing is the anti-fabrication
+   mitigation, so a reviewer reads the claim and its evidence side by side. Nothing here is marked
+   safe — a quote is text a model chose out of the author's own writing, and it is escaped. #}
+{% extends "base.html" %}
+{% from "mirrorwall/components.html" import badge, empty_state %}
+{% block content %}
+<h2>{{ project.title }} — plan</h2>
+<p><a href="/projects/{{ project.id }}">Back to the project</a></p>
+
+<h3>Requirements</h3>
+{% if requirements %}
+  <div class="table-scroll">
+    <table>
+      <caption>Compiled requirements, with the material that supports each</caption>
+      <thead>
+        <tr>
+          <th scope="col">Key</th><th scope="col">Requirement</th><th scope="col">Class</th>
+          <th scope="col">Checked by</th><th scope="col">Source</th><th scope="col">Units</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for requirement in requirements %}
+        <tr>
+          <td>{{ requirement.key }}</td>
+          <td>{{ requirement.text }}</td>
+          <td>{{ badge("blocking" if requirement.blocking else "advisory",
+                       tone="warning" if requirement.blocking else "neutral") }}</td>
+          <td>{{ requirement.checks }}
+              {% if not requirement.mechanical %}{{ badge("model-assisted", tone="neutral") }}{% endif %}</td>
+          <td>{{ requirement.source }}<blockquote>{{ requirement.quote }}</blockquote></td>
+          <td>{{ requirement.units | join(", ") or "—" }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% else %}
+  {{ empty_state("No requirements compiled yet.") }}
+{% endif %}
+
+<h3>Units</h3>
+{% if units %}
+  <div class="table-scroll">
+    <table>
+      <caption>The unit plan, in reading order</caption>
+      <thead><tr><th scope="col">Key</th><th scope="col">Title</th><th scope="col">Goal</th><th scope="col">Requirements</th><th scope="col">State</th></tr></thead>
+      <tbody>
+      {% for unit in units %}
+        <tr>
+          <td>{{ unit.key }}</td>
+          <td>{{ unit.title }}</td>
+          <td>{{ unit.goal }}</td>
+          <td>{{ unit.requirements or "—" }}</td>
+          <td>{{ badge(unit.state, tone="success" if unit.state == "committed" else "neutral") }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% else %}
+  {{ empty_state("No plan yet. Build one to begin.") }}
+{% endif %}
+{% endblock %}

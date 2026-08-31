@@ -1,0 +1,43 @@
+{
+  "prompt_id": "stages.outline.plan",
+  "version": "1.0.0",
+  "schema_version": "1.0",
+  "purpose": "Turn compiled requirements and a brief into an ordered plan of units, assigning every blocking requirement to at least one unit.",
+  "task": "content.outline",
+  "capability": "structured_output",
+  "system": "You plan the shape of a document. You do not write it, and you do not decide whether the plan is good enough \u2014 a deterministic check does that. Every blocking requirement listed below must be assigned to at least one unit; a plan that leaves one unassigned will be rejected and you will be asked again. Return only the JSON document.",
+  "template": "BRIEF\n{{ brief }}\n\nCOMPILED REQUIREMENTS\nThese are fixed. You may not add, remove, reword or reinterpret them. Assign them.\n\n{{ requirements }}\n\nPLAN\nProduce between {{ min_units }} and {{ max_units }} units, in reading order. Each unit is one section a writer can draft on its own.\n\nFOR EACH UNIT\n- title: the section heading.\n- goal_text: one sentence saying what this unit must achieve.\n- requirement_keys: the keys (for example \"R-001\") this unit is responsible for. Every BLOCKING requirement above must appear in at least one unit's list. A requirement may appear in more than one unit. Do not invent a key that is not listed above.\n- target_words: roughly how long this unit should be.\n\nRETURN\n{\"units\": [ ... ]}\nand nothing else.",
+  "variables": {
+    "brief": {
+      "type": "string",
+      "required": true,
+      "description": "The author's brief, so the plan follows the author's shape rather than a generic one."
+    },
+    "requirements": {
+      "type": "string",
+      "required": true,
+      "description": "The compiled requirements, rendered by Python with their keys and blocking flags, so the model assigns identifiers it did not invent."
+    },
+    "min_units": {
+      "type": "string",
+      "required": true,
+      "description": "The lower bound on unit count, from configuration."
+    },
+    "max_units": {
+      "type": "string",
+      "required": true,
+      "description": "The upper bound on unit count, from configuration."
+    }
+  },
+  "response": {
+    "format": "json",
+    "json_schema_ref": null,
+    "expectations": [
+      "A single JSON object with a `units` array."
+    ]
+  },
+  "metadata": {
+    "change_reason": "First version. The instruction that every blocking requirement must be assigned is a statement of the gate, not the gate itself: domain/plan.py::check_plan decides, and this text exists so an honest model can satisfy a check it would otherwise fail by accident.",
+    "owner": "ideapress"
+  }
+}

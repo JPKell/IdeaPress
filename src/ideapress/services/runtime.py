@@ -21,9 +21,11 @@ from weightsdb import DatabaseError
 
 from ideapress.services.backends import backend_health_component, build_backend
 from ideapress.services.database import Database, database_health_component, ensure_ready
+from ideapress.services.events import StageEventSink
 from ideapress.services.inference import InferenceGateway
 from ideapress.services.projects import ProjectService
 from ideapress.services.prompts import prompts_health_component
+from ideapress.services.stages import StageRunner
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -39,7 +41,16 @@ logger = logging.getLogger(__name__)
 class Runtime:
     """The database handle, the services built on it, and the health each reports."""
 
-    __slots__ = ("_backend", "_database", "_gateway", "_projects", "settings", "startup_error")
+    __slots__ = (
+        "_backend",
+        "_database",
+        "_gateway",
+        "_projects",
+        "_runner",
+        "_sink",
+        "settings",
+        "startup_error",
+    )
 
     def __init__(self, settings: Settings) -> None:
         """Open what this process needs, recording rather than raising on a storage failure."""
@@ -48,6 +59,8 @@ class Runtime:
         self._projects: ProjectService | None = None
         self._backend: InferenceBackend | None = None
         self._gateway: InferenceGateway | None = None
+        self._sink: StageEventSink | None = None
+        self._runner: StageRunner | None = None
         self.startup_error: str | None = None
 
         # Built first and never allowed to fail the process: an unreachable backend is a health
@@ -79,10 +92,36 @@ class Runtime:
             return
         self._database = database
         self._projects = ProjectService(database, project_dir=Path(project_dir))
+        self._sink = StageEventSink()
+        if self._gateway is not None:
+            self._runner = StageRunner(
+                database,
+                gateway=self._gateway,
+                sink=self._sink,
+                store_content=settings.logging.include_content,
+            )
+            # Workflows §9: a run whose process died is `interrupted`, not `running` and not
+            # `failed`. Marked at startup so `--resume` can tell the difference.
+            marked = self._runner.mark_interrupted()
+            if marked:
+                logger.info("stage.runs_marked_interrupted", extra={"count": marked})
 
     @property
     def database(self) -> Database | None:
         """The handle, or ``None`` when storage could not be opened."""
+        return self._database
+
+    @property
+    def storage(self) -> Database:
+        """The handle, for a caller that already knows storage opened.
+
+        Raises:
+            RuntimeError: Storage is unavailable. Callers that can meaningfully carry on with no
+                database use :attr:`database` and check; the rest use this and stop.
+        """
+        if self._database is None:
+            message = f"Storage is unavailable: {self.startup_error}"
+            raise RuntimeError(message)
         return self._database
 
     @property
@@ -103,6 +142,27 @@ class Runtime:
     def backend(self) -> InferenceBackend | None:
         """The adapter, or ``None`` when none could be built."""
         return self._backend
+
+    @property
+    def events(self) -> StageEventSink:
+        """The event sink. Raises when storage never opened, because nothing can be emitted."""
+        if self._sink is None:
+            message = f"Storage is unavailable: {self.startup_error}"
+            raise RuntimeError(message)
+        return self._sink
+
+    @property
+    def runner(self) -> StageRunner:
+        """The stage runner.
+
+        Raises:
+            RuntimeError: Storage or the backend could not be opened, so no stage can run. Failing
+                loudly beats a route that silently does nothing.
+        """
+        if self._runner is None:
+            message = f"Stages cannot run: {self.startup_error or 'no inference backend'}"
+            raise RuntimeError(message)
+        return self._runner
 
     @property
     def projects(self) -> ProjectService:
@@ -143,6 +203,8 @@ class Runtime:
 
     def close(self) -> None:
         """Dispose every handle. Safe to call more than once."""
+        self._runner = None
+        self._sink = None
         if self._database is not None:
             self._database.close()
             self._database = None

@@ -194,4 +194,4 @@ def test_db_status_reports_head() -> None:
     runner.invoke(cli_app, ["db", "upgrade"])
     status = json.loads(runner.invoke(cli_app, ["db", "status", "--json"]).stdout)
     assert status["at_head"] is True
-    assert status["current_revision"] == "0001"
+    assert status["current_revision"] == status["head_revision"]

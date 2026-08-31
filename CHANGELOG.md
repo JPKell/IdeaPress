@@ -8,6 +8,12 @@ packaging and release standards §3.
 ## [Unreleased]
 
 ### Added
+- The stage runner: a background thread per stage, the unit state machine as a transition table,
+  persisted gap-free stage events, and SSE that replays from `Last-Event-ID` after a disconnect.
+- `POST /projects/{id}/plan`, `POST /projects/{id}/stages/{stage}/run`, the task and stream
+  endpoints, `GET /workflows`, and the plan page showing each requirement beside its quotation.
+- `ideapress plan build|show` and `ideapress stage run|list|status|cancel`.
+- Migration `0002`: `requirements`, `units`, `stage_runs`, `attempts`, `stage_events`.
 - Requirement compilation: every requirement carries a verbatim quotation from the author material,
   and one that cannot be quoted is refused and shown as refused. Check kinds are a closed set of
   literal-string and numeric comparisons; there is deliberately no pattern check.

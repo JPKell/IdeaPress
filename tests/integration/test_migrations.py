@@ -26,7 +26,17 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
     from pathlib import Path
 
-EXPECTED_TABLES = {"projects", "sources", "settings", "api_tokens"}
+EXPECTED_TABLES = {
+    "projects",
+    "sources",
+    "settings",
+    "api_tokens",
+    "requirements",
+    "units",
+    "stage_runs",
+    "attempts",
+    "stage_events",
+}
 
 
 @pytest.fixture
@@ -48,7 +58,8 @@ def test_sqlite_migrates_from_empty_to_head(sqlite_database: Database) -> None:
     upgrade(sqlite_database)
     status = get_status(sqlite_database)
     assert status.at_head is True
-    assert status.current_revision == "0001"
+    # The head moves every phase, so this asserts the runner's own head rather than a literal.
+    assert status.current_revision == status.head_revision
     assert set(inspect(sqlite_database.engine).get_table_names()) >= EXPECTED_TABLES
 
 
