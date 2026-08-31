@@ -8,6 +8,9 @@ packaging and release standards §3.
 ## [Unreleased]
 
 ### Added
+- `GET`/`PUT /settings`, `GET /workflows/{id}`, `POST /projects/{id}/units/{unit_id}/revise`, and
+  the `workflow` and `prompts` command groups — the four endpoints and two groups the specification
+  lists that the phases had not yet built.
 - Exporters for Markdown, HTML and JSON, byte-identical for the same committed project across
   repeats, locales, timezones and hash seeds. The HTML is a single self-contained file with no
   external reference of any kind, so it opens with no network.
@@ -67,6 +70,8 @@ packaging and release standards §3.
   refuses a binding for a stage that does not exist or a model-using stage with none.
 
 ### Fixed
+- `/api/v1/docs` and `/api/v1/openapi.json` work: response annotations imported only under
+  `TYPE_CHECKING` left forward references FastAPI could not resolve, so building the schema raised.
 - The CI workflow parses again: an edit had left a duplicate `env:` key on one step, which GitHub
   refuses and PyYAML accepts, so the whole workflow was invalid and no job ran. A test now loads it
   with a loader that refuses duplicate keys the way GitHub does.

@@ -18,9 +18,11 @@ from ideapress.cli.commands import db as db_commands
 from ideapress.cli.commands import export as export_commands
 from ideapress.cli.commands import plan as plan_commands
 from ideapress.cli.commands import project as project_commands
+from ideapress.cli.commands import prompts as prompts_commands
 from ideapress.cli.commands import stage as stage_commands
 from ideapress.cli.commands import system as system_commands
 from ideapress.cli.commands import unit as unit_commands
+from ideapress.cli.commands import workflow as workflow_commands
 
 __all__ = ["app"]
 
@@ -69,3 +71,5 @@ app.add_typer(plan_commands.app, name="plan")
 app.add_typer(stage_commands.app, name="stage")
 app.add_typer(unit_commands.app, name="unit")
 app.add_typer(export_commands.app, name="export")
+app.add_typer(workflow_commands.app, name="workflow")
+app.add_typer(prompts_commands.app, name="prompts")

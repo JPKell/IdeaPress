@@ -14,14 +14,17 @@ from mirrorwall import json_response
 from pydantic import BaseModel, ConfigDict, Field
 from setspec import GeneratorInfo
 
+# Imported at runtime, not under TYPE_CHECKING: FastAPI reads a handler's return annotation
+# when it builds the OpenAPI schema, and a forward reference it cannot resolve makes
+# `app.openapi()` raise — which is a 500 on /api/v1/docs that no other test would notice.
+from starlette.responses import JSONResponse, StreamingResponse
+
 from ideapress.__about__ import __version__
 from ideapress.domain.stages import STAGES, is_stage
 from ideapress.errors import StagePreconditionFailed
 from ideapress.services.events import TERMINAL_STAGE_EVENTS
 
 if TYPE_CHECKING:
-    from starlette.responses import JSONResponse, StreamingResponse
-
     from ideapress.domain.stages import StageId
 
 __all__ = ["router"]
@@ -137,25 +140,39 @@ def post_cancel(request: Request, project_id: str, task_id: str) -> JSONResponse
     return json_response({"task_id": task_id, "cancelling": cancelled}, status=202)
 
 
+@router.get("/workflows/{workflow_id}")
+def get_workflow(workflow_id: str) -> JSONResponse:
+    """One workflow definition.
+
+    Raises:
+        StagePreconditionFailed: No such workflow. One ships at 1.0; a second is what makes the
+            content-type registry earn its keep, and this endpoint exists so the shape is settled
+            before there is one.
+    """
+    if workflow_id != "standard":
+        message = f"{workflow_id!r} is not a workflow. This build ships: standard."
+        raise StagePreconditionFailed(message, details={"workflow_id": workflow_id})
+    return json_response(_workflow_definition())
+
+
+def _workflow_definition() -> dict[str, Any]:
+    """The one workflow, from the stage table rather than from a second list of stages."""
+    return {
+        "id": "standard",
+        "version": "1.0",
+        "stages": [
+            {
+                "stage": definition.stage,
+                "ordinal": definition.ordinal,
+                "uses_model": definition.uses_model,
+                "gate": definition.gate,
+            }
+            for definition in STAGES.values()
+        ],
+    }
+
+
 @router.get("/workflows")
 def list_workflows() -> JSONResponse:
     """The workflow definitions: stage order, gates, and which stages use a model."""
-    return json_response(
-        {
-            "workflows": [
-                {
-                    "id": "standard",
-                    "version": "1.0",
-                    "stages": [
-                        {
-                            "stage": definition.stage,
-                            "ordinal": definition.ordinal,
-                            "uses_model": definition.uses_model,
-                            "gate": definition.gate,
-                        }
-                        for definition in STAGES.values()
-                    ],
-                }
-            ]
-        }
-    )
+    return json_response({"workflows": [_workflow_definition()]})

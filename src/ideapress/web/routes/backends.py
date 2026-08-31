@@ -6,18 +6,17 @@ backend, because risk S4 is the user's private work leaving the machine without 
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 from fastapi import APIRouter, Request
 from mirrorwall import json_response
 from pydantic import BaseModel, ConfigDict, Field
-from starlette.responses import HTMLResponse
+
+# Imported at runtime, not under TYPE_CHECKING: FastAPI reads a handler's return annotation
+# when it builds the OpenAPI schema, and a forward reference it cannot resolve makes
+# `app.openapi()` raise — which is a 500 on /api/v1/docs that no other test would notice.
+from starlette.responses import HTMLResponse, JSONResponse
 
 from ideapress.services.backends import describe_backends, test_backend
 from ideapress.web.rendering import render
-
-if TYPE_CHECKING:
-    from starlette.responses import JSONResponse
 
 __all__ = ["router", "ui_router"]
 

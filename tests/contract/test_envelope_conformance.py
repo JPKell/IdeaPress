@@ -140,3 +140,137 @@ def test_the_paginated_list_shape_is_the_shared_one(client: TestClient) -> None:
     body = client.get("/api/v1/projects").json()
     assert set(body) == {"items", "page"}
     assert set(body["page"]) >= {"limit", "has_more"}
+
+
+def test_the_openapi_schema_builds(client: TestClient) -> None:
+    """Regression: a `TYPE_CHECKING`-only response annotation made `app.openapi()` raise.
+
+    FastAPI reads a handler's return annotation at **runtime** to build the schema. Under
+    `from __future__ import annotations` a `TYPE_CHECKING`-only import leaves a forward reference
+    it cannot resolve, so `/api/v1/docs` and `/api/v1/openapi.json` were 500s while every test that
+    never asked for them stayed green. Found by the closeout consistency review, not by the suite.
+    """
+    response = client.get("/api/v1/openapi.json")
+    assert response.status_code == 200
+    schema = response.json()
+    assert schema["info"]["title"] == "IdeaPress"
+    assert len(schema["paths"]) >= 20
+    assert client.get("/api/v1/docs").status_code == 200
+
+
+def test_every_endpoint_the_specification_lists_exists(client: TestClient) -> None:
+    """Roadmap §8's consistency review, as a test rather than a one-off reading.
+
+    Spec §7.1 writes `{id}` and `{unit_id}` where the code writes `{project_id}` and `{unit_key}`;
+    the comparison normalises those two and nothing else.
+    """
+    documented = {
+        "DELETE /projects/{id}",
+        "GET /backends",
+        "GET /health",
+        "GET /projects",
+        "GET /projects/{id}",
+        "GET /projects/{id}/export",
+        "GET /projects/{id}/tasks/{task_id}",
+        "GET /projects/{id}/tasks/{task_id}/stream",
+        "GET /projects/{id}/units",
+        "GET /projects/{id}/units/{unit_id}",
+        "GET /projects/{id}/units/{unit_id}/history",
+        "GET /settings",
+        "GET /system/status",
+        "GET /version",
+        "GET /workflows",
+        "GET /workflows/{id}",
+        "POST /backends/test",
+        "POST /projects",
+        "POST /projects/{id}/export",
+        "POST /projects/{id}/plan",
+        "POST /projects/{id}/stages/{stage}/run",
+        "POST /projects/{id}/tasks/{task_id}/cancel",
+        "POST /projects/{id}/units/{unit_id}/revise",
+        "PUT /projects/{id}",
+        "PUT /settings",
+    }
+    schema = client.get("/api/v1/openapi.json").json()
+    actual = {
+        f"{method.upper()} {path.replace('/api/v1', '')}".replace("{project_id}", "{id}")
+        .replace("{unit_key}", "{unit_id}")
+        .replace("{workflow_id}", "{id}")
+        for path, operations in schema["paths"].items()
+        for method in operations
+        if method.upper() in {"GET", "POST", "PUT", "DELETE"}
+    }
+    assert documented - actual == set(), f"specified but missing: {sorted(documented - actual)}"
+
+
+def test_settings_refuses_a_configuration_only_key_by_name(client: TestClient) -> None:
+    """Api.md §6: the six keys that decide where the service listens and where content goes."""
+    for key in (
+        "server.host",
+        "server.allowed_hosts",
+        "server.allow_lan_exposure",
+        "storage.database_url",
+        "providers.allow_remote",
+    ):
+        response = client.put("/api/v1/settings", json={"values": {key: "anything"}})
+        assert response.status_code == 422, key
+        assert key in response.json()["error"]["message"]
+
+
+def test_settings_accepts_a_runtime_key(client: TestClient) -> None:
+    response = client.put("/api/v1/settings", json={"values": {"workflow.max_revision_rounds": 2}})
+    assert response.status_code == 200
+    assert response.json()["updated"] == ["workflow.max_revision_rounds"]
+
+
+def test_settings_refuses_the_whole_update_when_one_key_is_refused(client: TestClient) -> None:
+    """A caller who mistyped one key of six should not have the other five applied."""
+    from sqlalchemy import select
+
+    from ideapress.infrastructure.db.models import Setting as SettingRow
+
+    response = client.put(
+        "/api/v1/settings",
+        json={
+            "values": {
+                "workflow.max_revision_rounds": 2,
+                "server.host": "0.0.0.0",  # noqa: S104 — the value under test is the refusal
+            }
+        },
+    )
+    assert response.status_code == 422
+    runtime = client.app.state.runtime  # type: ignore[attr-defined]  # the served runtime
+    with runtime.storage.read() as session:
+        assert session.scalars(select(SettingRow)).all() == []
+
+
+def test_settings_refuses_a_key_that_is_not_a_setting(client: TestClient) -> None:
+    response = client.put("/api/v1/settings", json={"values": {"workflow.speed": 11}})
+    assert response.status_code == 422
+    assert "workflow.speed" in response.json()["error"]["message"]
+
+
+def test_settings_reports_which_keys_are_config_only(client: TestClient) -> None:
+    body = client.get("/api/v1/settings").json()
+    assert "server.host" in body["config_only"]
+    assert "inference.mode" in body["runtime_changeable"]
+    assert "models.stages.draft" in body["runtime_changeable"]
+
+
+def test_a_stage_binding_is_runtime_changeable_but_only_for_a_real_stage(
+    client: TestClient,
+) -> None:
+    ok = client.put("/api/v1/settings", json={"values": {"models.stages.draft": "ollama/other:7b"}})
+    assert ok.status_code == 200
+    bad = client.put("/api/v1/settings", json={"values": {"models.stages.audit": "x"}})
+    assert bad.status_code == 422
+    assert "models.stages.audit" in bad.json()["error"]["message"]
+
+
+def test_one_workflow_is_shipped_and_an_unknown_one_is_refused(client: TestClient) -> None:
+    body = client.get("/api/v1/workflows/standard").json()
+    assert body["id"] == "standard"
+    assert len(body["stages"]) == 16
+    missing = client.get("/api/v1/workflows/novel")
+    assert missing.status_code == 409
+    assert "novel" in missing.json()["error"]["message"]

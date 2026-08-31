@@ -117,3 +117,46 @@ def history(
                 f"v{entry['version']}  {marker:<10} {entry['word_count']} words  "
                 f"{entry['content_hash']}"
             )
+
+
+@app.command(name="revise")
+def revise(
+    project_id: Annotated[str, typer.Argument()],
+    unit_key: Annotated[str, typer.Argument()],
+    instructions: Annotated[
+        str, typer.Option("--instructions", help="What to change, in your own words.")
+    ] = "",
+) -> None:
+    """Revise a committed unit, creating a new version. Mode: local.
+
+    A committed version is immutable, so this makes a new one and keeps the old. The same bounds
+    apply: your instructions inform the revision, they do not raise the round limit.
+    """
+    from ideapress.cli.commands.plan import _wait, runtime_for
+    from ideapress.errors import StagePreconditionFailed
+    from ideapress.services.stage_bodies import start_stage
+    from ideapress.services.unit_reports import unit_detail
+
+    for runtime in runtime_for():
+        detail = unit_detail(runtime, project_id=project_id, unit_key=unit_key)
+        if detail["version"] is None:
+            typer.secho(
+                f"Unit {unit_key} has no committed version to revise; draft it first.",
+                err=True,
+                fg=typer.colors.RED,
+            )
+            raise typer.Exit(1)
+        try:
+            task = start_stage(
+                runtime,
+                project_id=project_id,
+                stage="draft",
+                units=[unit_key],
+                overrides={"instructions": instructions} if instructions else {},
+            )
+        except StagePreconditionFailed as exc:
+            typer.secho(exc.message, err=True, fg=typer.colors.RED)
+            raise typer.Exit(1) from exc
+        typer.echo(f"task {task.run_id}")
+        if _wait(runtime, task.run_id) != "completed":
+            raise typer.Exit(1)

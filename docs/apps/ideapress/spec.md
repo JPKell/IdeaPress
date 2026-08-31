@@ -89,7 +89,7 @@ POST /projects/{id}/tasks/{task_id}/cancel
 GET  /projects/{id}/units/{unit_id}                               GET .../history
 POST /projects/{id}/units/{unit_id}/revise
 GET  /projects/{id}/export                                        POST /projects/{id}/export
-GET  /workflows                    GET  /workflows/{id}
+GET  /export/formats               GET  /workflows                GET  /workflows/{id}
 GET  /backends                     POST /backends/test
 GET  /settings                     PUT  /settings
 ```

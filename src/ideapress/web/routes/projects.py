@@ -12,13 +12,15 @@ from typing import TYPE_CHECKING, Annotated, Any
 from fastapi import APIRouter, Form, Query, Request, status
 from mirrorwall import json_response, paginated_response
 from pydantic import BaseModel, ConfigDict, Field
-from starlette.responses import RedirectResponse
+
+# Imported at runtime, not under TYPE_CHECKING: FastAPI reads a handler's return annotation
+# when it builds the OpenAPI schema, and a forward reference it cannot resolve makes
+# `app.openapi()` raise — which is a 500 on /api/v1/docs that no other test would notice.
+from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 
 from ideapress.web.csrf import render_form_page
 
 if TYPE_CHECKING:
-    from starlette.responses import HTMLResponse, JSONResponse, Response
-
     from ideapress.domain.project import Project
     from ideapress.services.projects import ProjectService
 

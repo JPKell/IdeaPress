@@ -8,17 +8,18 @@ for opening projects and exporting existing content with no model anywhere.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from fastapi import APIRouter, Request
 from mirrorwall import ComponentHealth, ComponentStatus, health_payload, json_response
-from starlette.responses import HTMLResponse
+
+# Imported at runtime, not under TYPE_CHECKING: FastAPI reads a handler's return annotation
+# when it builds the OpenAPI schema, and a forward reference it cannot resolve makes
+# `app.openapi()` raise — which is a 500 on /api/v1/docs that no other test would notice.
+from starlette.responses import HTMLResponse, JSONResponse
 
 from ideapress.__about__ import __version__
 from ideapress.web.rendering import render
-
-if TYPE_CHECKING:
-    from starlette.responses import JSONResponse
 
 __all__ = ["API_VERSION", "SCHEMA_VERSION", "router", "ui_router"]
 
