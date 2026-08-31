@@ -57,7 +57,7 @@ permissive modes.
 
 **Prerequisites:** P1; `modelrack>=0.5,<0.6`; `setspec>=0.4,<0.5` (carrying `setspec.prompts`, from
 LoadCoach P4 — IdeaPress never writes prompt machinery,
-ADR-0028).
+[ADR-0028](../../adr/0028-prompt-pack-granularity.md)).
 
 **Work**
 * `InferenceBackend` protocol, `StageRequest`, `StageResult`, `StageEvent`, `BackendHealth`.
@@ -85,7 +85,7 @@ tests/contract/test_backend_conformance.py  tests/unit/test_prompt_pack.py
    same seed.
 2. Workflow-facing code imports `modelrack` nowhere — only the adapter does (asserted).
 3. Stage identifiers in `[models.stages]`, in the port's `StageId` and in
-   Workflows §2 are the same set; a binding for a non-existent stage, or a model-using
+   [Workflows §2](workflows.md) are the same set; a binding for a non-existent stage, or a model-using
    stage with no binding, fails startup validation naming the stage.
 
 **Known risks:** the port shaped around Ollama. Mitigated by writing the OpenAI-compatible adapter in
@@ -308,14 +308,14 @@ tests/live/test_loadcoach_live.py       # marked
 **Tests**
 * Against a schema-driven mock built from LoadCoach's committed OpenAPI snapshot, obtained from the
   `loadcoach` distribution as a **test-only** dependency of `ideapress[dev]`
-  (Testing Standards §8): generate, stream, job submission,
+  ([Testing Standards §8](../../standards/testing-standards.md)): generate, stream, job submission,
   cancel, feedback. `lint-imports` continues to forbid `from loadcoach import …` anywhere under
   `src/`, and the clean-venv install-check proves `pip install ideapress` pulls in no application.
 * Version mismatch ⇒ `BACKEND_VERSION_MISMATCH` naming both versions; no silent downgrade.
 * LoadCoach unreachable with fallback configured ⇒ falls back and records the degradation; pinned ⇒
   fails the stage, project intact.
 * `LOADCOACH_TASK_MAP` appears in exactly one file (asserted by a grep test), is **total** over the
-  model-using stages in Workflows §2, and every value it names exists in the task
+  model-using stages in [Workflows §2](workflows.md), and every value it names exists in the task
   profiles the configured LoadCoach reports from `GET /task-profiles` (checked at backend test time,
   so a profile renamed on the other side surfaces as a clear error rather than
   `TASK_PROFILE_NOT_FOUND` mid-project).
@@ -375,7 +375,7 @@ tests/accessibility/test_ui_checklist.py
 **Acceptance criteria**
 1. A user can run a project start to finish from the UI alone.
 2. Findings, coverage and history are visible without leaving the unit.
-3. Every acceptance item in ui ux standards passes.
+3. Every acceptance item in [UI/UX Standards §13](../../standards/ui-ux-standards.md) passes.
 
 **Known risks:** the editor growing into a word processor. Mitigated by scope: IdeaPress produces and
 validates content; it is not a rich text editor, and revisions go through stages.
@@ -410,7 +410,7 @@ tests/security/**  tests/performance/**  tests/e2e/test_full_project_journey.py
 ```
 
 **Tests**
-* Every security test in Security Standards §14, plus:
+* Every security test in [Security Standards §14](../../standards/security-standards.md), plus:
   model output rendered inert in every view and every export format; malicious project archive rejected
   (traversal, symlink, bomb).
 * Every performance budget met.
@@ -419,7 +419,7 @@ tests/security/**  tests/performance/**  tests/e2e/test_full_project_journey.py
 
 **Acceptance criteria**
 1. All 12 acceptance criteria in the [spec §20](spec.md) pass.
-2. All IdeaPress gold standards in Gold Standards §2 are met.
+2. All IdeaPress gold standards in [Gold Standards §2](../../standards/gold-standards.md) are met.
 3. Documentation complete; `ideapress doctor` diagnoses every documented failure mode.
 4. `ideapress 1.0.0` published.
 

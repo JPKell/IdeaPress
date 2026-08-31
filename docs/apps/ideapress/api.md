@@ -1,6 +1,6 @@
 # IdeaPress — API
 
-**Base path:** `/api/v1` · **Conventions:** API and Contract Standards
+**Base path:** `/api/v1` · **Conventions:** [API and Contract Standards](../../standards/api-and-contract-standards.md)
 
 This API primarily serves IdeaPress's own UI and user scripting. It is versioned and documented to the
 same standard as the others, but no other application in the suite depends on it — IdeaPress is a leaf.
@@ -12,7 +12,7 @@ same standard as the others, but no other application in the suite depends on it
 | Endpoint | Notes |
 |---|---|
 | `GET /health` | Components: `database`, `backend` (which one, reachable?), `prompts` |
-| `GET /version` | Application, API and schema versions. **Never authenticated** (ADR-0026 §5) |
+| `GET /version` | Application, API and schema versions. **Never authenticated** ([ADR-0026 §5](../../adr/0026-local-http-hardening.md)) |
 | `GET /system/status` | Active stage runs, backend mode, optional telemetry snapshot |
 
 ## 2. Projects
@@ -45,7 +45,7 @@ Returns `202` with a task:
 | Endpoint | Notes |
 |---|---|
 | `GET /projects/{id}/tasks/{task_id}` | Task state, per-unit progress, attempts, degradations |
-| `GET /projects/{id}/tasks/{task_id}/stream` | SSE: `stage.started`, `unit.started`, `attempt.started`, `token` (when streaming), `validation.completed`, `audit.completed`, `fact_check.completed`, `revision.started`, `unit.committed`, `unit.paused`, `stage.completed`, `stage.failed`. Every frame carries the SetSpec event envelope except `token`, which is bare (ADR-0025 §3) |
+| `GET /projects/{id}/tasks/{task_id}/stream` | SSE: `stage.started`, `unit.started`, `attempt.started`, `token` (when streaming), `validation.completed`, `audit.completed`, `fact_check.completed`, `revision.started`, `unit.committed`, `unit.paused`, `stage.completed`, `stage.failed`. Every frame carries the SetSpec event envelope except `token`, which is bare ([ADR-0025 §3](../../adr/0025-envelope-boundaries.md)) |
 | `POST /projects/{id}/tasks/{task_id}/cancel` | Honoured at the next model-call boundary |
 
 Only one stage task runs per project at a time; a second returns 409 `STAGE_ALREADY_RUNNING`.
@@ -99,4 +99,4 @@ mechanism FreeWeight and LoadCoach use.
 
 The stream handler is `async def` and the event store is synchronous, so every read into it is
 dispatched to the worker threadpool by MirrorWall's `sse_response`; no SSE handler issues a query on
-the event loop (ADR-0003 §6–8).
+the event loop ([ADR-0003 §6–8](../../adr/0003-sync-vs-async-strategy.md)).
