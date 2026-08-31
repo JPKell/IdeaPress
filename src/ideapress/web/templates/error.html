@@ -1,0 +1,14 @@
+{# The error state every page shares (UI standards §6): what failed, why, and what to do, with the
+   error code and the request ID a person can quote. #}
+{% extends "base.html" %}
+{% from "mirrorwall/components.html" import kv_list %}
+{% set page_title = "Error" %}
+{% block content %}
+<h2>{{ status_code }} — {{ code }}</h2>
+<p>{{ message }}</p>
+{{ kv_list([
+  {"label": "Request ID", "value": request_id},
+  {"label": "Path", "value": path},
+]) }}
+<p><a href="/">Back to projects</a></p>
+{% endblock %}

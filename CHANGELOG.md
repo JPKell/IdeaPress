@@ -7,6 +7,15 @@ packaging and release standards §3.
 
 ## [Unreleased]
 
+### Added
+- Application skeleton on the shared packages: typed settings with the documented precedence and
+  refusals, structured logging with the suite's correlation fields, `/health`, `/version`,
+  `/system/status`, the system page, and the `serve`/`health`/`doctor`/`version`/`config` commands.
+- `[execution]` configuration: `max_concurrent_stages` (only 1 is accepted; a higher value is
+  refused at startup) and `unload_before_model_switch`.
+- A startup check that `[models.stages]`, `StageId` and workflows §2 name the same stages, and
+  refuses a binding for a stage that does not exist or a model-using stage with none.
+
 ### Fixed
 - `pytest` now collects under the bare console script as well as `python -m pytest`
   (`pythonpath = ["."]`), which is the invocation CI runs.

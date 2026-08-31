@@ -1,0 +1,6 @@
+{# IdeaPress's shell: MirrorWall's base with this application's page title convention.
+
+   Nothing here is application-specific beyond the title; the product name, navigation and theme
+   come from `rendering.templates()`'s globals. #}
+{% extends "mirrorwall/base.html" %}
+{% block title %}{% if page_title %}{{ page_title }} · {% endif %}{{ product_name }}{% endblock %}

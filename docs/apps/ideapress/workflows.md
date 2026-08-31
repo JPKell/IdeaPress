@@ -66,7 +66,11 @@ Two rules make this more than a chain of prompts:
 | 15 | `project_review` | All units | Consistency findings | Runs to completion | Yes |
 | 16 | `export` | Committed units | Rendered document | Deterministic render | **No** |
 
-Five stages involve no model at all — and those are the ones that decide whether work proceeds.
+Five stages involve no model at all: `validate`, `coverage`, `commit` and `export` — which are the
+four that decide whether work proceeds — and `research`, whose "Optional" is the stage itself. No
+research backend ships at 1.0 (spec §21 lists them as future extensions), so `research` reaches no
+model, has no `[models.stages]` binding, and the eleven bindings in [spec §12](spec.md) are exactly
+the model-using stages. The ADR that adds a research backend decides its binding then.
 
 This table is the **only** list of stage identifiers. `[models.stages]` keys, the LoadCoach task map
 in §6 and the `stage` values in the API all draw from it, and a startup check asserts the three agree:
@@ -184,7 +188,6 @@ class StageResult:
 # ideapress/infrastructure/backends/loadcoach.py — the ONLY module that knows LoadCoach task IDs
 LOADCOACH_TASK_MAP: Final[Mapping[StageId, str]] = {
     "requirements":       "structured.extract",
-    "research":           "content.research_synthesis",
     "research_synthesis": "content.research_synthesis",
     "outline":            "content.outline",
     "draft":              "content.article_draft",

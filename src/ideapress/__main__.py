@@ -1,4 +1,8 @@
-"""ideapress.__main__.
+"""Entry point for ``python -m ideapress``, identical to the ``ideapress`` console script."""
 
-TODO: implement per docs/apps/ideapress/development-plan.md.
-"""
+from __future__ import annotations
+
+from ideapress.cli.main import app
+
+if __name__ == "__main__":
+    app()

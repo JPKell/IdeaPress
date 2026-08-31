@@ -1,0 +1,20 @@
+{# The system page. Rows are built in the route, not here: UI standards keep computation out of
+   templates, and a table macro that escapes every cell wants plain strings. #}
+{% extends "base.html" %}
+{% from "mirrorwall/components.html" import kv_list, table %}
+{% block content %}
+<h2>System</h2>
+{{ kv_list([
+  {"label": "Application", "value": product_name},
+  {"label": "Version", "value": product_version},
+  {"label": "API version", "value": api_version},
+  {"label": "Schema version", "value": schema_version},
+  {"label": "Inference backend", "value": backend_mode},
+]) }}
+<h3>Health</h3>
+{{ table(
+  [{"label": "Component"}, {"label": "Status"}, {"label": "Detail"}],
+  health_rows,
+  caption="Health components"
+) }}
+{% endblock %}
