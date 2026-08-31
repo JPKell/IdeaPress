@@ -8,6 +8,12 @@ packaging and release standards §3.
 ## [Unreleased]
 
 ### Added
+- Deterministic validation: all seven families from workflows §4 — structural, length, format,
+  content constraints, reference integrity, consistency and safety — with failures classed blocking
+  or advisory, and no model involved anywhere.
+- Context assembly to a token budget, with the reduction order as data. Requirements and the unit
+  specification are never dropped; when they alone exceed the budget the stage fails carrying both
+  the required figure and the budget.
 - The stage runner: a background thread per stage, the unit state machine as a transition table,
   persisted gap-free stage events, and SSE that replays from `Last-Event-ID` after a disconnect.
 - `POST /projects/{id}/plan`, `POST /projects/{id}/stages/{stage}/run`, the task and stream
