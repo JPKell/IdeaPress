@@ -5,6 +5,21 @@
   "generated_at": "2026-08-31T00:00:00Z",
   "prompts": [
     {
+      "prompt_id": "stages.audit_deep.review",
+      "version": "1.0.0",
+      "sha256": "sha256:f05b9f8c2c7379b7e5cc8842138eb977a16a77f40b0d4995f0431a67f0cd1112"
+    },
+    {
+      "prompt_id": "stages.audit_fast.review",
+      "version": "1.0.0",
+      "sha256": "sha256:eec3efa781fd1b4929b2714c2484635e6bd51bfc75503decb97aab9976859310"
+    },
+    {
+      "prompt_id": "stages.critique.judge",
+      "version": "1.0.0",
+      "sha256": "sha256:f05ec70537f843957ac027174cb1aacb6d987cee8cb9cae696fab9192478ff19"
+    },
+    {
       "prompt_id": "stages.draft.write",
       "version": "1.0.0",
       "sha256": "sha256:a9d0040b8b39516126407d6d4b9ed69e76abec93e77167ed166652aff6580c89"
@@ -28,7 +43,12 @@
       "prompt_id": "stages.requirements.compile",
       "version": "1.0.0",
       "sha256": "sha256:6c3ffef99b24d7b2cd49211e6ddd18fd397776bf988de7a23042d2a406f30713"
+    },
+    {
+      "prompt_id": "stages.revise.improve",
+      "version": "1.0.0",
+      "sha256": "sha256:3a3fcd74a9da646be2a2c2c46095911887119a7c9ff655555940877cc7ba5330"
     }
   ],
-  "pack_sha256": "sha256:f58c3be0c1c96d4797024f3450e19be6a379f48c680fea363e3a0a274dc1daf9"
+  "pack_sha256": "sha256:6bbecd68b1322ce72adef7f165d6b2000f3b9a746ee15675ed52fe435da14131"
 }

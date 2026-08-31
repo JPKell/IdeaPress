@@ -1,0 +1,48 @@
+{
+  "prompt_id": "stages.critique.judge",
+  "version": "1.0.0",
+  "schema_version": "1.0",
+  "purpose": "Decide whether a unit is materially deficient, acceptable, or worth leaving alone.",
+  "task": "general.reasoning",
+  "capability": "structured_output",
+  "system": "You judge whether a section is worth another revision round. \"leave_it_alone\" is a real and often correct answer: it means you can see things you would change and none of them is worth the cost of another round. Reserve \"materially_deficient\" for a section that would mislead a reader or misses something it was required to do. Preferences of style are not material. You do not rewrite anything, and your verdict does not decide what happens next \u2014 a bounded policy does. Return only the JSON document.",
+  "template": "REQUIREMENTS THIS SECTION MUST SATISFY\n{{ requirements }}\n\nWHAT THE REVIEWS FOUND\n{{ findings }}\n\nROUNDS SO FAR\nThis section has been revised {{ rounds_used }} time(s) out of a maximum of {{ max_rounds }}.\n\nTHE SECTION\n{{ content }}\n\nRETURN\n{\"verdict\": \"acceptable\" | \"leave_it_alone\" | \"materially_deficient\", \"rationale\": \"one or two sentences\"}\nand nothing else.",
+  "variables": {
+    "requirements": {
+      "type": "string",
+      "required": true,
+      "description": "The unit's requirements, rendered by Python."
+    },
+    "findings": {
+      "type": "string",
+      "required": true,
+      "description": "Every audit finding so far, rendered by Python from stored rows."
+    },
+    "content": {
+      "type": "string",
+      "required": true,
+      "description": "The unit's text."
+    },
+    "rounds_used": {
+      "type": "string",
+      "required": true,
+      "description": "How many revision rounds have run, so the critic knows the cost of asking for another."
+    },
+    "max_rounds": {
+      "type": "string",
+      "required": true,
+      "description": "The configured bound, which Python enforces whatever the critic says."
+    }
+  },
+  "response": {
+    "format": "json",
+    "json_schema_ref": null,
+    "expectations": [
+      "A single JSON object with `verdict` and `rationale`."
+    ]
+  },
+  "metadata": {
+    "change_reason": "First version. Telling the critic its verdict does not decide what happens is deliberate and true: decide_revision checks the round limit before it consults the verdict at all.",
+    "owner": "ideapress"
+  }
+}

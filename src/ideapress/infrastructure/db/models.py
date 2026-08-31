@@ -11,7 +11,8 @@ and the parity check (database standards §5.2) fails forever on a schema that i
 
 ``projects``, ``sources``, ``settings`` and ``api_tokens`` come from Phase 1's migration ``0001``;
 ``requirements``, ``units``, ``stage_runs``, ``attempts`` and ``stage_events`` from Phase 3's
-``0002``; ``unit_versions``, ``validations``, ``coverage`` and ``exports`` from Phase 4's ``0003``.
+``0002``; ``unit_versions``, ``validations``, ``coverage`` and ``exports`` from Phase 4's
+``0003``; ``audit_findings`` and ``critiques`` from Phase 5's ``0004``.
 SQLAlchemy models never leave the repository layer: a service returns a frozen domain value object,
 never one of these.
 """
@@ -44,7 +45,9 @@ __all__ = [
     "Setting",
     "Source",
     "StageEvent",
+    "AuditFinding",
     "Coverage",
+    "Critique",
     "Export",
     "StageRun",
     "Unit",
@@ -441,3 +444,47 @@ class Export(Base):
     created_at: Mapped[datetime] = mapped_column(UtcDateTime, nullable=False, default=utcnow)
 
     __table_args__ = (Index("ix_exports_project_id_created_at", "project_id", "created_at"),)
+
+
+class AuditFinding(Base):
+    """One thing an audit stage noticed, recorded against the attempt that produced it."""
+
+    __tablename__ = "audit_findings"
+
+    id: Mapped[str] = ulid_primary_key()
+    attempt_id: Mapped[str] = mapped_column(
+        String(26), ForeignKey("attempts.id", ondelete="CASCADE"), nullable=False
+    )
+    finding_key: Mapped[str] = mapped_column(String(40), nullable=False)
+    category: Mapped[str] = mapped_column(String(60), nullable=False)
+    severity: Mapped[str] = mapped_column(String(20), nullable=False)
+    confidence: Mapped[float] = mapped_column(Float, nullable=False, default=0.5)
+    problem_text: Mapped[str] = mapped_column(Text, nullable=False)
+    evidence_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    target_ref: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    required_fix_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    uncertain: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    escalated: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    source_stage: Mapped[str] = mapped_column(String(30), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, nullable=False, default=utcnow)
+
+    __table_args__ = (Index("ix_audit_findings_attempt_id", "attempt_id"),)
+
+
+class Critique(Base):
+    """One quality verdict on one version. Holds no content, by design (workflows §1 rule 2)."""
+
+    __tablename__ = "critiques"
+
+    id: Mapped[str] = ulid_primary_key()
+    attempt_id: Mapped[str] = mapped_column(
+        String(26), ForeignKey("attempts.id", ondelete="CASCADE"), nullable=False
+    )
+    verdict: Mapped[str] = mapped_column(String(30), nullable=False)
+    rationale_text: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    improvement_delta: Mapped[float | None] = mapped_column(Float, nullable=True)
+    round: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    stop_reason: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, nullable=False, default=utcnow)
+
+    __table_args__ = (Index("ix_critiques_attempt_id", "attempt_id"),)

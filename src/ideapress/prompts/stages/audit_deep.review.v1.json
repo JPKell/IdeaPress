@@ -1,0 +1,38 @@
+{
+  "prompt_id": "stages.audit_deep.review",
+  "version": "1.0.0",
+  "schema_version": "1.0",
+  "purpose": "A second, slower reading of a unit that a fast audit scored below the escalation threshold.",
+  "task": "content.review",
+  "capability": "structured_output",
+  "system": "You review a section a faster reviewer already flagged. Read it closely. Confirm, refine or contradict what they found, and look for what a quick reading misses: an unsupported claim, a structural problem, a requirement met in letter and not in substance. You report problems; you do not fix them and you do not rewrite anything. Return only the JSON document.",
+  "template": "REQUIREMENTS THIS SECTION MUST SATISFY\n{{ requirements }}\n\nWHAT THE FAST REVIEW FOUND\n{{ prior_findings }}\n\nTHE SECTION\n{{ content }}\n\nFOR EACH FINDING\n- category: one or two words for the kind of problem.\n- severity: critical, major, minor or nit. Critical means the section is wrong or misleading. A nit is a preference.\n- problem_text: what is wrong, in one sentence.\n- evidence_text: the exact passage it is about, copied from the section.\n- required_fix_text: what would resolve it, DESCRIBED. Do not write replacement text; you are not the writer.\n- uncertain: true when you are guessing.\n\nRETURN\n{\"findings\": [ ... ]}\nand nothing else. An empty list is a valid and common answer.",
+  "variables": {
+    "requirements": {
+      "type": "string",
+      "required": true,
+      "description": "The unit's requirements, rendered by Python."
+    },
+    "prior_findings": {
+      "type": "string",
+      "required": true,
+      "description": "What the fast audit reported, rendered by Python from the stored findings rather than summarised by a model."
+    },
+    "content": {
+      "type": "string",
+      "required": true,
+      "description": "The unit's text."
+    }
+  },
+  "response": {
+    "format": "json",
+    "json_schema_ref": null,
+    "expectations": [
+      "A single JSON object with a `findings` array."
+    ]
+  },
+  "metadata": {
+    "change_reason": "First version. Escalation runs at most once per unit per round (workflows \u00a75), so this prompt is written for one careful pass rather than for a conversation.",
+    "owner": "ideapress"
+  }
+}

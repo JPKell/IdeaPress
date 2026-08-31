@@ -13,11 +13,10 @@ from typing import TYPE_CHECKING, Final
 
 from ideapress.domain.validators.consistency import ConsistencyValidator
 from ideapress.domain.validators.content import ContentConstraintValidator
-from ideapress.domain.validators.reference import ReferenceIntegrityValidator
-from ideapress.domain.validators.safety import SafetyValidator
-
 from ideapress.domain.validators.formatting import FormatValidator
 from ideapress.domain.validators.length import LengthValidator
+from ideapress.domain.validators.reference import ReferenceIntegrityValidator
+from ideapress.domain.validators.safety import SafetyValidator
 from ideapress.domain.validators.structural import StructuralValidator
 
 if TYPE_CHECKING:

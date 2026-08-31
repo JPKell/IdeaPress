@@ -1,0 +1,38 @@
+{
+  "prompt_id": "stages.revise.improve",
+  "version": "1.0.0",
+  "schema_version": "1.0",
+  "purpose": "Revise a unit against audit findings, changing what the findings name and little else.",
+  "task": "content.edit",
+  "capability": "instruction_following",
+  "system": "You revise a section against specific findings written by a reviewer. Address the findings and change as little else as possible: a rewrite that fixes the fault and loses the writing is not a revision. Return only the revised section.",
+  "template": "{{ context }}\n\nTHE SECTION AS IT STANDS\n{{ current_text }}\n\nWHAT THE REVIEW FOUND\n{{ findings }}\n\nRETURN the revised section in full. Keep every sentence no finding is about.",
+  "variables": {
+    "context": {
+      "type": "string",
+      "required": true,
+      "description": "The assembled context, including the previous round's findings, which are never dropped to fit the budget."
+    },
+    "current_text": {
+      "type": "string",
+      "required": true,
+      "description": "The text being revised, so the model edits rather than regenerates."
+    },
+    "findings": {
+      "type": "string",
+      "required": true,
+      "description": "The findings, rendered by Python from stored rows with their severities and evidence."
+    }
+  },
+  "response": {
+    "format": "text",
+    "json_schema_ref": null,
+    "expectations": [
+      "The revised section, in full."
+    ]
+  },
+  "metadata": {
+    "change_reason": "First version. A revision that increases validation failures is rejected and the previous version kept (domain/revision_policy.py), so 'change as little else as possible' is enforced as well as asked.",
+    "owner": "ideapress"
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "prompt_id": "stages.audit_fast.review",
+  "version": "1.0.0",
+  "schema_version": "1.0",
+  "purpose": "Read one unit against its requirements and report findings. Reports only; never rewrites.",
+  "task": "content.review",
+  "capability": "structured_output",
+  "system": "You review a section someone else wrote. You report problems; you do not fix them and you do not rewrite anything. You do not score the section \u2014 a score is computed from your findings, so inflating or deflating severities changes nothing except how useful you are. Returning no findings is a real answer and is often the right one. Return only the JSON document.",
+  "template": "REQUIREMENTS THIS SECTION MUST SATISFY\n{{ requirements }}\n\nTHE SECTION\n{{ content }}\n\nRead it once, quickly, for the things that would matter to a reader: a claim that is wrong, a requirement it does not meet, a passage that contradicts itself, a sentence that will confuse.\n\nFOR EACH FINDING\n- category: one or two words for the kind of problem.\n- severity: critical, major, minor or nit. Critical means the section is wrong or misleading. A nit is a preference.\n- problem_text: what is wrong, in one sentence.\n- evidence_text: the exact passage it is about, copied from the section.\n- required_fix_text: what would resolve it, DESCRIBED. Do not write replacement text; you are not the writer.\n- uncertain: true when you are guessing.\n\nRETURN\n{\"findings\": [ ... ]}\nand nothing else. An empty list is a valid and common answer.",
+  "variables": {
+    "requirements": {
+      "type": "string",
+      "required": true,
+      "description": "The unit's requirements, rendered by Python with their keys, so the auditor reads the same contract the coverage gate will."
+    },
+    "content": {
+      "type": "string",
+      "required": true,
+      "description": "The unit's text, exactly as it stands."
+    }
+  },
+  "response": {
+    "format": "json",
+    "json_schema_ref": null,
+    "expectations": [
+      "A single JSON object with a `findings` array."
+    ]
+  },
+  "metadata": {
+    "change_reason": "First version. The instruction not to score is load-bearing: the score is computed from severities by Python (domain/audit.py), so a model that tried to grade itself would be ignored \u2014 and telling it that is more honest than letting it try.",
+    "owner": "ideapress"
+  }
+}
