@@ -8,6 +8,12 @@ packaging and release standards §3.
 ## [Unreleased]
 
 ### Added
+- Review: `audit_fast`, `audit_deep` (escalation only, once per unit per round), `critique` with
+  "leave it alone" as a first-class verdict, and `revise` bounded by the round limit or by
+  diminishing returns computed from deterministic finding counts. Which stop applied is recorded.
+- A revision that increases validation failures is rejected and the previous version kept.
+- Migration `0004`: `audit_findings`, `critiques`. The findings, their severity and evidence, and
+  what changed between rounds, on the unit page.
 - The core loop: draft, validate, repair (bounded, then pause the unit), coverage and an atomic
   commit, with complete provenance on every committed version.
 - Migration `0003`: `unit_versions`, `validations`, `coverage`, `exports`.

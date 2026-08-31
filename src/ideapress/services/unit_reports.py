@@ -11,6 +11,8 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import select
 
 from ideapress.infrastructure.db.models import Attempt as AttemptRow
+from ideapress.infrastructure.db.models import AuditFinding as AuditFindingRow
+from ideapress.infrastructure.db.models import Critique as CritiqueRow
 from ideapress.infrastructure.db.models import Unit as UnitRow
 from ideapress.infrastructure.db.models import UnitVersion as UnitVersionRow
 from ideapress.infrastructure.db.models import Validation as ValidationRow
@@ -84,6 +86,26 @@ def unit_detail(runtime: Runtime, *, project_id: str, unit_key: str) -> dict[str
             else []
         )
         history = unit_history(session, project_id, unit_key)
+        attempt_ids = [attempt.id for attempt in attempts]
+        findings = (
+            session.scalars(
+                select(AuditFindingRow)
+                .where(AuditFindingRow.attempt_id.in_(attempt_ids))
+                .order_by(AuditFindingRow.created_at)
+            ).all()
+            if attempt_ids
+            else []
+        )
+        critiques = (
+            session.scalars(
+                select(CritiqueRow)
+                .where(CritiqueRow.attempt_id.in_(attempt_ids))
+                .order_by(CritiqueRow.round)
+            ).all()
+            if attempt_ids
+            else []
+        )
+        rounds_by_attempt = {attempt.id: attempt.round for attempt in attempts}
 
     return {
         "project_id": project_id,
@@ -142,4 +164,29 @@ def unit_detail(runtime: Runtime, *, project_id: str, unit_key: str) -> dict[str
         ],
         "history": history,
         "coverage": history[0]["coverage"] if history else [],
+        "findings": [
+            {
+                "key": row.finding_key,
+                "category": row.category,
+                "severity": row.severity,
+                "problem": row.problem_text,
+                "evidence": row.evidence_text or "",
+                "fix": row.required_fix_text or "",
+                "uncertain": row.uncertain,
+                "escalated": row.escalated,
+                "stage": row.source_stage,
+                "round": rounds_by_attempt.get(row.attempt_id, 0),
+            }
+            for row in findings
+        ],
+        "critiques": [
+            {
+                "round": row.round,
+                "verdict": row.verdict,
+                "rationale": row.rationale_text,
+                "improvement_delta": row.improvement_delta,
+                "stop_reason": row.stop_reason,
+            }
+            for row in critiques
+        ],
     }

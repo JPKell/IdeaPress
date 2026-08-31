@@ -29,6 +29,7 @@ from ideapress.domain.validators import DEFAULT_VALIDATORS
 from ideapress.infrastructure.db.models import Unit as UnitRow
 from ideapress.services.plan import load_plan, load_requirements
 from ideapress.services.prompts import render
+from ideapress.services.review_loop import run_review_loop
 from ideapress.services.stages import record_attempt
 from ideapress.services.units import (
     commit_unit,
@@ -249,7 +250,22 @@ def run_unit(
 
     runtime.runner.checkpoint(task)
     set_unit_state(database, project_id=project_id, unit_key=unit.key, state="validating")
-    coverage = evaluate_coverage(text, requirements)
+    set_unit_state(database, project_id=project_id, unit_key=unit.key, state="auditing")
+    review = run_review_loop(
+        runtime,
+        task,
+        project_id=project_id,
+        unit=unit,
+        requirements=requirements,
+        text=text,
+        validation=report,
+        attempt_id=attempt_id,
+        emit=emit,
+    )
+    text = review.text
+    report = review.validation
+    audit_satisfied = review.audit_satisfied
+    coverage = evaluate_coverage(text, requirements, audit_satisfied=audit_satisfied)
     emit(
         "coverage.completed",
         f"{unit.key}: {coverage.summary()}",
@@ -275,10 +291,9 @@ def run_unit(
         require_clean_validation=settings.workflow.require_clean_validation_to_commit,
     )
     if not decision.allowed:
-        _pause(runtime, project_id, unit.key, decision.refusal, emit, from_state="validating")
+        _pause(runtime, project_id, unit.key, decision.refusal, emit, from_state="auditing")
         return UnitOutcome(unit.key, False, limit, decision.refusal, report, coverage)
 
-    set_unit_state(database, project_id=project_id, unit_key=unit.key, state="auditing")
     committed = commit_unit(
         database,
         project_id=project_id,

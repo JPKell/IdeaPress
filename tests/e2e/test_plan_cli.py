@@ -197,6 +197,8 @@ GOOD_DRAFT = (
 def _drafted(monkeypatch: pytest.MonkeyPatch) -> str:
     """A project planned and then drafted, with the backend swapped between the two."""
 
+    import json as json_module
+
     from modelrack.testing import FakeGeneration, FakeScript
 
     from ideapress.infrastructure.backends import fake as fake_module
@@ -207,7 +209,12 @@ def _drafted(monkeypatch: pytest.MonkeyPatch) -> str:
     script = FakeScript(
         models=fake_module.default_fake_script().models,
         capabilities=fake_module.default_fake_script().capabilities,
-        generations=(FakeGeneration(text=GOOD_DRAFT),),
+        generations=(
+            FakeGeneration(text=GOOD_DRAFT),
+            # The review stage runs after validation: a clean audit and an accepting critique.
+            FakeGeneration(text=json_module.dumps({"findings": []})),
+            FakeGeneration(text=json_module.dumps({"verdict": "acceptable", "rationale": "ok"})),
+        ),
         repeat_final_generation=True,
     )
     monkeypatch.setattr(

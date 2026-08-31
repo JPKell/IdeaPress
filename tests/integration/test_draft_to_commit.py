@@ -65,6 +65,15 @@ MISSING_UPLOAD = (
 )
 
 
+# The review stage runs after validation (P5), so every drafting script ends with an audit that
+# finds nothing and a critique that accepts. These tests are about the *core loop*; the review
+# loop has its own file.
+CLEAN_REVIEW = (
+    json.dumps({"findings": []}),
+    json.dumps({"verdict": "acceptable", "rationale": "ok"}),
+)
+
+
 def _script(*texts: str) -> FakeBackend:
     from modelrack.testing import FakeGeneration, FakeScript
 
@@ -126,7 +135,7 @@ def _planned(runtime: Runtime, *drafts: str) -> str:
 
     task = start_plan(runtime, project_id=project_id)
     assert _wait(runtime, task.run_id) == "completed"
-    _with(runtime, _script(*drafts))
+    _with(runtime, _script(*drafts, *CLEAN_REVIEW))
     return project_id
 
 

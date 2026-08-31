@@ -242,7 +242,11 @@ def test_the_unit_page_renders_model_output_inert(client: TestClient) -> None:
         script=FakeScript(
             models=fake_module.default_fake_script().models,
             capabilities=fake_module.default_fake_script().capabilities,
-            generations=(FakeGeneration(text=hostile),),
+            generations=(
+                FakeGeneration(text=hostile),
+                FakeGeneration(text=json.dumps({"findings": []})),
+                FakeGeneration(text=json.dumps({"verdict": "acceptable", "rationale": "ok"})),
+            ),
             repeat_final_generation=True,
         ),
         seed=5,
@@ -295,6 +299,8 @@ def test_a_path_traversal_in_model_output_blocks_the_commit(client: TestClient) 
     task = client.post(f"/api/v1/projects/{project_id}/plan").json()
     _wait(client, project_id, task["task_id"])
 
+    # The traversal fails a *blocking* validation check, so the repair loop runs three times and
+    # the unit pauses — the review stage is never reached, which is why this script has no audit.
     traversal = (
         "Everything runs on your own machine and nothing is uploaded. "
         "Read ../../etc/passwd for the details. " * 4

@@ -63,6 +63,42 @@
   </table></div>
 {% else %}{{ empty_state("No validation recorded.") }}{% endif %}
 
+<h3>Findings</h3>
+{% if findings %}
+  <div class="table-scroll"><table>
+    <caption>What the reviews found, and in which round</caption>
+    <thead><tr><th scope="col">Round</th><th scope="col">Stage</th><th scope="col">Severity</th><th scope="col">Category</th><th scope="col">Problem</th><th scope="col">Evidence</th><th scope="col">Would resolve it</th></tr></thead>
+    <tbody>
+    {% for finding in findings %}
+      <tr><td>{{ finding.round }}</td>
+          <td>{{ finding.stage }}{% if finding.escalated %} {{ badge("escalated", tone="warning") }}{% endif %}</td>
+          <td>{{ badge(finding.severity, tone="danger" if finding.severity in ("critical", "major") else "neutral") }}</td>
+          <td>{{ finding.category }}</td>
+          <td>{{ finding.problem }}{% if finding.uncertain %} {{ badge("uncertain", tone="neutral") }}{% endif %}</td>
+          <td>{{ finding.evidence }}</td>
+          <td>{{ finding.fix }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+{% else %}{{ empty_state("No findings.") }}{% endif %}
+
+<h3>Critique and revision</h3>
+{% if critiques %}
+  <div class="table-scroll"><table>
+    <caption>What changed between rounds, and which rule stopped the loop</caption>
+    <thead><tr><th scope="col">Round</th><th scope="col">Verdict</th><th scope="col">Improvement</th><th scope="col">Stopped by</th><th scope="col">Rationale</th></tr></thead>
+    <tbody>
+    {% for critique in critiques %}
+      <tr><td>{{ critique.round }}</td>
+          <td>{{ badge(critique.verdict, tone="success" if critique.verdict != "materially_deficient" else "warning") }}</td>
+          <td>{% if critique.improvement_delta is not none %}{{ "%.0f%%" | format(critique.improvement_delta * 100) }}{% else %}—{% endif %}</td>
+          <td>{{ critique.stop_reason or "—" }}</td>
+          <td>{{ critique.rationale }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+{% else %}{{ empty_state("No critique recorded.") }}{% endif %}
+
 <h3>Provenance</h3>
 {% if attempts %}
   <div class="table-scroll"><table>
