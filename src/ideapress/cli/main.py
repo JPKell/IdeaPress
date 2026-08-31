@@ -12,6 +12,7 @@ from typing import Annotated
 
 import typer
 
+from ideapress.cli.commands import backend as backend_commands
 from ideapress.cli.commands import config as config_commands
 from ideapress.cli.commands import db as db_commands
 from ideapress.cli.commands import project as project_commands
@@ -59,3 +60,4 @@ app.command(name="doctor", help="Diagnose a broken installation.")(system_comman
 app.add_typer(config_commands.app, name="config")
 app.add_typer(db_commands.app, name="db")
 app.add_typer(project_commands.app, name="project")
+app.add_typer(backend_commands.app, name="backend")

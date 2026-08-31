@@ -8,6 +8,14 @@ packaging and release standards §3.
 ## [Unreleased]
 
 ### Added
+- The inference port (`InferenceBackend`, `StageRequest`, `StageResult`, `StageEvent`,
+  `BackendHealth`) and three adapters: Ollama over ModelRack, a deterministic offline fake, and an
+  OpenAI-compatible one. Switching between them is configuration.
+- One generation runs at a time, through one function, and the resident model is unloaded before a
+  different one loads (ADR-0038).
+- The prompt pack on `setspec.prompts`: versioned JSON records with a hashed manifest.
+- `GET /backends`, `POST /backends/test`, a backend page that states where content goes, and
+  `ideapress backend list|test|switch`.
 - Projects: create, list, open, update, archive, and delete with a preview of exactly what will be
   removed. Slugs are derived from the title and never taken from input, and a project's artifact
   directory is created private and containment-checked.

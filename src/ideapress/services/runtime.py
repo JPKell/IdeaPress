@@ -15,16 +15,21 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from baseaicore import ConfigurationError
 from mirrorwall import ComponentHealth, ComponentStatus
 from weightsdb import DatabaseError
 
+from ideapress.services.backends import backend_health_component, build_backend
 from ideapress.services.database import Database, database_health_component, ensure_ready
+from ideapress.services.inference import InferenceGateway
 from ideapress.services.projects import ProjectService
+from ideapress.services.prompts import prompts_health_component
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
 
     from ideapress.config import Settings
+    from ideapress.domain.inference import InferenceBackend
 
 __all__ = ["Runtime", "build_runtime"]
 
@@ -34,14 +39,26 @@ logger = logging.getLogger(__name__)
 class Runtime:
     """The database handle, the services built on it, and the health each reports."""
 
-    __slots__ = ("_database", "_projects", "settings", "startup_error")
+    __slots__ = ("_backend", "_database", "_gateway", "_projects", "settings", "startup_error")
 
     def __init__(self, settings: Settings) -> None:
         """Open what this process needs, recording rather than raising on a storage failure."""
         self.settings = settings
         self._database: Database | None = None
         self._projects: ProjectService | None = None
+        self._backend: InferenceBackend | None = None
+        self._gateway: InferenceGateway | None = None
         self.startup_error: str | None = None
+
+        # Built first and never allowed to fail the process: an unreachable backend is a health
+        # component, never a startup failure (spec §20 AC7).
+        try:
+            self._backend = build_backend(settings)
+            self._gateway = InferenceGateway(
+                backend=self._backend, bindings=settings.models.stages, execution=settings.execution
+            )
+        except ConfigurationError as exc:
+            logger.warning("backend.not_built", extra={"detail": str(exc)})
 
         database_url = settings.storage.database_url
         project_dir = settings.storage.project_dir
@@ -67,6 +84,25 @@ class Runtime:
     def database(self) -> Database | None:
         """The handle, or ``None`` when storage could not be opened."""
         return self._database
+
+    @property
+    def inference(self) -> InferenceGateway:
+        """The single choke point every stage reaches a model through.
+
+        Raises:
+            RuntimeError: No backend could be built at all — a configuration problem, not an
+                outage. A stage asked to run without one should fail loudly rather than silently
+                doing nothing.
+        """
+        if self._gateway is None:
+            message = "No inference backend is configured; see `ideapress backend list`."
+            raise RuntimeError(message)
+        return self._gateway
+
+    @property
+    def backend(self) -> InferenceBackend | None:
+        """The adapter, or ``None`` when none could be built."""
+        return self._backend
 
     @property
     def projects(self) -> ProjectService:
@@ -99,19 +135,11 @@ class Runtime:
 
     def _backend_health(self) -> ComponentHealth:
         """Report the configured inference backend, naming which one and whether it answers."""
-        mode = self.settings.inference.mode
-        return ComponentHealth(
-            name="backend",
-            status=ComponentStatus.NOT_CONFIGURED,
-            detail=f"Configured backend is {mode!r}; no adapter is wired yet.",
-            data={"mode": mode},
-        )
+        return backend_health_component(self._backend)
 
     def _prompts_health(self) -> ComponentHealth:
         """Report the prompt pack: present, parseable, and matching its manifest."""
-        return ComponentHealth(
-            name="prompts", status=ComponentStatus.NOT_CONFIGURED, detail="No prompt pack yet."
-        )
+        return prompts_health_component()
 
     def close(self) -> None:
         """Dispose every handle. Safe to call more than once."""

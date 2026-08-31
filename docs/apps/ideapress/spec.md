@@ -174,6 +174,15 @@ project_review     = "ollama/qwen3.5:9b-q8_0"
 # A binding for a stage that does not exist, or a model-using stage with no binding, fails startup
 # validation naming the stage — the audit found the previous list used `edit` and `audit`, neither of
 # which is a stage identifier.
+#
+# `[execution]` is [ADR-0038](../../adr/0038-one-model-at-a-time-per-gpu.md). One model runs at a
+# time, never two: `max_concurrent_stages` above 1 is refused at startup with the reason rather than
+# clamped, because IdeaPress has no queue and a second concurrent generation means two models
+# resident on a single-GPU machine. `unload_before_model_switch = false` lets two models contend for
+# one card, which degrades to CPU or OOM with no error the application can raise.
+
+[execution]  max_concurrent_stages = 1        # only 1 is accepted; above 1 is refused at startup
+             unload_before_model_switch = true # unload the resident model before loading another
 
 [workflow]   max_revision_rounds = 3   diminishing_returns_threshold = 0.05
              max_attempts_per_stage = 3  audit_escalation_threshold = 0.6
@@ -193,6 +202,7 @@ BACKEND_VERSION_MISMATCH   REQUIREMENTS_UNMET         UNIT_NOT_FOUND
 MODEL_NOT_CONFIGURED       STAGE_PRECONDITION_FAILED  STAGE_ALREADY_RUNNING
 PROVIDER_TIMEOUT           REVISION_LIMIT_REACHED     EXPORT_FAILED
 CONTEXT_LIMIT_EXCEEDED     CONTENT_REJECTED           SCHEMA_VERSION_UNSUPPORTED
+INSUFFICIENT_VRAM
 ```
 
 Behavioural rules:
@@ -204,6 +214,13 @@ Behavioural rules:
 * `CONTENT_REJECTED` (a model refusing the task) is a distinct outcome from a failure, and is
   surfaced with the model's stated reason.
 * Backend unavailable: fall back if configured and not pinned; otherwise fail the stage clearly.
+* `INSUFFICIENT_VRAM` is the wait-or-refuse outcome of
+  [ADR-0038](../../adr/0038-one-model-at-a-time-per-gpu.md): the preflight found less free VRAM than
+  the configured model needs with room for its context. It carries **both figures** — required and
+  available — because a refusal without them is indistinguishable from a crash, and it is a distinct
+  outcome from `BACKEND_UNAVAILABLE`, which means the backend did not answer at all. It is raised
+  only where telemetry is available (`ideapress[telemetry]`); without it the serialise-and-unload
+  invariant holds on its own and this code never appears.
 
 ## 14. Security considerations
 

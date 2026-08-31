@@ -36,6 +36,7 @@ from ideapress.__about__ import __version__
 from ideapress.config import LOOPBACK_HOSTS, Settings
 from ideapress.web.limits import BodySizeLimitMiddleware, SameOriginMiddleware
 from ideapress.web.rendering import render, templates
+from ideapress.web.routes import backends as backend_routes
 from ideapress.web.routes import projects as project_routes
 from ideapress.web.routes import system as system_routes
 
@@ -61,6 +62,8 @@ _STATUS_BY_CODE: Final[dict[str, int]] = {
     "UNIT_NOT_FOUND": status.HTTP_404_NOT_FOUND,
     "STAGE_ALREADY_RUNNING": status.HTTP_409_CONFLICT,
     "EXPORT_FAILED": status.HTTP_500_INTERNAL_SERVER_ERROR,
+    # Not 500: the machine is busy, not broken. 503 is the status a caller retries.
+    "INSUFFICIENT_VRAM": status.HTTP_503_SERVICE_UNAVAILABLE,
     "SCHEMA_VERSION_UNSUPPORTED": status.HTTP_422_UNPROCESSABLE_CONTENT,
     "VALIDATION_ERROR": status.HTTP_400_BAD_REQUEST,
     "CONFIGURATION_ERROR": status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -265,6 +268,8 @@ def create_app(settings: Settings, *, runtime_builder: Any | None = None) -> Fas
 
     app.include_router(system_routes.router, prefix="/api/v1")
     app.include_router(project_routes.router, prefix="/api/v1")
+    app.include_router(backend_routes.router, prefix="/api/v1")
+    app.include_router(backend_routes.ui_router)
     app.include_router(project_routes.ui_router)
     app.include_router(system_routes.ui_router)
 

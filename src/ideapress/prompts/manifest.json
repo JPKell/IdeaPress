@@ -1,0 +1,14 @@
+{
+  "pack_id": "ideapress.stages",
+  "pack_version": "1.0.0",
+  "schema_version": "1.0",
+  "generated_at": "2026-08-31T00:00:00Z",
+  "prompts": [
+    {
+      "prompt_id": "stages.hello",
+      "version": "1.0.0",
+      "sha256": "sha256:b9f17cf04bb076bcd7a660e169a73238e41e63987fead814d52bb36d6d7e1cb5"
+    }
+  ],
+  "pack_sha256": "sha256:073a8dc4ec97318a58c887d788f08df6666a6635a711a2a904b59c76d0351236"
+}

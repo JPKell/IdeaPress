@@ -1,0 +1,38 @@
+{# Backends. The egress badge is the point of this page: a person should be able to see, without
+   reading configuration, whether their drafts leave this machine. #}
+{% extends "base.html" %}
+{% from "mirrorwall/components.html" import badge, kv_list, empty_state %}
+{% block content %}
+<h2>Backends</h2>
+{% if backends %}
+  {% for backend in backends %}
+    <section>
+      <h3>
+        {{ backend.mode }}
+        {% if backend.selected %}{{ badge("selected", tone="success") }}{% endif %}
+        {% if backend.fallback %}{{ badge("fallback", tone="neutral") }}{% endif %}
+        {% if backend.egress %}{{ badge("sends your content off this machine", tone="warning") }}{% endif %}
+      </h3>
+      {{ kv_list([
+        {"label": "Reachable", "value": "yes" if backend.available else "no"},
+        {"label": "Status", "value": backend.get("status", "unknown")},
+        {"label": "Endpoint", "value": backend.get("base_url") or "not configured"},
+        {"label": "Detail", "value": backend.get("detail") or ""},
+        {"label": "Models", "value": backend.get("model_count") if backend.get("model_count") is not none else "unknown"},
+      ]) }}
+      {% if backend.capabilities %}
+      <h4>Capabilities</h4>
+      {{ kv_list([
+        {"label": "Streaming", "value": "yes" if backend.capabilities.streaming else "no"},
+        {"label": "Structured output", "value": "yes" if backend.capabilities.structured_output else "no"},
+        {"label": "Token counts", "value": "yes" if backend.capabilities.token_counts else "no"},
+        {"label": "Discloses model", "value": "yes" if backend.capabilities.discloses_model else "no"},
+        {"label": "Residency control", "value": "yes" if backend.capabilities.residency_control else "no"},
+      ]) }}
+      {% endif %}
+    </section>
+  {% endfor %}
+{% else %}
+  {{ empty_state("No backend is configured.") }}
+{% endif %}
+{% endblock %}

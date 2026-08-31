@@ -19,6 +19,7 @@ __all__ = [
     "ContentRejected",
     "ContextLimitExceeded",
     "ExportFailed",
+    "InsufficientVram",
     "ModelNotConfigured",
     "ProjectNotFound",
     "ProviderTimeout",
@@ -129,6 +130,21 @@ class ExportFailed(SuiteError):
     code: ClassVar[str] = "EXPORT_FAILED"
 
 
+class InsufficientVram(SuiteError):
+    """The preflight found less free VRAM than the configured model needs.
+
+    ADR-0038's wait-or-refuse outcome. Carries ``required_bytes`` and ``available_bytes`` in its
+    details, always: a refusal without the numbers is indistinguishable from a crash, and the whole
+    point of refusing rather than loading is that the user can see what would not have fit.
+
+    Distinct from :class:`BackendUnavailable`, which means the backend did not answer at all.
+    Raised only where telemetry is available (`ideapress[telemetry]`); without it the
+    serialise-and-unload invariant holds on its own and this never appears.
+    """
+
+    code: ClassVar[str] = "INSUFFICIENT_VRAM"
+
+
 class SchemaVersionUnsupported(SuiteError):
     """A payload declares a schema version this build does not support."""
 
@@ -151,6 +167,7 @@ ERROR_CODES: Final[frozenset[str]] = frozenset(
         UnitNotFound.code,
         StageAlreadyRunning.code,
         ExportFailed.code,
+        InsufficientVram.code,
         SchemaVersionUnsupported.code,
     }
 )

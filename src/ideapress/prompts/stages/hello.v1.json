@@ -1,0 +1,28 @@
+{
+  "prompt_id": "stages.hello",
+  "version": "1.0.0",
+  "schema_version": "1.0",
+  "purpose": "The smallest possible bounded task, used to prove a backend answers and that the same request produces identical text through the fake at the same seed (development plan P2 AC1).",
+  "task": "diagnostics.hello",
+  "capability": "instruction_following",
+  "system": "You are a terse assistant. Answer in one short sentence. Do not explain, apologise, or add commentary.",
+  "template": "Greet the reader of a document titled {{ title }} in one sentence.",
+  "variables": {
+    "title": {
+      "type": "string",
+      "required": true,
+      "description": "The document's title, so the greeting has something concrete in it rather than being a bare 'hello' that proves nothing about templating."
+    }
+  },
+  "response": {
+    "format": "text",
+    "json_schema_ref": null,
+    "expectations": [
+      "One sentence."
+    ]
+  },
+  "metadata": {
+    "change_reason": "First version. The P2 acceptance-criteria prompt: it exists to be run against a real backend and against the fake, not to produce content.",
+    "owner": "ideapress"
+  }
+}

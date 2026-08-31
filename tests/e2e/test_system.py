@@ -114,13 +114,46 @@ def test_system_page_renders_without_a_backend(client: TestClient) -> None:
 
 
 def test_static_assets_are_served_from_the_package_not_a_cdn(client: TestClient) -> None:
-    """UI standards: no external request at page load."""
+    """UI standards: no external request at page load.
+
+    Checked on the attributes that *fetch* — `src` and `href` — rather than on the page text. A
+    URL appearing as prose is not a request: the backend's own endpoint is displayed on this very
+    page, and a test that forbade the characters would forbid showing the user where their content
+    goes.
+    """
+    import re
+
     page = client.get("/system", headers={"accept": "text/html"}).text
-    assert "http://" not in page.replace("http://www.w3.org", "")
-    assert "https://" not in page
+    fetched = re.findall(r'(?:src|href)="([^"]+)"', page)
+    assert fetched, "the page references no assets at all, so this proves nothing"
+    external = [url for url in fetched if url.startswith(("http://", "https://", "//"))]
+    assert external == [], f"external resource(s) referenced: {external}"
 
 
 def test_docs_are_loopback_only(settings: Settings) -> None:
     settings.server.host = "0.0.0.0"  # noqa: S104 — asserting the docs are withheld off loopback
     app = create_app(settings, runtime_builder=build_runtime)
     assert app.openapi_url is None
+
+
+def test_health_serialises_when_the_backend_is_unreachable(settings: Settings) -> None:
+    """Regression: an UNSUPPORTED measurement reaching a JSON body made `/health` a 500.
+
+    Found by running the suite under `unshare -rn`, and only there. ModelRack reports
+    `model_count` and `latency_ms` as `Measurement`, which is the UNSUPPORTED sentinel when the
+    provider did not answer; the sentinel raises rather than coercing (ADR-0016), so it must be
+    sanitised at the adapter boundary. An unreachable backend is the exact state spec §20 AC7
+    requires to keep working, so this was a 500 in the supported case.
+    """
+    settings.inference.ollama.base_url = "http://127.0.0.1:1"  # nothing listens here
+    settings.inference.ollama.timeout_seconds = 1
+    app = create_app(settings, runtime_builder=build_runtime)
+    with TestClient(app, base_url=LOOPBACK) as client:
+        response = client.get("/api/v1/health")
+        assert response.status_code == 200
+        components = {c["name"]: c for c in response.json()["components"]}
+        backend = components["backend"]
+        assert backend["status"] == "degraded", "unreachable is degraded, never an outage"
+        assert backend["data"]["reachable"] is False
+        assert client.get("/api/v1/backends").status_code == 200
+        assert client.get("/backends", headers={"accept": "text/html"}).status_code == 200

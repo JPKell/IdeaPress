@@ -236,6 +236,8 @@ only wording differing.
 | LoadCoach queue defers the stage | The attempt records `queue_wait_ms` and the UI shows the wait; interactive stages are submitted with `class = "interactive"` so a human is never behind background work |
 | LoadCoach reports `assumed_context` on the decision | Recorded as a degradation on the attempt: the served context could not be established, so a context-overflow failure later is not a surprise |
 | Context overflow | Reduce bounded context (documented reduction order), then fail with numbers |
+| Next stage's binding names a different model from the resident one | Unload the resident model, then load the incoming one — never both at once ([ADR-0038](../../adr/0038-one-model-at-a-time-per-gpu.md)). The unload and the reload are recorded on the attempt as a `model_switch` degradation with their durations, because on a single-GPU machine a switch costs a full reload and the user is entitled to see what the two-model default is costing them |
+| Preflight finds less free VRAM than the model needs with room for its context | `INSUFFICIENT_VRAM` naming both figures; the stage is not started and the project is untouched and resumable. Only when `ideapress[telemetry]` is installed — without it the invariant holds by serialising and unloading, and no preflight runs |
 
 ---
 
