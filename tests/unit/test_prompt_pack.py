@@ -79,11 +79,38 @@ def test_no_inline_prompt_strings_in_python() -> None:
     """ADR-0012. A long imperative string literal outside the pack is a prompt in hiding.
 
     The heuristic: a string constant over 200 characters, in a module that is not a test and not
-    the configuration example, containing a second-person instruction. It is deliberately narrow —
-    a docstring is not a prompt — and it is checked against the AST rather than the text so that a
-    comment describing a prompt does not trip it.
+    the configuration example, containing a second-person instruction or an output-format
+    imperative. It is deliberately narrow — a docstring is not a prompt, and a length-only
+    threshold would flag the example config and the exporter's inline CSS — but M7 noted the
+    original five markers let a marker-free imperative prompt slip through, so the set now covers
+    the phrasings prompts actually use. It is checked against the AST rather than the text so
+    that a comment describing a prompt does not trip it.
     """
-    markers = ("you are ", "your task", "respond with", "return only", "do not explain")
+    markers = (
+        "you are ",
+        "you must",
+        "you will",
+        "your task",
+        "your job",
+        "your role",
+        "respond with",
+        "respond only",
+        "respond in",
+        "return only",
+        "return json",
+        "return a json",
+        "output only",
+        "output json",
+        "answer with",
+        "answer only",
+        "answer in json",
+        "do not explain",
+        "do not include",
+        "do not add",
+        "step by step",
+        "as a json object",
+        "in the following format",
+    )
     offenders: list[str] = []
     for path in sorted(SRC.rglob("*.py")):
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))

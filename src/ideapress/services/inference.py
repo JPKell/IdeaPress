@@ -224,10 +224,13 @@ class InferenceGateway:
         `gemma4:12b` — spec §12's binding for `draft`, the most important stage in the product —
         enters a runaway reasoning loop on the **first generation after a cold load** and returns
         empty text with ``finish_reason="length"``; the next call is clean. Reproduced three times
-        in three on the reference machine, and not observed at all for `qwen3.5:9b-q8_0`. ADR-0038
-        makes IdeaPress unload before every model switch, so a cold load is guaranteed on every
-        alternation between the two default models — which means that without this, the documented
-        default configuration cannot draft a single unit.
+        in three on the reference machine. The behaviour belongs to reasoning models generally,
+        not to one model: the M7 verification saw `qwen3.5:9b-q8_0` do the same on a draft, more
+        often after a cold load but not only then. ADR-0038 makes IdeaPress unload before every
+        model switch, so a cold load is guaranteed on every alternation between the two default
+        models — which means that without this, the documented default configuration cannot draft
+        a single unit. When the retry's answer is empty too, the raised error pauses only the
+        unit (M7 finding 1a), and `workflow.structured_output_tokens` is the user's lever.
         """
         if result.text.strip() or not result.truncated:
             return result
