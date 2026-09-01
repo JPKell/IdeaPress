@@ -462,7 +462,16 @@ class StageRunner:
             return run.state if run is not None else None
 
     def is_finished(self, run_id: str) -> bool:
-        """Whether a run has reached a terminal state — what the SSE stream closes on."""
+        """Whether a run has reached a terminal state — what the SSE stream closes on.
+
+        A run id that does not exist counts as finished, deliberately: a poller given a bad id
+        must stop rather than wait forever for a run nobody will ever start. Callers that need to
+        tell "ended" from "never existed" ask :meth:`run_state`, which answers ``None``.
+
+        When this answers ``True``, the run's terminal event is already durable — the two are
+        written in one transaction (ADR-0044) — so a reader may check this first and then drain
+        the log without racing the last event.
+        """
         return (self.run_state(run_id) or "completed") in TERMINAL_RUN_STATES
 
     def require_not_running(self, project_id: str) -> None:

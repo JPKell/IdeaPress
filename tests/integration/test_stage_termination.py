@@ -156,3 +156,13 @@ def test_a_terminal_event_is_never_visible_before_the_state_it_reports(
         time.sleep(0.02)
     message = "no terminal event was ever emitted"
     raise AssertionError(message)
+
+
+def test_a_run_that_never_existed_counts_as_finished_rather_than_hanging(
+    runtime: Runtime,
+) -> None:
+    """The undocumented half of `is_finished`, now documented: a bad id stops a poller."""
+    assert runtime.runner.is_finished("no-such-run") is True
+    assert runtime.runner.run_state("no-such-run") is None, (
+        "the caller that needs to tell 'ended' from 'never existed' has a way to"
+    )
