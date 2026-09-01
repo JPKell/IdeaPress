@@ -92,6 +92,31 @@ pin_backend = false        # true = fail the stage instead of falling back
 | LoadCoach API major differs | `BACKEND_VERSION_MISMATCH` naming both versions. No silent downgrade |
 | Backend cannot enforce a schema | Asks for text, parses it, records the degradation. Never claims a schema was enforced |
 | LoadCoach queued the work | The wait is on the attempt and shown in the UI |
+| LoadCoach is up but can serve nothing (`NO_ELIGIBLE_MODEL`, `QUEUE_FULL`, …) | Treated as unavailable, **not** as a content rejection: it falls back if a fallback is set, and never commits an empty unit |
+
+### On a single GPU, configure a fallback
+
+**Observed against LoadCoach 1.0.0 on one 16 GB card.** IdeaPress's stages use different LoadCoach
+task profiles seconds apart — `draft` wants `content.article_draft`, `audit_fast` wants
+`content.review`, `critique` wants `general.reasoning` — and those profiles do not all resolve to
+the same model. Once LoadCoach has loaded a model for one profile, a request for another is
+refused `NO_ELIGIBLE_MODEL`: its admission check charges the full weight of a model that is
+*already resident* against free VRAM, and nothing evicts to make room. The queue does not help;
+routing refuses before a job reaches `waiting_resources`.
+
+The practical consequence is simple:
+
+```toml
+[inference]
+mode = "loadcoach"
+fallback_mode = "ollama"   # on one GPU, treat this as required rather than optional
+pin_backend = false
+```
+
+With the fallback set, a stage LoadCoach cannot serve runs on Ollama and records
+`backend_fallback`; the project finishes either way. With `pin_backend = true` and no fallback, the
+second stage of a project will fail on a single-GPU machine. A host with enough VRAM for two
+resident models, or a LoadCoach that credits residency, does not have this problem.
 
 ## Checking one
 
