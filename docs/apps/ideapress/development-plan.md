@@ -307,7 +307,9 @@ tests/live/test_loadcoach_live.py       # marked
 
 **Tests**
 * Against a schema-driven mock built from LoadCoach's committed OpenAPI snapshot, obtained from the
-  `loadcoach` distribution as a **test-only** dependency of `ideapress[dev]`
+  `loadcoach` distribution as a dependency of the dedicated **`ideapress[loadcoach-contract]`**
+  extra — never of `[dev]`, which would put another application in every developer and CI
+  environment and make "runs with no LoadCoach installed" a property no run has ever tested
   ([Testing Standards §8](../../standards/testing-standards.md)): generate, stream, job submission,
   cancel, feedback. `lint-imports` continues to forbid `from loadcoach import …` anywhere under
   `src/`, and the clean-venv install-check proves `pip install ideapress` pulls in no application.
@@ -322,7 +324,8 @@ tests/live/test_loadcoach_live.py       # marked
 * The prompt LoadCoach forwarded equals the prompt IdeaPress rendered — asserted against the
   schema-driven mock's recorded request, because the attempt's `prompt_sha256` provenance depends
   on it.
-* Parity extended: the same workflow across all **three** backends produces identical structure.
+* Parity extended: the same workflow across all **four** adapters — Ollama, OpenAI-compatible,
+  the capability-poor fake and LoadCoach — produces identical structure.
 * Feedback posted once per committed unit, idempotently.
 * Live (marked): a real project stage through a real LoadCoach.
 

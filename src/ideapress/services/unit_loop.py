@@ -372,7 +372,59 @@ def run_unit(
             "model_guaranteed_requirements": model_guaranteed,
         },
     )
+    _report_to_backend(
+        runtime,
+        project_id=project_id,
+        unit_key=unit.key,
+        validation_passed=report.passed if report is not None else None,
+        edited=limit > 1,
+        emit=emit,
+    )
     return UnitOutcome(unit.key, True, 1, None, report, coverage)
+
+
+def _report_to_backend(
+    runtime: Runtime,
+    *,
+    project_id: str,
+    unit_key: str,
+    validation_passed: bool | None,
+    edited: bool,
+    emit: Callable[[str, str, dict[str, Any]], None],
+) -> None:
+    """Tell the backend how its work turned out, once, after the unit is safely committed.
+
+    Only LoadCoach has anywhere to send this; every other adapter is skipped without a call. It is
+    deliberately after the commit and deliberately unable to fail it: the unit is already written,
+    and a report that could not be delivered is a degradation to note, never a reason to undo
+    finished work (P7 AC4).
+    """
+    from ideapress.services.feedback import send_unit_feedback
+
+    backend = runtime.backend
+    if backend is None:
+        return
+    outcome = send_unit_feedback(
+        runtime.storage,
+        backend,
+        project_id=project_id,
+        unit_key=unit_key,
+        accepted=True,
+        validation_passed=validation_passed,
+        edited=edited,
+    )
+    if outcome.sent:
+        emit(
+            "unit.feedback_sent",
+            f"{unit_key}: feedback posted to the backend for {outcome.posted_count} job(s)",
+            {"unit_key": unit_key, "job_ids": list(outcome.sent)},
+        )
+    for job_id, reason in outcome.failed:
+        emit(
+            "unit.feedback_failed",
+            f"{unit_key}: the backend would not accept feedback for job {job_id}: {reason}",
+            {"unit_key": unit_key, "job_id": job_id},
+        )
 
 
 def _pause(

@@ -252,8 +252,19 @@ class BackendCapabilities:
     json_mode: bool = False
     token_counts: bool = False
     model_selection: bool = False
+    """Whether a model *can be named* on a request. True of every shipped adapter, LoadCoach
+    included — it is not the question of who normally chooses. That is ``routes_internally``."""
     discloses_model: bool = False
     residency_control: bool = False
+    routes_internally: bool = False
+    """Whether the backend chooses the model itself, and owns residency for it.
+
+    ADR-0040. When this is set, :class:`~ideapress.services.inference.InferenceGateway` resolves no
+    ``[models.stages]`` binding, requires none, and performs no unload — because a binding sent
+    down as a model override would silently bypass the routing, the evidence and the admission
+    control that are the entire reason for using such a backend, while every stage still
+    succeeded.
+    """
 
 
 @dataclass(frozen=True, slots=True)

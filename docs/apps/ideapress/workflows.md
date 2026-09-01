@@ -224,7 +224,7 @@ set, and that a `grep` for `LOADCOACH_TASK_MAP` returns one file.
 | Adapter | Model selection | Notes |
 |---|---|---|
 | `OllamaBackend` | `[models.stages]` binding, or `model_hint` | Uses ModelRack; full control over sampling; no queue |
-| `LoadCoachBackend` | LoadCoach routes by task profile | Maps `StageRequest.system`/`.user` onto LoadCoach's `system`/`prompt` fields, which LoadCoach forwards to the provider unmodified; sends `model_hint` as an override only when the user pinned one; sets `X-Client-Name: ideapress`, `X-Request-ID` and a per-attempt `idempotency_key`; surfaces routing metadata onto the attempt; sends feedback once after commit |
+| `LoadCoachBackend` | LoadCoach routes by task profile | Maps `StageRequest.system`/`.user` onto LoadCoach's `system`/`prompt` fields, which LoadCoach forwards to the provider unmodified; sends a model override **only** when `[inference.loadcoach] honour_stage_bindings` is set, so the `[models.stages]` binding cannot silently bypass routing ([ADR-0040](../../adr/0040-routing-backend-owns-model-choice.md)); sets `X-Client-Name: ideapress`, `X-Request-ID` and a per-attempt `idempotency_key`; surfaces routing metadata onto the attempt; sends feedback once after commit |
 | `OpenAICompatibleBackend` | Configured model per stage | Reduced capabilities, honestly reported |
 
 Switching is a configuration change. The parity test runs the same workflow against all three and
@@ -239,8 +239,11 @@ only wording differing.
 | LoadCoach unreachable, pinned | Fail the stage with `BACKEND_UNAVAILABLE`; the project is untouched and resumable |
 | LoadCoach API major mismatch | `BACKEND_VERSION_MISMATCH` naming both versions; no silent downgrade |
 | Backend lacks structured output | Request text plus a parsing step, and record the degradation; never pretend a schema was enforced |
+| LoadCoach enforces the task profile's schema, not the caller's | Ask for `json` rather than `json_schema` and record `structured_output_unavailable` naming the reason. A backend enforcing the *wrong* schema is further from the truth than one enforcing none — through `content.review` it would forbid `requirements_assessment` outright and make ADR-0039's attestation impossible ([ADR-0041](../../adr/0041-caller-schemas-do-not-travel-through-a-router.md)) |
 | LoadCoach queue defers the stage | The attempt records `queue_wait_ms` and the UI shows the wait; interactive stages are submitted with `class = "interactive"` so a human is never behind background work |
 | LoadCoach reports `assumed_context` on the decision | Recorded as a degradation on the attempt: the served context could not be established, so a context-overflow failure later is not a surprise |
+| A model override was sent and a different model answered | Recorded as a `model_override_not_honoured` degradation naming both models. A pin is a request, not a guarantee, and LoadCoach falling back to a working model is better than a failed stage — but the user is told (ADR-0040) |
+| The backend routes internally (`routes_internally`) | IdeaPress resolves no `[models.stages]` binding, requires none, and performs no unload: model choice and residency belong to the backend that owns them (ADR-0040, [ADR-0038 §1](../../adr/0038-one-model-at-a-time-per-gpu.md)) |
 | Context overflow | Reduce bounded context (documented reduction order), then fail with numbers |
 | Next stage's binding names a different model from the resident one | Unload the resident model, then load the incoming one — never both at once ([ADR-0038](../../adr/0038-one-model-at-a-time-per-gpu.md)). The unload and the reload are recorded on the attempt as a `model_switch` degradation with their durations, because on a single-GPU machine a switch costs a full reload and the user is entitled to see what the two-model default is costing them |
 | Preflight finds less free VRAM than the model needs with room for its context | `INSUFFICIENT_VRAM` naming both figures; the stage is not started and the project is untouched and resumable. Only when `ideapress[telemetry]` is installed — without it the invariant holds by serialising and unloading, and no preflight runs |
@@ -309,7 +312,11 @@ and requirements — never chapters, sections or quests.
 ## 11. What a model is never allowed to do
 
 * Decide that a stage is complete.
-* Decide that a requirement is satisfied without a deterministic check (advisory only, and labelled).
+* Decide that a requirement is satisfied **by saying nothing about it**. Where a deterministic
+  check exists the check decides and no verdict can overturn it; where none exists, only an
+  explicit, labelled `met` attestation satisfies it, and silence, `cannot_judge` or an invented
+  word all leave it unsatisfied ([ADR-0039](../../adr/0039-audit-gated-blocking-requirements.md),
+  §3 above). `workflow.allow_audit_gated_requirements = false` removes even that.
 * Modify requirements, the plan, or committed units.
 * Choose which unit to work on next.
 * Cause code execution, a filesystem path, a network call or a database query.

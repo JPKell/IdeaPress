@@ -178,6 +178,11 @@ def record_attempt(
             row.degradations_json = list(result.degradations)
             row.rejection_reason = result.refusal_reason
             row.routing_json = dict(result.routing) if result.routing else None
+            # LoadCoach's adapter carries the key it submitted under in the routing map;
+            # recording it is what lets a resumed project prove a retry replayed rather
+            # than duplicating (P7's idempotency claim).
+            key = (result.routing or {}).get("idempotency_key")
+            row.idempotency_key = str(key) if key else None
             if store_content:
                 row.response_text = result.text
         session.add(row)

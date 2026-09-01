@@ -49,11 +49,9 @@ def build_backend(settings: Settings, *, mode: str | None = None) -> InferenceBa
 
         return FakeBackend()
     if selected == "loadcoach":
-        message = (
-            "The LoadCoach backend is not built yet; it arrives in Phase 7. Use "
-            "inference.mode = 'ollama' or 'openai_compatible'."
-        )
-        raise ConfigurationError(message, details={"field": "inference.mode", "mode": selected})
+        from ideapress.infrastructure.backends.loadcoach import LoadCoachBackend
+
+        return LoadCoachBackend(settings.inference.loadcoach)
     message = f"{selected!r} is not an inference mode this build ships."
     raise ConfigurationError(message, details={"field": "inference.mode", "mode": selected})
 

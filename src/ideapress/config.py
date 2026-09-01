@@ -167,7 +167,7 @@ class OllamaSettings(BaseModel):
 
 
 class LoadCoachSettings(BaseModel):
-    """The optional LoadCoach backend. Unused until P7; configurable now so the shape is set."""
+    """The optional LoadCoach backend: queueing, routing by task profile, and feedback."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -177,6 +177,49 @@ class LoadCoachSettings(BaseModel):
         description="Name of the environment variable holding the token. Never the token itself.",
     )
     timeout_seconds: int = Field(default=600, ge=1)
+    honour_stage_bindings: bool = Field(
+        default=False,
+        description=(
+            "Send the stage's `[models.stages]` binding to LoadCoach as a model override. Off by "
+            "default: LoadCoach chooses the model, which is what it is for. Turning it on pins "
+            "the model and gives up routing, evidence and reliability for that stage (ADR-0040)."
+        ),
+    )
+    job_stages: tuple[str, ...] = Field(
+        default=("draft", "revise", "repair", "project_review"),
+        description=(
+            "Stages submitted through the asynchronous `/jobs` queue rather than synchronous "
+            "`/generate`. The long ones; everything else is interactive and submitted with "
+            '`class = "interactive"` so a person is never queued behind background work.'
+        ),
+    )
+
+    @field_validator("job_stages")
+    @classmethod
+    def _known_model_stages(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        """Refuse a name that is not a model-using stage.
+
+        Args:
+            value: The configured stage identifiers.
+
+        Returns:
+            ``value`` when every entry is a model-using stage in workflows §2.
+
+        Raises:
+            ValueError: An entry names no model-using stage. Naming a gate stage, or misspelling
+                one, would otherwise route nothing through the queue and say nothing about it —
+                the same silent-no-op the `[models.stages]` startup check exists to prevent.
+        """
+        unknown = sorted(set(value) - MODEL_STAGES)
+        if unknown:
+            named = ", ".join(unknown)
+            choices = ", ".join(sorted(MODEL_STAGES))
+            message = (
+                f"inference.loadcoach.job_stages names {named}, which is not a model-using "
+                f"stage. Choose from: {choices}."
+            )
+            raise ValueError(message)
+        return value
 
 
 class OpenAICompatibleSettings(BaseModel):

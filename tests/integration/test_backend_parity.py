@@ -1,7 +1,7 @@
 """P6's backend-parity claim, re-run rather than believed.
 
 Spec §20 AC2: switching `inference.mode` requires **no workflow code change** — proven by running
-the identical workflow against three backends and comparing what came out.
+the identical workflow against all four adapters and comparing what came out.
 
 What "identical structure" means here, precisely: the same unit count, the same requirement
 coverage, the same validation outcomes. **Only wording differs.** So the three backends are given
@@ -10,7 +10,12 @@ adapter layer, not the models. Giving them genuinely different text would test n
 port and would make the assertion unfalsifiable.
 
 The third participant is a deliberately capability-poor backend, which is how the "no structured
-output" degradation path gets exercised in the same comparison.
+output" degradation path gets exercised in the same comparison. The fourth is LoadCoach over its
+schema-driven mock — the one adapter that speaks HTTP rather than going through ModelRack, does not
+enforce the caller's schema (ADR-0041) and does not choose the model (ADR-0040). It is in this
+comparison precisely because it is the least similar: a budget that silently reverted to the task
+profile's default, or a routing backend that quietly pinned a model, would change what came out and
+this is what would notice.
 """
 
 from __future__ import annotations
@@ -20,12 +25,22 @@ import time
 from typing import TYPE_CHECKING, Any
 
 import pytest
+from tests.contract.loadcoach_mock import MockLoadCoach
 
-from ideapress.config import OllamaSettings, OpenAICompatibleSettings, Settings, load_settings
+from ideapress.config import (
+    LoadCoachSettings,
+    OllamaSettings,
+    OpenAICompatibleSettings,
+    Settings,
+    load_settings,
+)
 from ideapress.infrastructure.backends.fake import CAPABILITY_POOR, FakeBackend, default_fake_script
+from ideapress.infrastructure.backends.loadcoach import LoadCoachBackend
 from ideapress.infrastructure.backends.ollama import OllamaBackend
 from ideapress.infrastructure.backends.openai_compatible import OpenAICompatibleBackend
 from ideapress.services.runtime import build_runtime
+
+_OPEN_CLIENTS: list[Any] = []
 
 if TYPE_CHECKING:
     from ideapress.domain.inference import InferenceBackend
@@ -82,6 +97,10 @@ DRAFTS = {
         "It all takes place on your own machine. Nothing at all is uploaded, and no sign-up is "
         "involved anywhere. In exchange, the hardware bill is yours."
     ),
+    "loadcoach": (
+        "The whole thing runs on your own machine. Nothing is uploaded at any point, and there is "
+        "no account to make. The hardware, in return, is your problem."
+    ),
 }
 CLEAN_REVIEW = (
     json.dumps({"findings": []}),
@@ -114,6 +133,13 @@ def _backend(mode: str, *answers: Any) -> InferenceBackend:
             OpenAICompatibleSettings(base_url="http://127.0.0.1:9/v1", model="gemma4:12b"),
             provider=FakeProvider(script, seed=3),  # type: ignore[arg-type]  # structural
         )
+    if mode == "loadcoach":
+        # The one adapter with no ModelRack provider behind it: it speaks HTTP, so its transport is
+        # the schema-driven mock and its answers are the same scripted ones.
+        texts = [a if isinstance(a, str) else json.dumps(a) for a in answers]
+        mock = MockLoadCoach(answers=texts)
+        _OPEN_CLIENTS.append(client := mock.client())
+        return LoadCoachBackend(LoadCoachSettings(job_stages=()), client=client)
     return FakeBackend(script=script, seed=3)
 
 
@@ -190,7 +216,15 @@ def _run_workflow(mode: str) -> dict[str, Any]:
 
 @pytest.fixture(scope="module")
 def results() -> dict[str, dict[str, Any]]:
-    return {mode: _run_workflow(mode) for mode in ("ollama", "openai_compatible", "fake")}
+    try:
+        return {
+            mode: _run_workflow(mode)
+            for mode in ("ollama", "openai_compatible", "fake", "loadcoach")
+        }
+    finally:
+        for client in _OPEN_CLIENTS:
+            client.close()
+        _OPEN_CLIENTS.clear()
 
 
 def test_the_same_workflow_produces_the_same_unit_count(
@@ -198,6 +232,7 @@ def test_the_same_workflow_produces_the_same_unit_count(
 ) -> None:
     counts = {mode: result["unit_count"] for mode, result in results.items()}
     assert set(counts.values()) == {2}, counts
+    assert len(counts) == 4, "the parity claim is over four adapters"
 
 
 def test_the_same_units_reach_the_same_states(results: dict[str, dict[str, Any]]) -> None:
@@ -226,7 +261,7 @@ def test_the_same_requirements_were_compiled(results: dict[str, dict[str, Any]])
 def test_only_the_wording_differs(results: dict[str, dict[str, Any]]) -> None:
     """The other half of the claim: the texts really are different, so parity is not trivial."""
     texts = {mode: json.dumps(result["texts"], sort_keys=True) for mode, result in results.items()}
-    assert len(set(texts.values())) == 3, "the three backends produced identical text"
+    assert len(set(texts.values())) == 4, "the four backends produced identical text"
     for text in texts.values():
         assert "own machine" in text
         assert "uploaded" in text
@@ -275,3 +310,54 @@ def test_a_backend_that_can_enforce_a_schema_records_no_such_degradation() -> No
         )
     )
     assert not any("structured_output_unavailable" in d for d in result.degradations)
+
+
+def test_the_same_output_budget_reaches_every_backend() -> None:
+    """The named silent failure: a budget that reverts to a default on one backend only.
+
+    `workflow.structured_output_tokens` is the user's single lever for every empty-generation
+    pause (spec §15), so it has to mean the same thing in every mode. Through LoadCoach it is
+    especially easy to lose: omit `sampling.max_output_tokens` and the *task profile's* default
+    applies instead — 2048 for `structured.extract` against a configured 8192 — and the stage fails
+    as an empty generation with nothing naming the cause.
+    """
+    from ideapress.domain.inference import Correlation, StageLimits, StageRequest
+
+    budget = 12345
+    request = StageRequest(
+        stage="requirements",
+        system="s",
+        user="u",
+        limits=StageLimits(max_output_tokens=budget, temperature=0.0),
+        model_hint="ollama/qwen3.5:9b-q8_0",
+        correlation=Correlation(project_id="01PROJECT"),
+    )
+
+    seen: dict[str, int] = {}
+
+    for mode in ("ollama", "openai_compatible", "fake"):
+        backend = _backend(mode, {"requirements": []})
+        captured: list[int] = []
+        provider = getattr(backend, "_provider", None)
+        target = provider if provider is not None else backend
+        original = target.generate
+
+        def watched(generation: Any, _captured: list[int] = captured, _o: Any = original) -> Any:
+            _captured.append(int(generation.sampling.max_output_tokens or 0))
+            return _o(generation)
+
+        target.generate = watched  # type: ignore[method-assign]  # observes what the transport got
+        backend.generate(request)
+        seen[mode] = captured[0]
+
+    mock = MockLoadCoach(answers=['{"requirements": []}'])
+    client = mock.client()
+    try:
+        LoadCoachBackend(LoadCoachSettings(job_stages=()), client=client).generate(request)
+        submission = [r for r in mock.requests if r.path == "/api/v1/generate"][-1]
+        seen["loadcoach"] = submission.body["sampling"]["max_output_tokens"]
+    finally:
+        client.close()
+
+    assert set(seen.values()) == {budget}, seen
+    assert len(seen) == 4, seen

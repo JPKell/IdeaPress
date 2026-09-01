@@ -154,9 +154,13 @@ directory. Reads nothing belonging to another application.
 
 [inference.ollama]           base_url = "http://127.0.0.1:11434"  timeout_seconds = 300
 [inference.loadcoach]        base_url = "http://127.0.0.1:8766"  api_key_env = ""  timeout_seconds = 600
+                             honour_stage_bindings = false   # ADR-0040: send the stage binding
+                             # as a model override instead of letting LoadCoach route
 [inference.openai_compatible] base_url = ""  api_key_env = ""  timeout_seconds = 300
 
-# Standalone stage → model bindings (ignored in loadcoach mode unless overridden)
+# Standalone stage → model bindings. Ignored in loadcoach mode unless
+# `[inference.loadcoach] honour_stage_bindings` is set, because a routing backend chooses the
+# model itself, and a binding sent as an override would silently bypass it (ADR-0040).
 [models.stages]
 requirements       = "ollama/qwen3.5:9b-q8_0"
 research_synthesis = "ollama/qwen3.5:9b-q8_0"

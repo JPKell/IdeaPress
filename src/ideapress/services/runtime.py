@@ -67,8 +67,21 @@ class Runtime:
         # component, never a startup failure (spec §20 AC7).
         try:
             self._backend = build_backend(settings)
+            # The fallback is built here, not lazily on the first outage: a fallback that only
+            # fails to build when the primary is already down is not a fallback (workflows §6.2).
+            # A `pin_backend` user gets none at all, which is what pinning means.
+            fallback = None
+            if settings.inference.fallback_mode and not settings.inference.pin_backend:
+                try:
+                    fallback = build_backend(settings, mode=settings.inference.fallback_mode)
+                except ConfigurationError as exc:
+                    logger.warning("backend.fallback_not_built", extra={"detail": str(exc)})
             self._gateway = InferenceGateway(
-                backend=self._backend, bindings=settings.models.stages, execution=settings.execution
+                backend=self._backend,
+                bindings=settings.models.stages,
+                execution=settings.execution,
+                fallback=fallback,
+                pinned=settings.inference.pin_backend,
             )
         except ConfigurationError as exc:
             logger.warning("backend.not_built", extra={"detail": str(exc)})

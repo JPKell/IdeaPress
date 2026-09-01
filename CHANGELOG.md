@@ -7,6 +7,46 @@ packaging and release standards §3.
 
 ## [Unreleased]
 
+### Added
+- **The optional LoadCoach backend** (P7). `inference.mode = "loadcoach"` routes every model-using
+  stage through a running LoadCoach by task profile, with version negotiation on first contact,
+  a per-attempt idempotency key, `X-Request-ID` / `X-Client-Name` propagation, synchronous
+  `/generate` for interactive stages and the `/jobs` queue for long ones, SSE streaming, and the
+  routing decision recorded on every attempt. No workflow code changes to switch.
+- Feedback: after a unit commits, its acceptance and validation result are posted to LoadCoach
+  once per job, idempotently, and never in a way that can fail the commit.
+- `[inference.loadcoach] honour_stage_bindings` (default `false`) — the explicit opt-in that sends
+  a `[models.stages]` binding to LoadCoach as a model override. Off by default because LoadCoach
+  choosing the model is the reason to use it (ADR-0040).
+- `[inference.loadcoach] job_stages` — which stages go through the queue rather than the
+  synchronous endpoint. Refuses a name that is not a model-using stage.
+- The configured `inference.fallback_mode` is now **applied**, not merely described: an
+  unreachable backend falls back at the single choke point and records a `backend_fallback`
+  degradation naming both backends. `pin_backend` fails the stage instead, project intact.
+- A test asserting that only `services/inference.py` calls a backend's `generate`. The gateway's
+  docstring has claimed since P2 that a test walks the source to prove this; none did.
+
+### Changed
+- `BackendCapabilities` gains `routes_internally`. When a backend sets it, the gateway resolves no
+  `[models.stages]` binding and performs no unload — model choice and residency belong to the
+  backend that owns them (ADR-0040). Without this, `mode = "loadcoach"` on the shipped defaults
+  would have pinned every request to the bound model and bypassed LoadCoach's routing, evidence
+  and admission control entirely, while every stage still succeeded.
+- Through LoadCoach, a `json_schema` request is sent as `json` and the difference is recorded as a
+  `structured_output_unavailable` degradation: LoadCoach applies the *task profile's* schema, not
+  the caller's, and for `content.review` that schema forbids `requirements_assessment` outright —
+  which would have made ADR-0039's attestation impossible through this backend (ADR-0041).
+- The backend-parity test now runs the identical workflow across **four** adapters, and asserts
+  that one configured output budget reaches all four unchanged.
+
+### Documentation
+- [ADR-0040](../docs/adr/0040-routing-backend-owns-model-choice.md) — a routing backend owns model
+  choice and residency.
+- [ADR-0041](../docs/adr/0041-caller-schemas-do-not-travel-through-a-router.md) — a caller's output
+  schema does not travel through a router; the caller still owns it.
+- Workflows §11 no longer contradicts ADR-0039: a model may not decide a requirement is satisfied
+  *by saying nothing about it*, which is a different rule from the one it replaced.
+
 ## [0.1.1] - 2026-08-31
 
 The M7-verification fixes. The release blocker was 1a: on the default two-model configuration a

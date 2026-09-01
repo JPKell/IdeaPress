@@ -27,7 +27,12 @@ from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING
 
 from ideapress.domain.inference import StageRequest, StageResult
-from ideapress.errors import ContextLimitExceeded, ModelNotConfigured
+from ideapress.errors import (
+    BackendUnavailable,
+    ContextLimitExceeded,
+    ModelNotConfigured,
+    ProviderTimeout,
+)
 from ideapress.observability.logging import correlation
 
 if TYPE_CHECKING:
@@ -98,6 +103,15 @@ class InferenceGateway:
     backend: InferenceBackend
     bindings: StageBindings
     execution: ExecutionSettings
+    fallback: InferenceBackend | None = None
+    """The adapter to use when :attr:`backend` does not answer, or ``None`` for no fallback.
+
+    Built from `[inference] fallback_mode` by the runtime, and ignored entirely when
+    `pin_backend` is set. It lives here rather than in an adapter because an adapter that could
+    silently become a different adapter would make every provenance record a guess."""
+    pinned: bool = False
+    """Whether the user pinned the backend. Pinned means a stage **fails** rather than falling
+    back — an explicit choice to be told, rather than quietly served by something else."""
     switches: list[ModelSwitch] = field(default_factory=list)
     _lock: threading.Semaphore = field(init=False, repr=False)
     _resident: str | None = field(default=None, init=False, repr=False)
@@ -136,7 +150,14 @@ class InferenceGateway:
         A hint from the caller wins over the binding — that is what `model_hint` is for in
         standalone mode (workflows §6.1) — but it goes through the same switch, so there is no way
         to load a second model by supplying a hint.
+
+        A backend that routes internally (ADR-0040) is exempt from both halves: no binding is
+        resolved, and nothing is unloaded. IdeaPress does not own the model there, so resolving one
+        would pin every request past the backend's own routing, and unloading one would record an
+        eviction that never happened.
         """
+        if self.backend.capabilities().routes_internally:
+            return request.model_hint or ""
         target = request.model_hint or self.model_for(request.stage)
         if not self.execution.unload_before_model_switch:
             self._resident = target
@@ -188,19 +209,72 @@ class InferenceGateway:
             target = self._prepare(request)
             switch = self.switches[-1] if self.switches else None
             # The adapter is told which model to use; it never reads `[models.stages]` itself.
-            # One resolver means one place a binding can be wrong, and it is this one.
-            request = replace(request, model_hint=target)
+            # One resolver means one place a binding can be wrong, and it is this one. A routing
+            # backend resolves to `""` and keeps whatever hint the caller actually set (ADR-0040).
+            if target:
+                request = replace(request, model_hint=target)
             with correlation(
                 project_id=request.correlation.project_id,
                 unit_id=request.correlation.unit_id,
                 stage=request.stage,
                 attempt=request.correlation.attempt,
                 backend=self.backend.name,
-                model_canonical_id=target,
+                model_canonical_id=target or None,
             ):
-                result = self.backend.generate(request)
+                try:
+                    result = self.backend.generate(request)
+                except (BackendUnavailable, ProviderTimeout) as exc:
+                    result = self._fall_back(request, exc)
                 result = self._retry_empty_truncation(request, result)
         return self._annotate(result, switch=switch, target=target)
+
+    def _fall_back(self, request: StageRequest, exc: Exception) -> StageResult:
+        """Run ``request`` on the configured fallback, or re-raise when there is none.
+
+        Args:
+            request: The request the primary backend could not serve.
+            exc: What the primary raised.
+
+        Returns:
+            The fallback's result, carrying a ``backend_fallback`` degradation naming both
+            backends and the reason — so a reader of the attempt can see that this text did not
+            come from the backend the configuration names.
+
+        Raises:
+            BackendUnavailable: There is no fallback, or the user pinned the backend. The stage
+                fails and the project is untouched and resumable (workflows §6.2); it is never a
+                startup failure, and committed units are never rolled back (spec §20 AC5, AC7).
+            ProviderTimeout: The same, when the primary timed out.
+
+        The fallback is applied **here**, at the one choke point, and never inside an adapter: an
+        adapter that fell back to another adapter would be two backends wearing one name, and the
+        attempt's `backend` field would no longer say where the text came from.
+        """
+        if self.fallback is None or self.pinned:
+            raise exc
+        logger.warning(
+            "inference.backend_fallback",
+            extra={
+                "backend": self.backend.name,
+                "fallback": self.fallback.name,
+                "stage": request.stage,
+            },
+        )
+        fallback_request = request
+        if not self.fallback.capabilities().routes_internally and not request.model_hint:
+            # The primary may have been a routing backend, in which case nothing resolved a
+            # binding. The fallback needs one (ADR-0040).
+            fallback_request = replace(request, model_hint=self.model_for(request.stage))
+        result = self.fallback.generate(fallback_request)
+        return replace(
+            result,
+            backend=result.backend or self.fallback.name,
+            degradations=(
+                *result.degradations,
+                f"backend_fallback: {self.backend.name} did not answer ({exc}); this attempt ran "
+                f"on {self.fallback.name} instead",
+            ),
+        )
 
     def _retry_empty_truncation(self, request: StageRequest, result: StageResult) -> StageResult:
         """Retry **once** when the model returned nothing at all after exhausting its budget.
@@ -277,14 +351,15 @@ class InferenceGateway:
         """
         with self._lock:
             target = self._prepare(request)
-            request = replace(request, model_hint=target)
+            if target:
+                request = replace(request, model_hint=target)
             with correlation(
                 project_id=request.correlation.project_id,
                 unit_id=request.correlation.unit_id,
                 stage=request.stage,
                 attempt=request.correlation.attempt,
                 backend=self.backend.name,
-                model_canonical_id=target,
+                model_canonical_id=target or None,
             ):
                 yield from self.backend.stream(request)
 

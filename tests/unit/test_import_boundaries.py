@@ -22,7 +22,7 @@ SRC = Path(__file__).resolve().parents[2] / "src" / "ideapress"
 ADAPTER_ONLY = SRC / "infrastructure" / "backends"
 
 # How many generated modules are still a docstring and a TODO. Ratcheted down by each unit.
-SCAFFOLD_REMAINING = 4
+SCAFFOLD_REMAINING = 2
 
 
 def _python_files() -> Iterator[Path]:
@@ -140,3 +140,30 @@ def test_every_subprocess_in_the_suite_names_its_working_directory() -> None:
             if not any(keyword.arg == "cwd" for keyword in node.keywords):
                 offenders.append(f"{path.relative_to(tests_root)}:{node.lineno} {name}")
     assert offenders == [], f"subprocess call(s) with no explicit cwd: {offenders}"
+
+
+def test_only_the_gateway_calls_a_backend_to_generate() -> None:
+    """ADR-0038's first obligation, asserted rather than asserted-in-a-docstring.
+
+    `InferenceGateway.run` says "this is the only function in IdeaPress that calls a backend's
+    `generate`" and that a test walks the source to prove it. Until M8 no test did — the claim was
+    load-bearing and unchecked, which is the exact shape of the M5 lesson it cites (LoadCoach's
+    synchronous path bypassed the circuit breaker its queue honoured, and nothing noticed until a
+    verification looked for a second entry point).
+
+    The adapters are exempt: `generate` on a *provider* is how an adapter does its job. What is
+    forbidden is a second module reaching a `backend` object and asking it to generate.
+    """
+    offenders = []
+    for path in _python_files():
+        relative = path.relative_to(SRC).as_posix()
+        if relative == "services/inference.py" or relative.startswith("infrastructure/backends/"):
+            continue
+        source = path.read_text(encoding="utf-8")
+        for number, line in enumerate(source.splitlines(), start=1):
+            stripped = line.strip()
+            if stripped.startswith("#"):
+                continue
+            if "backend.generate(" in stripped or "_backend.generate(" in stripped:
+                offenders.append(f"{relative}:{number}")
+    assert offenders == [], f"a second door to a model: {offenders}"
