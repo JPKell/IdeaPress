@@ -26,7 +26,8 @@
           <td>{{ badge("blocking" if requirement.blocking else "advisory",
                        tone="warning" if requirement.blocking else "neutral") }}</td>
           <td>{{ requirement.checks }}
-              {% if not requirement.mechanical %}{{ badge("model-assisted", tone="neutral") }}{% endif %}</td>
+              {% if not requirement.mechanical %}{{ badge("model review only" if requirement.blocking else "model-assisted",
+                                                          tone="warning" if requirement.blocking else "neutral") }}{% endif %}</td>
           <td>{{ requirement.source }}<blockquote>{{ requirement.quote }}</blockquote></td>
           <td>{{ requirement.units | join(", ") or "—" }}</td>
         </tr>

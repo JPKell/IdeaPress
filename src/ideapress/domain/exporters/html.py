@@ -95,11 +95,12 @@ def _coverage_table(document: ExportDocument) -> list[str]:
         )
     out.append("</tbody></table></div>")
     out.append(
-        '<p class="note">A requirement decided by <code>audit</code> was not settled by a '
-        "deterministic check: the guarantee there is model-assisted, and this table says so "
-        "rather than implying otherwise. The <em>grounded in</em> column is the verbatim span of "
-        "the author material the requirement was compiled from — the claim and its evidence side "
-        "by side, so a requirement the material does not support is visible as exactly that.</p>"
+        '<p class="note">A requirement decided by <code>audit</code> is guaranteed by model '
+        "review, not a deterministic check: nothing mechanical settled it, and this table says "
+        "so rather than implying otherwise. The <em>grounded in</em> column is the verbatim span "
+        "of the author material the requirement was compiled from — the claim and its evidence "
+        "side by side, so a requirement the material does not support is visible as exactly "
+        "that.</p>"
     )
     return out
 

@@ -46,8 +46,8 @@
     },
     {
       "prompt_id": "stages.requirements.compile",
-      "version": "1.0.0",
-      "sha256": "sha256:6c3ffef99b24d7b2cd49211e6ddd18fd397776bf988de7a23042d2a406f30713"
+      "version": "1.1.0",
+      "sha256": "sha256:a308633251572e30cbb5a4c82fbf31bb9b35c9d61b6c3ab2071ad8a536a94609"
     },
     {
       "prompt_id": "stages.revise.improve",
@@ -55,5 +55,5 @@
       "sha256": "sha256:3a3fcd74a9da646be2a2c2c46095911887119a7c9ff655555940877cc7ba5330"
     }
   ],
-  "pack_sha256": "sha256:f67bd07a873a24c53bc02944a3984c269a05abc7245a2f656e0e6f999d036d96"
+  "pack_sha256": "sha256:b6d7b113a96b06f51585fbf900e2dd2f5f70214abfe129e1570f119cbcb78670"
 }

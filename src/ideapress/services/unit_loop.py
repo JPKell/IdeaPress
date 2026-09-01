@@ -328,14 +328,29 @@ def run_unit(
         coverage=coverage,
         attempt_id=attempt_id,
     )
+    # Requirements no deterministic check settled — the commit event says so out loud, because a
+    # reader of the event stream must be able to tell a mechanical guarantee from a model's
+    # review without opening the coverage report (M7-20 interim safeguard; ADR-0039 decides the
+    # gate itself).
+    model_guaranteed = sorted(entry.requirement.key for entry in coverage.model_assisted)
+    blocking_guaranteed = sorted(
+        entry.requirement.key for entry in coverage.model_assisted if entry.requirement.blocking
+    )
+    message = f"{unit.key}: version {committed.version} committed ({committed.word_count} words)"
+    if blocking_guaranteed:
+        message += (
+            f" — {', '.join(blocking_guaranteed)} guaranteed by model review, "
+            "not a deterministic check"
+        )
     emit(
         "unit.committed",
-        f"{unit.key}: version {committed.version} committed ({committed.word_count} words)",
+        message,
         {
             "unit_key": unit.key,
             "version": committed.version,
             "content_hash": committed.content_hash,
             "word_count": committed.word_count,
+            "model_guaranteed_requirements": model_guaranteed,
         },
     )
     return UnitOutcome(unit.key, True, 1, None, report, coverage)

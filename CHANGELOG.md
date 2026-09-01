@@ -27,6 +27,17 @@ packaging and release standards §3.
   dropped from the exported artefact, which is where the fabrication-detection mitigation for
   risk T6 matters most (M7 finding 2).
 
+### Changed
+- A blocking requirement with no deterministic check is now labelled **"guaranteed by model
+  review, not a deterministic check"** everywhere it appears: the commit event, the unit and plan
+  pages, `plan show`, `unit show`, and the coverage note of all three exports. This is the interim
+  safeguard for M7 finding 3 (M7-20); what actually satisfies such a requirement is unchanged and
+  is decided by ADR-0039, which is Proposed and awaiting sign-off.
+- The requirement compiler prompt (`stages.requirements.compile` 1.1.0, M7-21) now pushes a
+  blocking requirement toward the strongest literal check the material supports
+  (`must_contain_all`, or `must_not_contain` for prohibitions) and confines single-word
+  `must_contain_any` to genuine alternatives.
+
 ### Added
 - `workflow.structured_output_tokens` (default 8192, range 1024–131072): the output-token budget
   for the structured stages (requirements, outline, audits, critique, project review), previously

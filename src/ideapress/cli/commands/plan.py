@@ -95,6 +95,12 @@ def show(
             marker = "BLOCKING" if requirement["blocking"] else "advisory"
             typer.echo(f"  {requirement['key']} [{marker}] {requirement['text']}")
             typer.echo(f"      checks: {requirement['checks']}")
+            if requirement["blocking"] and not requirement["mechanical"]:
+                typer.secho(
+                    "      NOTE: blocking, but guaranteed by model review, not a deterministic "
+                    "check (M7-20 / ADR-0039)",
+                    fg=typer.colors.YELLOW,
+                )
             typer.echo(f'      source: {requirement["source"]} — "{requirement["quote"]}"')
             typer.echo(f"      units:  {', '.join(requirement['units']) or '—'}")
         typer.echo("\nUNITS")

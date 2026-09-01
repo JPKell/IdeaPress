@@ -58,8 +58,8 @@ def render_markdown(document: ExportDocument) -> str:
             )
         lines.append("")
         lines.append(
-            "A requirement decided by `audit` was not settled by a deterministic check: the "
-            "guarantee there is model-assisted, and this table says so rather than implying "
+            "A requirement decided by `audit` is guaranteed by model review, not a deterministic "
+            "check: nothing mechanical settled it, and this table says so rather than implying "
             "otherwise. The *grounded in* column is the verbatim span of the author material the "
             "requirement was compiled from — the claim and its evidence side by side, so a "
             "requirement the material does not support is visible as exactly that."

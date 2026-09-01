@@ -123,6 +123,16 @@ def test_post_plan_returns_a_task_with_a_stream_url(client: TestClient) -> None:
 def test_the_task_report_carries_every_attempt_with_its_prompt_provenance(
     client: TestClient,
 ) -> None:
+    """Every attempt names the prompt record that produced it, at the pack's own version.
+
+    The old assertion pinned the literal "1.0.0", which was really asserting "the version at the
+    time this test was written" — it broke the moment M7-21 legitimately moved
+    `stages.requirements.compile` to 1.1.0. Comparing against the loaded pack asserts the actual
+    contract: the recorded provenance is the record that ran, not a stale or invented version.
+    """
+    from ideapress.services.prompts import library
+
+    versions = {record.prompt_id: record.version for record in library().all_records()}
     project_id = _project(client)
     task = client.post(f"/api/v1/projects/{project_id}/plan").json()
     report = _wait(client, project_id, task["task_id"])
@@ -130,7 +140,7 @@ def test_the_task_report_carries_every_attempt_with_its_prompt_provenance(
     assert stages == {"requirements", "outline"}
     for attempt in report["attempts"]:
         assert attempt["prompt_id"].startswith("stages.")
-        assert attempt["prompt_version"] == "1.0.0"
+        assert attempt["prompt_version"] == versions[attempt["prompt_id"]]
 
 
 def test_the_stream_replays_everything_from_the_beginning(client: TestClient) -> None:

@@ -41,7 +41,7 @@
     {% for entry in coverage %}
       <tr><td>{{ entry.requirement_key }}</td>
           <td>{{ badge("yes" if entry.satisfied else "no", tone="success" if entry.satisfied else "danger") }}</td>
-          <td>{{ entry.satisfied_by }}{% if entry.satisfied_by != "deterministic_check" %} {{ badge("model-assisted", tone="neutral") }}{% endif %}</td>
+          <td>{{ entry.satisfied_by }}{% if entry.satisfied_by == "audit" %} {{ badge("model review, not a deterministic check", tone="warning") }}{% elif entry.satisfied_by != "deterministic_check" %} {{ badge("model-assisted", tone="neutral") }}{% endif %}</td>
           <td>{{ entry.detail }}</td></tr>
     {% endfor %}
     </tbody>

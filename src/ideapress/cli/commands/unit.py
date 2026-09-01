@@ -68,7 +68,10 @@ def show(
         typer.echo("\nCOVERAGE")
         for entry in detail["coverage"]:
             mark = "yes" if entry["satisfied"] else "NO "
-            typer.echo(f"  {entry['requirement_key']}  {mark}  by {entry['satisfied_by']}")
+            decided = entry["satisfied_by"]
+            if decided == "audit":
+                decided += " — guaranteed by model review, not a deterministic check"
+            typer.echo(f"  {entry['requirement_key']}  {mark}  by {decided}")
             typer.echo(f"      {entry['detail']}")
         typer.echo("\nVALIDATION")
         for check in detail["validation"]:
