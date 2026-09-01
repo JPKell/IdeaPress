@@ -332,9 +332,28 @@ class MockLoadCoach:
         self.requests.append(RecordedRequest(request.method, path, body, request.headers))
 
         if request.method == "GET" and path == "/api/v1/version":
-            return self._json({"version": self._version, "api_versions": self._api_versions})
+            # The shape a **running** LoadCoach 1.0.0 answers with, read from the service rather
+            # than guessed from api.md's prose (M8-04). The snapshot types this response as a bare
+            # object, so it is the one body in this mock that no schema constrains — which is
+            # exactly why it was wrong until a live run looked.
+            return self._json(
+                {
+                    "application": {
+                        "name": "loadcoach",
+                        "version": self._version,
+                        "git_commit": None,
+                    },
+                    "api": {
+                        "current": self._api_versions[0] if self._api_versions else "v1",
+                        "supported": list(self._api_versions),
+                        "deprecated": [],
+                    },
+                }
+            )
         if request.method == "GET" and path == "/api/v1/task-profiles":
-            return self._json({"task_profiles": [{"id": name} for name in self._profiles]})
+            # `profile_id` is the running service's key (M8-05); the mock said `id` and every
+            # offline test passed on the shared misconception.
+            return self._json({"task_profiles": [{"profile_id": name} for name in self._profiles]})
         if request.method == "GET" and path == "/api/v1/models":
             return self._json(
                 {"items": [{"canonical_id": self._model_canonical_id, "served_context": 32768}]}

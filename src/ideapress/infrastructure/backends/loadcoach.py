@@ -378,7 +378,7 @@ class LoadCoachBackend:
                     "base_url": self._base_url,
                     "ideapress_api_major": SUPPORTED_API_MAJOR,
                     "loadcoach_api_majors": sorted(majors),
-                    "loadcoach_version": body.get("version"),
+                    "loadcoach_version": self._application_version(body),
                     "ideapress_version": __version__,
                 },
             )
@@ -388,22 +388,48 @@ class LoadCoachBackend:
 
     @staticmethod
     def _api_majors(body: Mapping[str, Any]) -> set[int]:
-        """Read the API majors from ``GET /version``, accepting either documented spelling."""
+        """Read the API majors from ``GET /version``.
+
+        LoadCoach 1.0.0 answers ``{"application": {...}, "api": {"current": "v1",
+        "supported": ["v1"], "deprecated": []}}``. The committed OpenAPI snapshot types this
+        response as a bare object (`additionalProperties: true`), so the shape is not something a
+        schema-driven mock can enforce — it was read from the running service (M8-04) rather than
+        inferred from api.md's prose, which describes the contents but not the nesting.
+
+        The flat spellings are accepted too, so a future release that flattens the document does
+        not break negotiation on the version that has to *detect* the change.
+        """
         majors: set[int] = set()
-        versions = body.get("api_versions")
-        if isinstance(versions, (list, tuple)):
-            for entry in versions:
-                text = str(entry).lstrip("vV")
-                head = text.split(".", 1)[0]
-                if head.isdigit():
-                    majors.add(int(head))
-        single = body.get("api_version")
-        if single is not None:
-            text = str(single).lstrip("vV")
+
+        def absorb(value: object) -> None:
+            text = str(value).lstrip("vV")
             head = text.split(".", 1)[0]
             if head.isdigit():
                 majors.add(int(head))
+
+        api = body.get("api")
+        if isinstance(api, dict):
+            supported = api.get("supported")
+            if isinstance(supported, (list, tuple)):
+                for entry in supported:
+                    absorb(entry)
+            if api.get("current") is not None:
+                absorb(api["current"])
+        versions = body.get("api_versions")
+        if isinstance(versions, (list, tuple)):
+            for entry in versions:
+                absorb(entry)
+        if body.get("api_version") is not None:
+            absorb(body["api_version"])
         return majors
+
+    @staticmethod
+    def _application_version(body: Mapping[str, Any]) -> str:
+        """The application version from ``GET /version``, nested or flat."""
+        application = body.get("application")
+        if isinstance(application, dict) and application.get("version"):
+            return str(application["version"])
+        return str(body.get("version", ""))
 
     def task_profiles(self) -> set[str]:
         """The task profile identifiers this LoadCoach actually serves.
@@ -426,7 +452,18 @@ class LoadCoachBackend:
         elif isinstance(profiles, (list, tuple)):
             for entry in profiles:
                 if isinstance(entry, dict):
-                    identifier = entry.get("id", entry.get("task", entry.get("name")))
+                    # `profile_id` is what LoadCoach 1.0.0 actually emits, read from the running
+                    # service (M8-05). The others are accepted so a rename on that side degrades to
+                    # a clear "profile missing" rather than to an empty set that reads as "nothing
+                    # is served" — which is the shape this very defect took.
+                    identifier = next(
+                        (
+                            entry[key]
+                            for key in ("profile_id", "id", "task", "name")
+                            if entry.get(key) is not None
+                        ),
+                        None,
+                    )
                     if identifier is not None:
                         found.add(str(identifier))
                 else:
@@ -502,14 +539,15 @@ class LoadCoachBackend:
                 is_remote=self._is_remote,
             )
         latency_ms = (time.perf_counter() - started) * 1000.0
+        application_version = self._application_version(version)
         return BackendHealth(
             backend=self.name,
             status="ok",
-            detail=f"LoadCoach {version.get('version', 'unknown')}",
+            detail=f"LoadCoach {application_version or 'unknown'}",
             base_url=self._base_url,
             is_remote=self._is_remote,
             latency_ms=round(latency_ms, 2),
-            version=str(version.get("version", "")) or None,
+            version=application_version or None,
         )
 
     @property

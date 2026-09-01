@@ -373,6 +373,20 @@ def test_the_version_call_is_cached_across_generations(
     assert [r.path for r in mock.requests].count("/api/v1/version") == 1
 
 
+def test_the_running_services_own_version_shape_negotiates() -> None:
+    """The shape LoadCoach 1.0.0 actually answers with: `api.supported = ["v1"]`.
+
+    Regression guard for M8-04 — the adapter read a flat `api_versions` key that the real service
+    does not have, and every offline test passed because the mock had the same misconception.
+    """
+    mock = MockLoadCoach(answers=["x"], api_versions=("v1",))
+    client = mock.client()
+    backend = LoadCoachBackend(LoadCoachSettings(), client=client)
+    assert backend.health().status == "ok"
+    assert backend.health().version == "1.0.0"
+    client.close()
+
+
 def test_a_major_mismatch_names_both_versions_and_refuses() -> None:
     """No silent downgrade: an adapter guessing at a contract it does not know is how a wrong
     field becomes a wrong provenance record."""
