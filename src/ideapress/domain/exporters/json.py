@@ -59,6 +59,13 @@ def build_payload(document: ExportDocument) -> dict[str, Any]:
                         "mechanical": entry.is_mechanical,
                         "detail": entry.detail,
                         "checks": entry.checks,
+                        # The grounding evidence (risk T6): the verbatim quote travels into the
+                        # export so a reader can weigh the claim against the material.
+                        "source": {
+                            "document": entry.source_document,
+                            "quote": entry.source_quote,
+                            "anchor": entry.source_anchor,
+                        },
                     }
                     for entry in sorted(unit.coverage, key=lambda entry: entry.key)
                 ],

@@ -18,6 +18,12 @@ packaging and release standards §3.
   had no legal transition back into the loop and the project was unrecoverable from the CLI
   (M7 finding 1b).
 
+- The requirement grounding evidence — the source document and the **verbatim quote** the
+  compiler cited — now appears in the coverage section of all three exporters (Markdown, HTML
+  with escaping, JSON as a structured `source` object). It was shown in the live views but
+  dropped from the exported artefact, which is where the fabrication-detection mitigation for
+  risk T6 matters most (M7 finding 2).
+
 ### Added
 - `workflow.structured_output_tokens` (default 8192, range 1024–131072): the output-token budget
   for the structured stages (requirements, outline, audits, critique, project review), previously

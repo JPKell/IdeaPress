@@ -38,6 +38,7 @@ from ideapress.services.plan import load_requirements
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from ideapress.domain.requirements import Requirement
     from ideapress.services.runtime import Runtime
 
 __all__ = ["FORMATS", "build_document", "export_project", "render"]
@@ -52,6 +53,33 @@ _RENDERERS: Final[dict[str, Callable[[ExportDocument], str]]] = {
     "html": render_html,
     "json": render_json,
 }
+
+
+def _coverage_entry(
+    entry: CoverageRow, requirement_keys: dict[str, str], requirements: dict[str, Requirement]
+) -> RequirementCoverage:
+    """Resolve one stored coverage row against its requirement, source and quote included.
+
+    The source travels because it is the fabrication-detection evidence (risk T6): the exported
+    coverage section shows the claim and the verbatim quote that grounds it side by side, exactly
+    as the live views do (M7 finding 2). A row whose requirement cannot be resolved — a dangling
+    identifier, which cannot be produced by a commit — renders with empty text and source rather
+    than being dropped, because a missing row would hide that something is wrong.
+    """
+    key = requirement_keys.get(entry.requirement_id, "?")
+    requirement = requirements.get(key)
+    return RequirementCoverage(
+        key=key,
+        text=requirement.text if requirement else "",
+        blocking=requirement.blocking if requirement else True,
+        satisfied=entry.satisfied,
+        satisfied_by=entry.satisfied_by,
+        detail=entry.detail_json.get("detail", ""),
+        checks=requirement.describe_checks() if requirement else "",
+        source_document=requirement.source.document if requirement else "",
+        source_quote=requirement.source.quote if requirement else "",
+        source_anchor=requirement.source.anchor if requirement else None,
+    )
 
 
 def build_document(runtime: Runtime, *, project_id: str) -> ExportDocument:
@@ -110,34 +138,7 @@ def build_document(runtime: Runtime, *, project_id: str) -> ExportDocument:
                     coverage=tuple(
                         sorted(
                             (
-                                RequirementCoverage(
-                                    key=requirement_keys.get(entry.requirement_id, "?"),
-                                    text=(
-                                        requirements[requirement_keys[entry.requirement_id]].text
-                                        if entry.requirement_id in requirement_keys
-                                        and requirement_keys[entry.requirement_id] in requirements
-                                        else ""
-                                    ),
-                                    blocking=(
-                                        requirements[
-                                            requirement_keys[entry.requirement_id]
-                                        ].blocking
-                                        if entry.requirement_id in requirement_keys
-                                        and requirement_keys[entry.requirement_id] in requirements
-                                        else True
-                                    ),
-                                    satisfied=entry.satisfied,
-                                    satisfied_by=entry.satisfied_by,
-                                    detail=entry.detail_json.get("detail", ""),
-                                    checks=(
-                                        requirements[
-                                            requirement_keys[entry.requirement_id]
-                                        ].describe_checks()
-                                        if entry.requirement_id in requirement_keys
-                                        and requirement_keys[entry.requirement_id] in requirements
-                                        else ""
-                                    ),
-                                )
+                                _coverage_entry(entry, requirement_keys, requirements)
                                 for entry in coverage_rows
                             ),
                             key=lambda entry: entry.key,

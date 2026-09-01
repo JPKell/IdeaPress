@@ -79,9 +79,10 @@ def _coverage_table(document: ExportDocument) -> list[str]:
     out = [
         '<div class="table-scroll"><table>',
         "<thead><tr><th>Requirement</th><th>Class</th><th>Satisfied</th>"
-        "<th>Decided by</th><th>Checked by</th></tr></thead><tbody>",
+        "<th>Decided by</th><th>Checked by</th><th>Grounded in</th></tr></thead><tbody>",
     ]
     for row in rows:
+        grounding = f"{_e(row.source_label)}: “{_e(row.source_quote)}”" if row.source_quote else "—"
         out.append(
             "<tr>"
             f"<td>{_e(row.key)} — {_e(row.text)}</td>"
@@ -89,13 +90,16 @@ def _coverage_table(document: ExportDocument) -> list[str]:
             f'<td class="{"yes" if row.satisfied else ""}">{"yes" if row.satisfied else "no"}</td>'
             f"<td>{_e(row.satisfied_by)}</td>"
             f"<td>{_e(row.checks)}</td>"
+            f"<td>{grounding}</td>"
             "</tr>"
         )
     out.append("</tbody></table></div>")
     out.append(
         '<p class="note">A requirement decided by <code>audit</code> was not settled by a '
         "deterministic check: the guarantee there is model-assisted, and this table says so "
-        "rather than implying otherwise.</p>"
+        "rather than implying otherwise. The <em>grounded in</em> column is the verbatim span of "
+        "the author material the requirement was compiled from — the claim and its evidence side "
+        "by side, so a requirement the material does not support is visible as exactly that.</p>"
     )
     return out
 

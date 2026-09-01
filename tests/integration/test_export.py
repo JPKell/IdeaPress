@@ -350,3 +350,35 @@ def test_the_recorded_hash_is_one_sha256sum_reproduces(
     on_disk = hashlib.sha256(Path(str(written["path"])).read_bytes()).hexdigest()
     assert written["sha256"] == f"sha256:{on_disk}"
     assert written["size_bytes"] == Path(str(written["path"])).stat().st_size
+
+
+@pytest.mark.parametrize("fmt", ["markdown", "html", "json"])
+def test_the_grounding_quote_reaches_the_exported_file(
+    runtime: Runtime, committed_project: str, fmt: str
+) -> None:
+    """M7 finding 2, over the real service: the verbatim quote survives the whole pipeline.
+
+    The compiled requirement's quote is risk T6's fabrication-detection evidence, and
+    `ground_requirement` promises it travels into every export. This walks the real path —
+    compilation, storage, commit, `build_document`, renderer, file on disk — and reads the quote
+    back out of the artefact.
+    """
+    from ideapress.services.export import export_project
+
+    quote = "inference runs entirely on the reader"
+    written = export_project(runtime, project_id=committed_project, fmt=fmt)
+    rendered = Path(str(written["path"])).read_text(encoding="utf-8")
+    assert quote in rendered, "the verbatim grounding quote must appear in the exported artefact"
+    if fmt == "json":
+        entries = [
+            entry
+            for unit in json.loads(rendered)["units"]
+            for entry in unit["coverage"]
+            if entry["requirement_key"] == "R-001"
+        ]
+        assert entries, "every committed unit carries the requirement"
+        for entry in entries:
+            assert entry["source"]["document"] == "brief"
+            assert entry["source"]["quote"] == (
+                "inference runs entirely on the reader's own machine"
+            )

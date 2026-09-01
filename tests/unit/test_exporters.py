@@ -54,6 +54,9 @@ def _document(*, hostile: bool = False) -> ExportDocument:
             satisfied_by="deterministic_check",
             detail="found 'uploaded'",
             checks="contains any of: 'uploaded'",
+            source_document="brief",
+            source_quote="no document content is uploaded anywhere <ever>",
+            source_anchor="privacy",
         ),
         RequirementCoverage(
             key="R-001",
@@ -63,6 +66,8 @@ def _document(*, hostile: bool = False) -> ExportDocument:
             satisfied_by="audit",
             detail="an audit reported this satisfied",
             checks="no deterministic check — evaluated by audit only",
+            source_document="brief",
+            source_quote="inference runs entirely on the reader's own machine",
         ),
     )
     provenance = (
@@ -306,3 +311,32 @@ def test_identical_under_a_different_locale_timezone_and_hash_seed(fmt: str) -> 
         f"{fmt} rendered differently across locale, timezone and hash seed"
     )
     assert outputs[0] == RENDERERS[fmt](_document())
+
+
+@pytest.mark.parametrize("fmt", sorted(RENDERERS))
+def test_the_grounding_quote_travels_into_every_export(fmt: str) -> None:
+    """M7 finding 2: the verbatim quote is the fabrication-detection evidence (risk T6).
+
+    `ground_requirement` promises it travels into *every view and every export*; the plan page
+    and `plan show` had it, the three exporters did not — which removed the only mitigation for
+    a model attaching an unrelated requirement to a real quote exactly where a reader relies
+    on it.
+    """
+    rendered = RENDERERS[fmt](_document())
+    if fmt == "html":
+        # Escaped like every other model-influenced string — a hostile quote stays inert.
+        assert "no document content is uploaded anywhere &lt;ever&gt;" in rendered
+        assert "<ever>" not in rendered
+    else:
+        assert "inference runs entirely on the reader's own machine" in rendered
+        assert "no document content is uploaded anywhere <ever>" in rendered
+    if fmt == "markdown":
+        assert "brief#privacy" in rendered, "the anchor names where in the material to look"
+    if fmt == "json":
+        entry = json.loads(rendered)["units"][0]["coverage"][1]
+        assert entry["requirement_key"] == "R-002"
+        assert entry["source"] == {
+            "document": "brief",
+            "quote": "no document content is uploaded anywhere <ever>",
+            "anchor": "privacy",
+        }

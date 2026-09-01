@@ -35,7 +35,22 @@ project can be checked against the version it was produced under rather than ass
 
 @dataclass(frozen=True, slots=True)
 class RequirementCoverage:
-    """One requirement and how this unit answered it."""
+    """One requirement and how this unit answered it.
+
+    Attributes:
+        key, text, blocking: The requirement as compiled.
+        satisfied, satisfied_by, detail: What the coverage gate decided, and on what.
+        checks: The deterministic checks, described; the honest phrase when there are none.
+        source_document: Which piece of author material grounds the requirement.
+        source_quote: The **verbatim** span of that document the compiler cited. This is risk
+            T6's residual-case evidence — a model can attach an unrelated requirement to a real
+            quote, and the only mitigation is that a person reads the claim and its evidence side
+            by side — so it travels into every export, not only the live views (M7 finding 2).
+        source_anchor: An optional section name, for display.
+
+    The three source fields are empty only when the requirement row could not be resolved at
+    all — the same degenerate case that leaves ``text`` empty.
+    """
 
     key: str
     text: str
@@ -44,11 +59,21 @@ class RequirementCoverage:
     satisfied_by: str
     detail: str
     checks: str
+    source_document: str = ""
+    source_quote: str = ""
+    source_anchor: str | None = None
 
     @property
     def is_mechanical(self) -> bool:
         """Whether a deterministic check decided it, rather than a model."""
         return self.satisfied_by == "deterministic_check"
+
+    @property
+    def source_label(self) -> str:
+        """How the grounding reference reads: ``brief#privacy`` or ``brief``."""
+        if self.source_anchor:
+            return f"{self.source_document}#{self.source_anchor}"
+        return self.source_document
 
 
 @dataclass(frozen=True, slots=True)
