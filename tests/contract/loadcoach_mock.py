@@ -303,6 +303,7 @@ class MockLoadCoach:
         self._queue_wait_ms = queue_wait_ms
         self._job_sequence = 0
         self.replayed_keys: list[str] = []
+        self._fail_next: tuple[str, str, str] | None = None
         self._by_idempotency_key: dict[str, dict[str, Any]] = {}
 
     # ------------------------------------------------------------------ wiring
@@ -390,6 +391,22 @@ class MockLoadCoach:
 
     # ------------------------------------------------------------------ bodies
 
+    def fail_next(self, code: str, message: str = "", *, state: str = "failed") -> None:
+        """Make the next generation end in a terminal non-completion, as a real LoadCoach does.
+
+        This exists because the shape LoadCoach uses to report a refused stage is **not** an HTTP
+        error: it answers `200` with a job record whose `state` is `failed`, whose `state_reason`
+        carries the code, whose `output.text` is `null` and whose `finish_reason` is `null`. A mock
+        that can only produce `completed` cannot express that, and a real `NO_ELIGIBLE_MODEL` was
+        consequently read as a successful empty generation until a live run caught it.
+
+        Args:
+            code: LoadCoach's error code, e.g. `NO_ELIGIBLE_MODEL`.
+            message: Its human-readable message.
+            state: The terminal state, `failed` or `cancelled`.
+        """
+        self._fail_next = (code, message or f"{code} from the mock.", state)
+
     def _completion(self, body: Mapping[str, Any]) -> dict[str, Any]:
         """The documented `/generate` response for one submitted body (api.md §4)."""
         key = body.get("idempotency_key")
@@ -398,6 +415,10 @@ class MockLoadCoach:
             return self._by_idempotency_key[key]
         self._job_sequence += 1
         job_id = f"01J9K{self._job_sequence:04d}"
+        if self._fail_next is not None:
+            code, message, state = self._fail_next
+            self._fail_next = None
+            return self._failure(job_id, code=code, message=message, state=state)
         payload: dict[str, Any] = {
             "job_id": job_id,
             "status": "completed",
@@ -433,6 +454,51 @@ class MockLoadCoach:
         if isinstance(key, str):
             self._by_idempotency_key[key] = payload
         return payload
+
+    def _failure(self, job_id: str, *, code: str, message: str, state: str) -> dict[str, Any]:
+        """A terminal non-completion, field for field as a real LoadCoach 1.0.0 emits it.
+
+        Copied from an observed record: `output.text` and `finish_reason` are `null`, `usage`
+        counts are `null`, `routing` still carries the decision that was made before the failure,
+        and the whole thing arrives with HTTP 200.
+        """
+        return {
+            "job_id": job_id,
+            "status": state,
+            "state": state,
+            "state_reason": code,
+            "error": {"code": code, "message": message},
+            "output": {"text": None, "structured": None, "tool_calls": []},
+            "reasoning": {"available": False, "summary": None, "source": None},
+            "model": {
+                "canonical_id": None,
+                "model_ref": None,
+                "runtime_profile_hash": None,
+                "served_context": None,
+                "served_context_source": None,
+                "target_gpu_index": None,
+            },
+            "routing": {
+                "decision_id": f"01J9KDEC{self._job_sequence:03d}",
+                "final_score": None,
+                "flags": [],
+                "explanation_url": f"/api/v1/jobs/{job_id}/explanation",
+            },
+            "usage": {
+                "input_tokens": None,
+                "output_tokens": None,
+                "thinking_tokens": "unsupported",
+            },
+            "timing": {
+                "total_ms": None,
+                "provider_ms": None,
+                "loadcoach_overhead_ms": None,
+                "ttft_ms": None,
+                "queue_wait_ms": None,
+            },
+            "finish_reason": None,
+            "degradations": [],
+        }
 
     def _submit_job(self, body: Mapping[str, Any]) -> httpx.Response:
         """Accept a job and return `202` with it, as api.md §5 states."""

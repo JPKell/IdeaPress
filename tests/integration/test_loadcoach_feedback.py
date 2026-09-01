@@ -269,3 +269,32 @@ def test_the_commit_event_names_the_feedback_it_sent(harness: _Harness) -> None:
             ).scalars()
         )
     assert "unit.feedback_sent" in kinds, kinds
+
+
+def test_no_feedback_is_posted_about_a_job_that_never_ran(harness: _Harness) -> None:
+    """The worst consequence of reading a refused stage as a success, asserted closed.
+
+    A `failed` job produced nothing, so telling LoadCoach it was *accepted* writes a false
+    positive into a published application's reliability data — which then skews its routing for
+    every future caller, not only IdeaPress. The live I7 run observed exactly that: feedback with
+    `accepted: true` and `validation.passed: true` posted about a job whose state was `failed`
+    with `NO_ELIGIBLE_MODEL`.
+
+    It closes as a consequence of the fix rather than by a second check: a refused stage now
+    raises, so no `StageResult` exists, so `Attempt.routing_json` stays NULL, and
+    `job_ids_for_unit` filters the attempt out. This asserts that chain end to end.
+    """
+    project_id = harness.runtime.projects.create(title="Refused", brief=BRIEF).id
+    assert harness.wait(start_plan(harness.runtime, project_id=project_id).run_id) == "completed"
+
+    # The plan is in place; now LoadCoach declines the draft. Unguarded, the decline arrives as a
+    # successful *empty* generation, the unit commits with no content, and feedback is then posted
+    # about a job that never ran.
+    harness.mock.fail_next("NO_ELIGIBLE_MODEL", "No model satisfied the profile's constraints.")
+    state = harness.wait(start_stage(harness.runtime, project_id=project_id, stage="draft").run_id)
+
+    assert state == "failed", f"a declined draft must fail the stage, not commit: {state}"
+    states = [unit["state"] for unit in unit_list(harness.runtime, project_id=project_id)]
+    assert "committed" not in states, f"a unit committed from a declined draft: {states}"
+    posted = [r for r in harness.mock.requests if r.path.endswith("/feedback")]
+    assert posted == [], f"feedback was posted about a job that never ran: {posted}"

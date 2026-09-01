@@ -377,3 +377,102 @@ def test_a_settings_object_survives_a_loadcoach_mode_with_no_bindings() -> None:
         {"inference": {"mode": "loadcoach"}, "models": {"stages": {}}}
     )
     assert settings.inference.mode == "loadcoach"
+
+
+# ---------------------------------------------------- a terminal failure is not a success
+#
+# Found by the I7 live run against a real LoadCoach 1.0.0, and by nothing offline. LoadCoach
+# reports a refused stage with **HTTP 200** and a job record whose `state` is `failed`; the
+# adapter read every field's benign default out of it — `output.text` absent became `""`,
+# `finish_reason: null` became `"stop"` — and handed back a StageResult claiming the model had
+# finished normally with empty text and no degradation. The mock could only produce `completed`,
+# so no offline test could reach the shape.
+
+
+def _failing(mock: MockLoadCoach, code: str = "NO_ELIGIBLE_MODEL") -> LoadCoachBackend:
+    """A backend whose next generation ends `failed`, as an out-of-VRAM LoadCoach does."""
+    mock.fail_next(code, f"No model satisfied task profile's constraints ({code}).")
+    return LoadCoachBackend(LoadCoachSettings(), client=mock.client())
+
+
+def test_a_failed_job_on_the_synchronous_path_raises_rather_than_returning_empty_text() -> None:
+    """The exact defect: `/generate` answering 200 with a `failed` record.
+
+    `critique` is not a `job_stages` member, so it takes the synchronous path — the one that had
+    no terminal-state check at all.
+    """
+    mock = MockLoadCoach(answers=["unused"])
+    with pytest.raises(BackendUnavailable) as raised:
+        _failing(mock).generate(_request("critique"))
+    assert "NO_ELIGIBLE_MODEL" in str(raised.value)
+
+
+def test_the_refusal_names_loadcoach_s_own_code_and_message() -> None:
+    """The user reads what LoadCoach said, not a paraphrase — and `job_id` makes it auditable."""
+    mock = MockLoadCoach(answers=["unused"])
+    with pytest.raises(BackendUnavailable) as raised:
+        _failing(mock, "QUEUE_FULL").generate(_request("critique"))
+    details = raised.value.details
+    assert details["loadcoach_code"] == "QUEUE_FULL"
+    assert details["state"] == "failed"
+    assert details["job_id"]
+
+
+def test_a_failed_job_on_the_queued_path_raises_too() -> None:
+    """The queued path had a check; this asserts it still refuses now the decision moved."""
+    mock = MockLoadCoach(answers=["unused"])
+    settings = LoadCoachSettings(job_stages=("draft",))
+    mock.fail_next("PROVIDER_UNAVAILABLE")
+    backend = LoadCoachBackend(settings, client=mock.client())
+    with pytest.raises(BackendUnavailable, match="PROVIDER_UNAVAILABLE"):
+        backend.generate(_request("draft"))
+
+
+def test_a_cancelled_job_is_a_failure_too() -> None:
+    """`cancelled` is terminal and produced nothing; reading it as success is the same bug."""
+    mock = MockLoadCoach(answers=["unused"])
+    mock.fail_next("GENERATION_CANCELLED", state="cancelled")
+    backend = LoadCoachBackend(LoadCoachSettings(), client=mock.client())
+    with pytest.raises(BackendUnavailable, match="cancelled"):
+        backend.generate(_request("critique"))
+
+
+def test_a_too_large_request_is_reported_as_a_context_limit_not_an_outage() -> None:
+    """The one code that is about the request rather than about LoadCoach's capacity."""
+    from ideapress.errors import ContextLimitExceeded
+
+    mock = MockLoadCoach(answers=["unused"])
+    with pytest.raises(ContextLimitExceeded):
+        _failing(mock, "CONTEXT_LIMIT_EXCEEDED").generate(_request("critique"))
+
+
+def test_an_unrecognised_failure_code_is_recoverable_rather_than_a_content_rejection() -> None:
+    """A code this adapter has never seen must not be guessed into a dead unit.
+
+    `BackendUnavailable` engages the fallback and leaves the project resumable; `ContentRejected`
+    would tell the user their content was refused on no evidence — the same class of guess that
+    caused the original defect.
+    """
+    mock = MockLoadCoach(answers=["unused"])
+    with pytest.raises(BackendUnavailable):
+        _failing(mock, "SOME_CODE_FROM_A_LATER_LOADCOACH").generate(_request("critique"))
+
+
+def test_a_refused_stage_falls_back_instead_of_committing_nothing() -> None:
+    """The payoff: the failure is now recoverable, so P7's fallback actually engages on it.
+
+    Before the fix this produced empty text with `finish_reason='stop'` and no degradation, so
+    the fallback never ran and the empty result flowed on into the unit.
+    """
+    mock = MockLoadCoach(answers=["unused"])
+    fallback = FakeBackend()
+    result = _gateway(_failing(mock), fallback=fallback).run(_request("critique"))
+    assert result.text.strip()
+    assert any("fallback" in entry for entry in result.degradations), result.degradations
+
+
+def test_a_completed_job_is_still_returned_normally() -> None:
+    """The other half — the guard must not refuse the successful path it now sits in front of."""
+    mock = MockLoadCoach(answers=["A local answer."])
+    backend = LoadCoachBackend(LoadCoachSettings(), client=mock.client())
+    assert backend.generate(_request("critique")).text == "A local answer."

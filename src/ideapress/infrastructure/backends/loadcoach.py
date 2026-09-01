@@ -99,6 +99,27 @@ SUPPORTED_API_MAJOR: Final[int] = 1
 
 _VERSION_CACHE_SECONDS: Final[float] = 300.0
 _JOB_POLL_SECONDS: Final[float] = 0.25
+
+_TERMINAL_STATES: Final[frozenset[str]] = frozenset({"completed", "failed", "cancelled"})
+"""LoadCoach's `JobState` terminal set, spelled as `jobs.state` stores it.
+
+A synchronous `/generate` answers with the same job record a queued one does, so a body carrying
+one of these is authoritative about whether anything was generated — whichever path produced it.
+"""
+
+_TERMINAL_SUCCESS: Final[str] = "completed"
+
+_CONTEXT_CODES: Final[frozenset[str]] = frozenset({"CONTEXT_LIMIT_EXCEEDED"})
+"""The one failure code that is about the *request* being too large rather than LoadCoach being
+unable to serve it.
+
+Every other code in LoadCoach's documented vocabulary — `NO_ELIGIBLE_MODEL`, `QUEUE_FULL`,
+`MAX_WAIT_EXCEEDED`, `RATE_LIMITED`, `PROVIDER_UNAVAILABLE`, `INSUFFICIENT_RESOURCES` … — says
+LoadCoach could not serve this now, not that the content was refused. Those become
+:class:`BackendUnavailable`, which is recoverable: it engages the configured fallback and leaves
+the project resumable. An unrecognised code takes the same route deliberately — guessing that an
+unknown code means "your content was rejected" is how a retryable outage becomes a dead unit.
+"""
 _REFUSAL_MARKERS: Final[tuple[str, ...]] = (
     "i cannot help",
     "i can't help",
@@ -673,10 +694,12 @@ class LoadCoachBackend:
             request_id: Correlation id to propagate.
 
         Returns:
-            The terminal job record.
+            The terminal job record, **whatever its outcome** — a `failed` or `cancelled` job is
+            returned, not raised on, because :meth:`_to_result` is the single place that decides
+            what a non-completion means for both this path and the synchronous one.
 
         Raises:
-            BackendUnavailable: LoadCoach did not answer, or the job failed.
+            BackendUnavailable: LoadCoach did not answer, or accepted a job without an id.
             ProviderTimeout: The job did not reach a terminal state inside the configured timeout.
         """
         submission = dict(body)
@@ -693,20 +716,11 @@ class LoadCoachBackend:
         while time.monotonic() < deadline:
             job = self._call("GET", f"/jobs/{job_id}", request_id=request_id)
             state = str(job.get("status", job.get("state", "")))
-            if state in {"completed", "failed", "cancelled"}:
-                if state != "completed":
-                    message = (
-                        f"LoadCoach job {job_id} ended {state}: "
-                        f"{job.get('error', {}) or 'no reason reported'}"
-                    )
-                    raise BackendUnavailable(
-                        message,
-                        details={
-                            "backend": self.name,
-                            "job_id": job_id,
-                            "state": state,
-                        },
-                    )
+            if state in _TERMINAL_STATES:
+                # A terminal job is returned whatever its outcome; `_to_result` is the one place
+                # that decides what a non-completion means, so the queued path and the synchronous
+                # path cannot disagree. Splitting that decision across the two is what let a
+                # `failed` job reach the caller as a successful empty generation.
                 return job
             time.sleep(_JOB_POLL_SECONDS)
         message = (
@@ -717,6 +731,46 @@ class LoadCoachBackend:
         raise ProviderTimeout(
             message, details={"backend": self.name, "job_id": job_id, "base_url": self._base_url}
         )
+
+    def _refuse_a_terminal_failure(self, payload: Mapping[str, Any]) -> None:
+        """Refuse a job record that reached a terminal state without completing.
+
+        LoadCoach answers a refused stage with **HTTP 200** and a job record whose `state` is
+        `failed`, whose `state_reason` carries the code and whose `output.text` is `null`. Nothing
+        about that is an HTTP error, so :meth:`_decode` passes it through untouched, and every
+        field :meth:`_to_result` reads has a benign default — an absent `finish_reason` in
+        particular would become `"stop"`. Without this check a stage LoadCoach explicitly declined
+        arrives as a *successful empty generation*: no text, no degradation, nothing on the unit
+        page to say why. That is the silence ADR-0039 exists to forbid, and it would go on to post
+        acceptance feedback about a job that never ran.
+
+        Args:
+            payload: A `/generate` response, a terminal job record, or a stream `result` frame —
+                LoadCoach gives all three the same shape.
+
+        Raises:
+            ContextLimitExceeded: The request was too large for any candidate model.
+            BackendUnavailable: Any other terminal non-completion, including an unrecognised
+                code. Recoverable on purpose: it engages the fallback and leaves the project
+                resumable.
+        """
+        state = str(payload.get("status") or payload.get("state") or "")
+        if state not in _TERMINAL_STATES or state == _TERMINAL_SUCCESS:
+            return
+        error = payload.get("error") if isinstance(payload.get("error"), dict) else {}
+        code = str((error or {}).get("code") or payload.get("state_reason") or "")
+        detail = str((error or {}).get("message") or "").strip() or "no reason reported"
+        message = f"LoadCoach ended this stage {state} ({code or 'no code reported'}): {detail}"
+        details: dict[str, Any] = {
+            "backend": self.name,
+            "base_url": self._base_url,
+            "state": state,
+            "loadcoach_code": code,
+            "job_id": str(payload.get("job_id") or ""),
+        }
+        if code in _CONTEXT_CODES:
+            raise ContextLimitExceeded(message, details=details)
+        raise BackendUnavailable(message, details=details)
 
     def _to_result(
         self,
@@ -735,7 +789,12 @@ class LoadCoachBackend:
         Returns:
             The stage result, with routing metadata attached and every degradation LoadCoach
             reported folded in alongside IdeaPress's own.
+
+        Raises:
+            BackendUnavailable: The payload is a terminal job record that did not complete.
+            ContextLimitExceeded: It did not complete because the request was too large.
         """
+        self._refuse_a_terminal_failure(payload)
         output = payload.get("output") if isinstance(payload.get("output"), dict) else {}
         text = str((output or {}).get("text") or "")
         structured = (output or {}).get("structured")

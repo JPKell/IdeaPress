@@ -98,6 +98,15 @@ single unit whose review hit an exhausted output budget aborted the whole draft 
 the project unrecoverable from the CLI.
 
 ### Fixed
+- **A stage LoadCoach refused is no longer reported as a successful empty generation.** LoadCoach
+  answers a declined stage with HTTP 200 and a job record whose `state` is `failed`; the adapter
+  read its benign defaults out of it — an absent `finish_reason` became `"stop"` — and returned
+  empty text with no degradation. The unit committed empty, nothing said why, the configured
+  fallback never engaged, and acceptance feedback was posted to LoadCoach about a job that never
+  ran. A terminal-state check now sits at the one funnel the synchronous, queued and streaming
+  paths share; `CONTEXT_LIMIT_EXCEEDED` raises `ContextLimitExceeded` and every other terminal
+  non-completion — including an unrecognised code — raises the recoverable `BackendUnavailable`,
+  which engages the fallback and leaves the project resumable.
 - A review-stage output budget exhausted on one unit (the model returning no text at all, twice)
   now **pauses that unit** with the stage and the budget in the reason, and the draft stage
   continues to the remaining units. Before, the failure aborted the whole stage: one
