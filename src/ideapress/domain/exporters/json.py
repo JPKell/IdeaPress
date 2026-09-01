@@ -37,7 +37,21 @@ def build_payload(document: ExportDocument) -> dict[str, Any]:
             "brief": document.brief,
             "word_count": document.word_count,
             "unit_count": len(document.units),
+            "planned_unit_count": document.planned_units,
+            "complete": document.is_complete,
         },
+        "incomplete_units": [
+            {
+                "key": u.key,
+                "ordinal": u.ordinal,
+                "title": u.title,
+                "goal": u.goal,
+                "state": u.state,
+                "reason": u.reason,
+                "requirement_keys": list(u.requirement_keys),
+            }
+            for u in sorted(document.incomplete_units, key=lambda u: u.ordinal)
+        ],
         "units": [
             {
                 "key": unit.key,

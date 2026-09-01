@@ -382,3 +382,133 @@ def test_the_grounding_quote_reaches_the_exported_file(
             assert entry["source"]["quote"] == (
                 "inference runs entirely on the reader's own machine"
             )
+
+
+# --------------------------------------------- a partially committed export (M8-21)
+#
+# The empty case has always refused, honestly. The *partial* case silently succeeded: it dropped
+# the uncommitted unit, dropped the requirement that unit owed, reported the committed count as
+# though it were the plan, and every coverage row read `Satisfied: yes`. A reader saw a complete
+# document. The coverage table exists for exactly that question.
+
+
+def _partial(runtime: Runtime) -> str:
+    """A project with one of two planned units committed."""
+    from ideapress.services.stage_bodies import start_plan, start_stage
+
+    _with(runtime, _script(REQUIREMENTS, PLAN))
+    project_id = runtime.projects.create(title="Local inference for writers", brief=BRIEF).id
+    assert _wait(runtime, start_plan(runtime, project_id=project_id).run_id) == "completed"
+    # Only one full cycle is scripted, so the second unit cannot commit.
+    _with(runtime, _script(DRAFT, *CLEAN_REVIEW))
+    _wait(runtime, start_stage(runtime, project_id=project_id, stage="draft").run_id)
+    return project_id
+
+
+def test_a_partially_committed_project_refuses_to_export_by_default(runtime: Runtime) -> None:
+    """The empty case refused and the partial case did not. Both refuse now."""
+    from ideapress.errors import ExportFailed
+    from ideapress.services.export import export_project
+
+    with pytest.raises(ExportFailed) as caught:
+        export_project(runtime, project_id=_partial(runtime), fmt="markdown")
+    assert "not fully committed" in caught.value.message
+    assert "--allow-partial" in caught.value.message
+
+
+@pytest.mark.parametrize("fmt", ["markdown", "html", "json"])
+def test_a_partial_export_names_the_unit_it_could_not_write(runtime: Runtime, fmt: str) -> None:
+    """In **every** format — the omission was uniform across all three, so the fix must be too."""
+    from ideapress.services.export import build_document
+    from ideapress.services.export import render as render_export
+
+    document = build_document(runtime, project_id=_partial(runtime))
+    assert document.incomplete_units, "the uncommitted unit is not recorded"
+    rendered = render_export(document, fmt)
+    assert document.incomplete_units[0].key in rendered, f"{fmt}: the unit's key is absent"
+    assert "ncomplete" in rendered, f"{fmt}: nothing says the document is incomplete"
+
+
+@pytest.mark.parametrize("fmt", ["markdown", "html", "json"])
+def test_a_partial_export_says_how_many_units_the_plan_called_for(
+    runtime: Runtime, fmt: str
+) -> None:
+    """Reporting the committed count alone is not wrong about what the file holds; it is silent
+    about what it does not, which is the same thing to a reader."""
+    from ideapress.services.export import build_document
+    from ideapress.services.export import render as render_export
+
+    document = build_document(runtime, project_id=_partial(runtime))
+    assert document.planned_units == 2
+    assert len(document.units) == 1
+    assert "2" in render_export(document, fmt)
+
+
+def test_the_orphaned_requirement_is_reported_not_dropped(runtime: Runtime) -> None:
+    """The heart of it: the requirement the uncommitted unit owed still appears in the table."""
+    from ideapress.services.export import build_document
+
+    document = build_document(runtime, project_id=_partial(runtime))
+    assert "R-001" in {row.key for row in document.coverage_rows()}
+
+
+def test_a_requirement_shared_by_several_units_appears_once(runtime: Runtime) -> None:
+    """R-001 is assigned to both planned units. Repeated identical rows imply repeated
+    requirements — the real export showed one requirement four times."""
+    from ideapress.services.export import build_document
+
+    keys = [
+        row.key for row in build_document(runtime, project_id=_partial(runtime)).coverage_rows()
+    ]
+    assert len(keys) == len(set(keys)), f"duplicated requirement rows: {keys}"
+
+
+def test_allow_partial_lets_it_through_and_labels_what_it_wrote(runtime: Runtime) -> None:
+    from ideapress.services.export import export_project
+
+    written = export_project(
+        runtime, project_id=_partial(runtime), fmt="markdown", allow_partial=True
+    )
+    assert "ncomplete" in Path(str(written["path"])).read_text(encoding="utf-8")
+
+
+def test_a_complete_project_needs_no_flag_and_claims_nothing_partial(
+    runtime: Runtime, committed_project: str
+) -> None:
+    """The other half, so the disclosure cannot become noise on every export."""
+    from ideapress.services.export import build_document
+    from ideapress.services.export import render as render_export
+
+    document = build_document(runtime, project_id=committed_project)
+    assert document.is_complete
+    assert document.incomplete_units == ()
+    assert "ncomplete" not in render_export(document, "markdown")
+
+
+def test_a_committed_units_findings_and_critiques_reach_the_export(
+    runtime: Runtime, committed_project: str
+) -> None:
+    """`ExportUnit.findings` and `.critiques` existed since the exporters were written and nothing
+    ever filled them, so a unit that committed carrying unresolved `major` findings — because the
+    review stopped on `diminishing_returns` rather than because they were fixed — exported as
+    though it had none."""
+    from ideapress.services.export import build_document
+
+    document = build_document(runtime, project_id=committed_project)
+    assert document.units
+    # The scripted review is clean, so there are no findings to carry; what this holds is that the
+    # critique verdict the unit committed under is present and readable.
+    assert document.units[0].critiques, "no critique reached the export"
+    assert document.units[0].critiques[-1]["verdict"] == "acceptable"
+
+
+def test_stdout_refuses_a_partial_export_on_the_same_terms(runtime: Runtime) -> None:
+    """`--stdout` renders without writing, but the usual use is `> file`, so a partial export
+    would otherwise be one redirect away from the check."""
+    from ideapress.errors import ExportFailed
+    from ideapress.services.export import build_document, refuse_partial_export
+
+    document = build_document(runtime, project_id=_partial(runtime))
+    with pytest.raises(ExportFailed):
+        refuse_partial_export(document, allow_partial=False)
+    refuse_partial_export(document, allow_partial=True)  # the opt-in still works

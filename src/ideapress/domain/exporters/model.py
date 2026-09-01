@@ -116,6 +116,28 @@ class ExportUnit:
 
 
 @dataclass(frozen=True, slots=True)
+class IncompleteUnit:
+    """A planned unit that never committed, and the reason it did not.
+
+    Attributes:
+        key, ordinal, title, goal: The unit as planned.
+        state: Where it stopped — ``planned``, ``paused``, ``drafting`` …
+        reason: The pause reason when there is one, verbatim, so the export names the same remedy
+            the unit page does.
+        requirement_keys: The requirements that were this unit's to answer, and which therefore
+            nothing answered.
+    """
+
+    key: str
+    ordinal: int
+    title: str
+    goal: str
+    state: str
+    reason: str = ""
+    requirement_keys: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
 class ExportDocument:
     """A committed project, ready to serialise.
 
@@ -144,6 +166,20 @@ class ExportDocument:
     units: tuple[ExportUnit, ...]
     format_version: str = EXPORT_FORMAT_VERSION
     review_findings: tuple[dict[str, Any], ...] = field(default_factory=tuple)
+    planned_units: int = 0
+    """How many units the plan called for, committed or not.
+
+    Carried so the provenance block can state planned-versus-committed rather than reporting the
+    committed count alone. An export that says `Units: 4` for a five-unit plan is not wrong about
+    what it contains; it is silent about what it does not, which is the same thing to a reader.
+    """
+    incomplete_units: tuple[IncompleteUnit, ...] = field(default_factory=tuple)
+    """Planned units with no committed version, and why — a paused unit's reason included.
+
+    Their **content** is deliberately absent: an export is of work that passed its gates, and
+    putting an unvalidated draft in a file the user is entitled to trust would be worse than
+    omitting it. Their *existence* is not optional.
+    """
 
     @property
     def word_count(self) -> int:
@@ -156,13 +192,51 @@ class ExportDocument:
         return tuple(unit.content_hash for unit in self.units)
 
     def coverage_rows(self) -> Sequence[RequirementCoverage]:
-        """Every unit's coverage, in unit order then requirement-key order.
+        """Every requirement **once**, in requirement-key order, answered or not.
 
-        Sorted explicitly. A set or a dict iterated in insertion order would produce a document
-        that depends on the order rows came back from the database, which is not a guarantee any
-        database makes.
+        Returns:
+            One row per requirement key. A requirement several units share appears once, not once
+            per unit. A requirement whose only unit never committed appears with
+            ``satisfied=False`` and the reason, rather than not appearing.
+
+        Two defects lived in the old shape, which walked the committed units and emitted a row per
+        unit-requirement pair. A requirement assigned to four units produced four identical rows,
+        implying four requirements. And a requirement whose unit paused produced **none** — so an
+        export of a partially committed project listed only requirements that were met, every row
+        reading `Satisfied: yes`, and the one it would have failed was simply absent. A reader saw
+        a complete document. The coverage table exists for exactly that question.
+
+        Sorted explicitly by key: a dict iterated in insertion order would make the document depend
+        on the order rows came back from the database, which is not a guarantee any database makes.
         """
-        rows: list[RequirementCoverage] = []
+        by_key: dict[str, RequirementCoverage] = {}
         for unit in self.units:
-            rows.extend(sorted(unit.coverage, key=lambda entry: entry.key))
-        return rows
+            for entry in unit.coverage:
+                seen = by_key.get(entry.key)
+                # A requirement several units share is satisfied when every unit that owes it
+                # satisfied it; one unsatisfied answer is the one worth reporting.
+                if seen is None or (seen.satisfied and not entry.satisfied):
+                    by_key[entry.key] = entry
+        for incomplete in self.incomplete_units:
+            for key in incomplete.requirement_keys:
+                if key in by_key:
+                    continue
+                by_key[key] = RequirementCoverage(
+                    key=key,
+                    text="",
+                    blocking=True,
+                    satisfied=False,
+                    satisfied_by="not_addressed",
+                    detail=(
+                        f"no committed unit answers it — {incomplete.key} "
+                        f"({incomplete.title}) is {incomplete.state}"
+                        + (f": {incomplete.reason}" if incomplete.reason else "")
+                    ),
+                    checks="",
+                )
+        return [by_key[key] for key in sorted(by_key)]
+
+    @property
+    def is_complete(self) -> bool:
+        """Whether every planned unit committed."""
+        return not self.incomplete_units

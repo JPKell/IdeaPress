@@ -144,6 +144,22 @@ the project unrecoverable from the CLI.
   in a project that has sources. It reports claims the sources do not support as `major` findings
   that flow into the existing review loop. **It cannot pass a requirement** — only add findings — so
   a model still does not decide the gate.
+- **A partially committed export now discloses what it is missing, or refuses.** A project with
+  *nothing* committed has always refused; a project with *some* of its plan committed silently
+  succeeded — dropping the uncommitted units, dropping the requirements they owed, reporting the
+  committed count as though it were the plan, and rendering every coverage row as `Satisfied: yes`.
+  A reader saw a complete document. Export now refuses such a project (in `--stdout` too, since the
+  usual use is `> file`), with `--allow-partial` to opt in; what it then writes carries an
+  incomplete banner, a *Sections not written* table with each unit's state and pause reason, and
+  planned-versus-committed counts.
+- **The requirement-coverage table lists every requirement once, answered or not.** It was built by
+  walking the committed units, so a requirement shared by four units appeared four times and a
+  requirement whose only unit never committed appeared not at all.
+- **`ExportUnit.findings` and `.critiques` are populated.** Both fields existed since the exporters
+  were written and nothing ever filled them, so a unit that committed carrying unresolved `major`
+  findings — because the review stopped on `diminishing_returns` rather than because they were
+  fixed — exported as though it had none.
+- `ideapress export run` reports a refusal as a one-line message and exit 2, not a traceback.
 - A review-stage output budget exhausted on one unit (the model returning no text at all, twice)
   now **pauses that unit** with the stage and the budget in the reason, and the draft stage
   continues to the remaining units. Before, the failure aborted the whole stage: one

@@ -127,10 +127,28 @@ def render_html(document: ExportDocument) -> str:
         "<body>",
         "<header>",
         f"<h1>{_e(document.title)}</h1>",
-        f'<p class="subtitle">{len(document.units)} units, {document.word_count} words</p>',
+        f'<p class="subtitle">{len(document.units)} of {document.planned_units} units, '
+        f"{document.word_count} words</p>",
         "</header>",
         "<main>",
     ]
+    if not document.is_complete:
+        # Ahead of the content: a reader who stops after the prose must still know it is partial.
+        parts.append('<aside class="incomplete">')
+        parts.append(
+            f"<p><strong>This document is incomplete.</strong> {len(document.units)} of "
+            f"{document.planned_units} planned sections are committed.</p>"
+        )
+        parts.append("<ul>")
+        for missing in sorted(document.incomplete_units, key=lambda u: u.ordinal):
+            owed = ", ".join(missing.requirement_keys) or "no requirements"
+            reason = f" — {_e(missing.reason)}" if missing.reason else ""
+            parts.append(
+                f"<li>{_e(missing.key)} {_e(missing.title)} ({_e(missing.state)}), "
+                f"owed {_e(owed)}{reason}</li>"
+            )
+        parts.append("</ul>")
+        parts.append("</aside>")
     for unit in document.units:
         parts.extend(_unit_section(unit))
 
@@ -144,6 +162,7 @@ def render_html(document: ExportDocument) -> str:
             f"<li>Content type: {_e(document.content_type)} "
             f"{_e(document.content_type_version)}</li>",
             f"<li>Workflow: {_e(document.workflow_id)} {_e(document.workflow_version)}</li>",
+            f"<li>Units: {len(document.units)} committed of {document.planned_units} planned</li>",
             "</ul>",
             "<h3>Requirement coverage</h3>",
         ]

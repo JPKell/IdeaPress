@@ -21,6 +21,15 @@ def render_markdown(document: ExportDocument) -> str:
         wall-clock stamp, every collection sorted before it is iterated.
     """
     lines: list[str] = [f"# {document.title}", ""]
+    if not document.is_complete:
+        # Before the content, not in an appendix: a reader who stops after the prose must still
+        # know the document is partial (M8-21).
+        lines.append(
+            f"> **This document is incomplete.** {len(document.units)} of "
+            f"{document.planned_units} planned sections are committed; the rest are listed under "
+            f"*Sections not written* below, with the reason each stopped."
+        )
+        lines.append("")
     for unit in document.units:
         lines.append(f"## {unit.title}")
         lines.append("")
@@ -34,9 +43,28 @@ def render_markdown(document: ExportDocument) -> str:
     lines.append(f"- Export format version: {document.format_version}")
     lines.append(f"- Content type: {document.content_type} {document.content_type_version}")
     lines.append(f"- Workflow: {document.workflow_id} {document.workflow_version}")
-    lines.append(f"- Units: {len(document.units)}")
+    lines.append(f"- Units: {len(document.units)} committed of {document.planned_units} planned")
     lines.append(f"- Words: {document.word_count}")
     lines.append("")
+
+    if document.incomplete_units:
+        lines.append("### Sections not written")
+        lines.append("")
+        lines.append("| Unit | Title | State | Requirements it owed | Reason |")
+        lines.append("| --- | --- | --- | --- | --- |")
+        for missing in sorted(document.incomplete_units, key=lambda u: u.ordinal):
+            lines.append(
+                f"| {missing.key} | {_cell(missing.title)} | {missing.state} "
+                f"| {', '.join(missing.requirement_keys) or '—'} "
+                f"| {_cell(missing.reason) or '—'} |"
+            )
+        lines.append("")
+        lines.append(
+            "Their text is deliberately absent — an export carries work that passed its gates. "
+            "Their absence is not: a requirement nothing answered is in the table below, marked "
+            "unsatisfied."
+        )
+        lines.append("")
 
     lines.append("### Requirement coverage")
     lines.append("")
