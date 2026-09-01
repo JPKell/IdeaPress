@@ -30,17 +30,24 @@ def runtime_for() -> Iterator[Runtime]:
 
 
 def _wait(runtime: Runtime, task_id: str) -> str:
-    """Block until a stage finishes, printing its events as they are persisted."""
+    """Block until a stage finishes, printing its events as they are persisted.
+
+    Asks whether the run has ended *before* draining, and drains once more after it has. Draining
+    first would print everything except the line that matters: the terminal event is written in
+    the same transaction as the terminal state, so a read taken before the finish check can miss
+    it by a hair and the loop then exits without ever looking again.
+    """
     import time
 
     seen = 0
     while True:
+        finished = runtime.runner.is_finished(task_id)
         source = runtime.events.source(runtime.storage, task_id)
         for record in source.records(after=seen):
             seen = record.sequence
             if record.event_type != "token":
                 typer.echo(f"  [{record.sequence:>3}] {record.event_type}: {record.message}")
-        if runtime.runner.is_finished(task_id):
+        if finished:
             break
         time.sleep(0.1)
     return runtime.runner.run_state(task_id) or "unknown"

@@ -254,3 +254,36 @@ def test_unit_history_reports_each_version(monkeypatch: pytest.MonkeyPatch) -> N
     assert shown.exit_code == 0
     assert "v1" in shown.stdout
     assert "committed" in shown.stdout
+
+
+def test_plan_build_prints_the_event_that_says_the_run_ended(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The last line of a run's log is the one saying it ended, and the easiest one to lose.
+
+    ``_wait`` polls two things — the events and whether the run is over — and printing before
+    asking loses the race it is most likely to lose: the terminal event is written in the same
+    transaction as the terminal state, so a drain taken *before* the finish check can miss it by a
+    hair, and the loop then breaks without looking again. Slowing the finish check widens that
+    window from microseconds to something a test can rely on: the stage ends while the check is
+    in flight, which is precisely the case the ordering has to survive.
+    """
+    import time
+
+    from ideapress.services.stages import StageRunner
+
+    real_is_finished = StageRunner.is_finished
+
+    def slow_is_finished(self: StageRunner, run_id: str) -> bool:
+        time.sleep(0.3)
+        return bool(real_is_finished(self, run_id))
+
+    monkeypatch.setattr(StageRunner, "is_finished", slow_is_finished)
+
+    project_id = _project()
+    built = runner.invoke(cli_app, ["plan", "build", project_id])
+
+    assert built.exit_code == 0, built.output
+    assert "stage.completed" in built.stdout, (
+        "a run that ended must print the event saying so, not stop one line short of it"
+    )

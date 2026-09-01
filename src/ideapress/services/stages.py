@@ -35,6 +35,8 @@ from ideapress.infrastructure.db.models import StageRun as StageRunRow
 from ideapress.observability.logging import correlation
 
 if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
+
     from ideapress.domain.inference import StageResult
     from ideapress.domain.stages import StageId
     from ideapress.services.database import Database
@@ -357,9 +359,17 @@ class StageRunner:
         message: str,
         error_code: str | None = None,
     ) -> None:
-        """Close a run: write its terminal state, then emit its terminal event, in that order."""
+        """Close a run: its terminal state and its terminal event commit together.
+
+        Not one and then the other. Every poller in the product reads both — the CLI drains the
+        events and then asks whether the run has finished — so a terminal state that commits first
+        lets a run end with no terminal event in its log, and an event that commits first lets a
+        client be told a run ended and then find it still running. Writing them in one transaction
+        is what makes neither reachable.
+        """
         now = datetime.now(UTC)
-        with self._database.write() as session:
+
+        def close_the_run(session: Session) -> None:
             run = session.get(StageRunRow, task.run_id)
             if run is not None:
                 run.state = state
@@ -368,12 +378,14 @@ class StageRunner:
                     run.cancelled_at = now
                 run.error_code = error_code
                 run.error_text = message if error_code else None
+
         self._sink.emit(
             self._database,
             task.run_id,
             event_type=event,
             message=message,
             data={"state": state, "error_code": error_code},
+            alongside=close_the_run,
         )
         with self._lock:
             if self._tasks.get(task.project_id) is task:

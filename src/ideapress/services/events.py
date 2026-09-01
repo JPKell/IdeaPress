@@ -31,7 +31,7 @@ from sqlalchemy import func, select
 from ideapress.infrastructure.db.models import StageEvent as StageEventRow
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Callable, Sequence
 
     from mirrorwall import Subscription
     from sqlalchemy.orm import Session
@@ -85,6 +85,9 @@ class StageEventSink:
 
     A publish-before-persist would let a client see an event the database never got, which is the
     one failure a replay cannot repair.
+
+    An event that reports a state change can carry that change with it — see ``alongside`` on
+    :meth:`emit` — so that no reader can observe either one without the other.
     """
 
     def __init__(self) -> None:
@@ -107,11 +110,25 @@ class StageEventSink:
         unit_id: str | None = None,
         unit_key: str | None = None,
         data: dict[str, Any] | None = None,
+        alongside: Callable[[Session], None] | None = None,
     ) -> int:
-        """Persist one event and publish it. Returns its sequence number."""
+        """Persist one event and publish it. Returns its sequence number.
+
+        Args:
+            alongside: A write to commit in the *same* transaction as the event. A caller whose
+                own row is what readers use to decide the event has happened — the run state
+                behind :meth:`StageRunner.is_finished` — must pass it here rather than writing it
+                first: two transactions leave a window in which one is readable and the other is
+                not, and both orders lose somebody. Raising from it abandons the event too, which
+                is the point.
+
+        Refuses nothing. An ``alongside`` that raises propagates, having written neither.
+        """
         payload = dict(data or {})
         with self._lock:
             with database.write() as session:
+                if alongside is not None:
+                    alongside(session)
                 sequence = self._next_sequence(session, stage_run_id)
                 session.add(
                     StageEventRow(

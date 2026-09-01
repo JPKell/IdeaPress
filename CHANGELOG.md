@@ -123,6 +123,14 @@ the project unrecoverable from the CLI.
   and a network-level retry within one run is still idempotent.
 - `X-Request-ID` is now actually propagated to the backend. Nothing ever set
   `Correlation.request_id`, so the header documented as propagated was absent from every request.
+- **A stage's terminal state and its terminal event now commit together** (ADR-0044). They were
+  two transactions, and every poller in the product read them in the order that loses: `plan build`
+  drained the event log and *then* asked whether the run had finished, so a run whose state
+  committed first ended with no `stage.completed` or `stage.failed` line printed at all — a stage
+  that stopped without saying whether it worked. CI found the same window as a flaky test on a
+  slower runner. Swapping the order would only have moved the hazard to the SSE client, so the two
+  writes are now one transaction (`StageEventSink.emit(..., alongside=...)`) and the CLI checks
+  before it drains. LoadCoach already worked this way; the rule now exists for both.
 - **A deterministic check may no longer be a restatement of its own requirement** (ADR-0042). The
   compiler emitted `must_contain_any` over phrases lifted from the requirement it had just written,
   so a unit satisfied the check by *quoting the requirement* — and the coverage report called that
