@@ -7,6 +7,12 @@ packaging and release standards §3.
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-08-31
+
+The M7-verification fixes. The release blocker was 1a: on the default two-model configuration a
+single unit whose review hit an exhausted output budget aborted the whole draft stage and left
+the project unrecoverable from the CLI.
+
 ### Fixed
 - A review-stage output budget exhausted on one unit (the model returning no text at all, twice)
   now **pauses that unit** with the stage and the budget in the reason, and the draft stage
@@ -52,6 +58,12 @@ packaging and release standards §3.
   message said to raise a budget no setting reached. A model that spends more reasoning tokens
   than the reference machine's can now be given room in `config.toml` instead of a code edit
   (M7 finding 1c).
+
+## [0.1.0] - 2026-08-31
+
+The first published version: the complete M1–M6 build.
+
+### Added
 - `GET`/`PUT /settings`, `GET /workflows/{id}`, `POST /projects/{id}/units/{unit_id}/revise`, and
   the `workflow` and `prompts` command groups — the four endpoints and two groups the specification
   lists that the phases had not yet built.
