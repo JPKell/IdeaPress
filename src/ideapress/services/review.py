@@ -18,7 +18,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from baseaicore import ValidationError
 
@@ -39,6 +39,7 @@ __all__ = [
     "FINDINGS_SCHEMA",
     "parse_critique",
     "parse_findings",
+    "render_assessed_requirements",
     "render_findings",
     "render_requirements",
     "run_audit",
@@ -50,7 +51,7 @@ logger = logging.getLogger(__name__)
 
 FINDINGS_SCHEMA: dict[str, Any] = {
     "type": "object",
-    "required": ["findings"],
+    "required": ["findings", "requirements_assessment"],
     "additionalProperties": False,
     "properties": {
         "findings": {
@@ -68,7 +69,22 @@ FINDINGS_SCHEMA: dict[str, Any] = {
                     "uncertain": {"type": "boolean"},
                 },
             },
-        }
+        },
+        # ADR-0039: one verdict per requirement the audit was asked to attest — the ones no
+        # deterministic check settles. Required in the schema so a grammar-enforcing backend
+        # cannot omit the key; an empty array is still a legal (and conservative) answer.
+        "requirements_assessment": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "required": ["key", "verdict"],
+                "additionalProperties": False,
+                "properties": {
+                    "key": {"type": "string"},
+                    "verdict": {"type": "string", "enum": ["met", "not_met", "cannot_judge"]},
+                },
+            },
+        },
     },
 }
 
@@ -89,6 +105,26 @@ def render_requirements(requirements: Sequence[Requirement]) -> str:
         return "(none)"
     return "\n".join(
         f"- {r.key} [{'BLOCKING' if r.blocking else 'advisory'}] {r.text}" for r in requirements
+    )
+
+
+def render_assessed_requirements(requirements: Sequence[Requirement]) -> str:
+    """Render the requirements the audit must attest — the ones no deterministic check settles.
+
+    Args:
+        requirements: Everything the unit carries; only the check-less ones are listed.
+
+    Returns:
+        One line per check-less requirement, key and text, or ``(none — return an empty array)``
+        when every requirement has a deterministic check. Rendered by Python from stored rows, so
+        the auditor is asked about exactly the set the coverage gate will consult (ADR-0039) —
+        a model cannot add a key to this list, and a key it invents in its answer is discarded.
+    """
+    checkless = [r for r in requirements if not r.checks]
+    if not checkless:
+        return "(none — return an empty array)"
+    return "\n".join(
+        f"- {r.key} [{'BLOCKING' if r.blocking else 'advisory'}] {r.text}" for r in checkless
     )
 
 
@@ -124,12 +160,19 @@ def parse_findings(text: str, *, stage: str, key_prefix: str = "F") -> AuditRepo
 
     Returns:
         The report. Finding keys are **generated here**, never taken from the model: nothing a
-        model produced becomes an identifier the system then trusts.
+        model produced becomes an identifier the system then trusts. The
+        ``requirements_assessment`` array, when present, becomes the report's
+        ``requirement_verdicts``; a verdict outside :data:`~ideapress.domain.audit.
+        REQUIREMENT_VERDICTS` is read as ``cannot_judge`` — the conservative direction, because an
+        invented verdict that read as ``met`` would let a model clear a gate with a typo
+        (ADR-0039). An absent or empty array is legal and attests nothing.
 
     Raises:
         ValidationError: The answer is not a JSON object with a ``findings`` array. A malformed
             audit is retried and then fails cleanly; it is never interpreted charitably.
     """
+    from ideapress.domain.audit import REQUIREMENT_VERDICTS, RequirementVerdict
+
     try:
         payload = json.loads(_unwrap(text))
     except json.JSONDecodeError as exc:
@@ -138,6 +181,20 @@ def parse_findings(text: str, *, stage: str, key_prefix: str = "F") -> AuditRepo
     if not isinstance(payload, dict) or not isinstance(payload.get("findings"), list):
         message = f"The {stage} stage's answer has no 'findings' array."
         raise ValidationError(message, details={"answer": text[:400]})
+
+    verdicts: dict[str, RequirementVerdict] = {}
+    raw_assessment = payload.get("requirements_assessment")
+    for entry in raw_assessment if isinstance(raw_assessment, list) else []:
+        if not isinstance(entry, dict):
+            continue
+        key = str(entry.get("key", "")).strip()
+        if not key:
+            continue
+        verdict = str(entry.get("verdict", "")).strip().lower()
+        if verdict not in REQUIREMENT_VERDICTS:
+            logger.info("audit.unknown_verdict", extra={"verdict": verdict[:40]})
+            verdict = "cannot_judge"
+        verdicts[key] = cast("RequirementVerdict", verdict)
 
     findings: list[AuditFinding] = []
     for index, raw in enumerate(payload["findings"], start=1):
@@ -164,7 +221,11 @@ def parse_findings(text: str, *, stage: str, key_prefix: str = "F") -> AuditRepo
                 source_stage=stage,
             )
         )
-    return AuditReport(findings=tuple(findings), stage=stage)
+    return AuditReport(
+        findings=tuple(findings),
+        stage=stage,
+        requirement_verdicts=tuple(sorted(verdicts.items())),
+    )
 
 
 def parse_critique(text: str, *, improvement_delta: float | None = None) -> Critique:
@@ -243,6 +304,7 @@ def run_audit(
     variables: dict[str, str] = {
         "requirements": render_requirements(requirements),
         "content": content,
+        "assessed_requirements": render_assessed_requirements(requirements),
     }
     if stage == "audit_deep":
         variables["prior_findings"] = render_findings(prior_findings)

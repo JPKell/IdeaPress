@@ -59,8 +59,10 @@ class ReviewOutcome:
         rounds: How many revision rounds ran.
         stop_reason: Which stop applied — always recorded (workflows §5).
         stop_detail: The numbers behind it.
-        audit_satisfied: Requirement keys an audit reported satisfied. Consulted **only** for
-            requirements with no deterministic check.
+        audit_satisfied: Requirement keys an audit **explicitly attested met** (ADR-0039) —
+            never keys it was merely silent about. Consulted **only** for requirements with no
+            deterministic check, and always empty when
+            ``workflow.allow_audit_gated_requirements`` is off.
         escalations: How many deep audits ran.
         rejected_revisions: How many rounds were discarded for making the unit worse.
     """
@@ -184,6 +186,7 @@ def run_review_loop(
         )
         _store_findings(runtime, fast_attempt, fast.report.findings, escalated=False)
         round_findings = list(fast.report.findings)
+        round_verdicts: dict[str, str] = dict(fast.report.requirement_verdicts)
         emit(
             "audit.completed",
             f"{unit.key}: {fast.report.summary()}",
@@ -228,6 +231,9 @@ def run_review_loop(
             )
             _store_findings(runtime, deep_attempt, deep.report.findings, escalated=True)
             round_findings.extend(deep.report.findings)
+            # The deep audit's verdicts override the fast one's where both spoke: it ran later,
+            # with the fast findings in front of it.
+            round_verdicts.update(dict(deep.report.requirement_verdicts))
             escalations += 1
             emit(
                 "audit.completed",
@@ -242,15 +248,22 @@ def run_review_loop(
             )
 
         all_findings = round_findings
-        # A requirement with no deterministic check is satisfied when no finding is about it
-        # (workflows §3). Nothing here can overturn a check that ran — `evaluate_coverage` only
-        # consults this for requirements that have none.
-        mentioned = " ".join(f"{f.problem_text} {f.evidence_text}" for f in round_findings).lower()
-        audit_satisfied = {
-            requirement.key
-            for requirement in requirements
-            if not requirement.checks and requirement.key.lower() not in mentioned
-        }
+        # A requirement with no deterministic check is satisfied only by an audit's **explicit**
+        # `met` attestation (ADR-0039). Silence, `cannot_judge` and an invented verdict all leave
+        # it unsatisfied — the mechanism this replaced read the absence of a finding as
+        # satisfaction, which let the model's default behaviour settle a blocking gate (M7-20).
+        # Nothing here can overturn a check that ran — `evaluate_coverage` only consults this for
+        # requirements that have none — and a key the model invented is discarded against the
+        # requirement list Python rendered.
+        checkless = {r.key for r in requirements if not r.checks}
+        if settings.workflow.allow_audit_gated_requirements:
+            audit_satisfied = {
+                key
+                for key, verdict in round_verdicts.items()
+                if verdict == "met" and key in checkless
+            }
+        else:
+            audit_satisfied = set()
 
         current = RoundMeasurement(
             round_number=rounds,

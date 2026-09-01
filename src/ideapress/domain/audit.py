@@ -19,15 +19,28 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
 __all__ = [
+    "REQUIREMENT_VERDICTS",
     "SEVERITY_ORDER",
     "AuditFinding",
     "AuditReport",
+    "RequirementVerdict",
     "Severity",
     "finding_delta",
     "weighted_score",
 ]
 
 Severity = Literal["critical", "major", "minor", "nit"]
+
+RequirementVerdict = Literal["met", "not_met", "cannot_judge"]
+
+REQUIREMENT_VERDICTS: Final[frozenset[str]] = frozenset({"met", "not_met", "cannot_judge"})
+"""The three answers an audit may give about a requirement no deterministic check settles.
+
+Only an explicit ``met`` can satisfy such a requirement (ADR-0039): ``cannot_judge`` and an
+absent verdict both leave it unsatisfied, so the model's *default* behaviour — saying nothing —
+can never clear a blocking gate. Anything outside this set is read as ``cannot_judge``, the
+conservative direction; reading an invented verdict as ``met`` would be the silence hole with a
+new spelling."""
 
 SEVERITY_ORDER: Final[tuple[Severity, ...]] = ("critical", "major", "minor", "nit")
 """Worst first. The order is data so a report, a UI and a threshold all sort the same way."""
@@ -81,14 +94,33 @@ class AuditFinding:
 
 @dataclass(frozen=True, slots=True)
 class AuditReport:
-    """What an audit stage returns. **Findings only — there is no content field.**
+    """What an audit stage returns. **Findings and verdicts only — there is no content field.**
 
     That absence is the mechanism behind "auditors report; the writer repairs", and it is asserted
     by a test rather than left to review.
+
+    Attributes:
+        findings: What the audit noticed.
+        stage: Which audit stage produced the report.
+        requirement_verdicts: ``(requirement_key, verdict)`` pairs for the requirements the audit
+            was asked to attest — the ones no deterministic check settles (ADR-0039). A verdict
+            is one of :data:`REQUIREMENT_VERDICTS`; a requirement absent from the pairs was not
+            attested, which downstream reads exactly as ``cannot_judge``.
     """
 
     findings: tuple[AuditFinding, ...]
     stage: str = "audit_fast"
+    requirement_verdicts: tuple[tuple[str, RequirementVerdict], ...] = ()
+
+    @property
+    def attested_met(self) -> frozenset[str]:
+        """Requirement keys this audit **explicitly** attested as met.
+
+        The only set that can satisfy a check-less requirement (ADR-0039). ``not_met``,
+        ``cannot_judge`` and silence all stay outside it; there is no way for an omission to
+        appear here, which is the point.
+        """
+        return frozenset(key for key, verdict in self.requirement_verdicts if verdict == "met")
 
     @property
     def score(self) -> float:

@@ -163,9 +163,11 @@ def test_an_audit_report_has_no_content_field() -> None:
 
     A future field called `suggested_text` or `revised_content` is exactly how "auditors report,
     writers repair" would quietly stop being true, so the shape is asserted rather than reviewed.
+    `requirement_verdicts` (ADR-0039) is keys plus a three-value enum — a verdict, not a channel
+    revised content could travel through — which is why admitting it does not weaken the rule.
     """
     fields = set(AuditReport.__dataclass_fields__)
-    assert fields == {"findings", "stage"}
+    assert fields == {"findings", "stage", "requirement_verdicts"}
     for forbidden in ("text", "content", "revised_text", "suggested_text", "replacement"):
         assert forbidden not in fields
 

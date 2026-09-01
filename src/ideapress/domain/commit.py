@@ -127,7 +127,9 @@ def evaluate_coverage(
     Args:
         text: The unit's content.
         requirements: The requirements this unit carries.
-        audit_satisfied: Requirement keys an audit stage reported as met. **Only consulted for
+        audit_satisfied: Requirement keys an audit stage **explicitly attested met**
+            (ADR-0039) — never keys it was silent about; the caller builds this set from
+            per-requirement verdicts, not from the absence of findings. **Only consulted for
             requirements with no deterministic check**: where a check exists, the check decides and
             a model's opinion cannot overturn it. That asymmetry is the whole of T1 in one place —
             a model may fill a gap Python cannot reach, and may never overrule Python where it can.
@@ -159,9 +161,10 @@ def evaluate_coverage(
                 satisfied=by_audit,
                 satisfied_by="audit" if by_audit else "unsatisfied",
                 detail=(
-                    "no deterministic check; an audit reported this satisfied"
+                    "no deterministic check; the audit explicitly attested this met — a "
+                    "model-review guarantee, not a mechanical one"
                     if by_audit
-                    else "no deterministic check, and no audit has reported it satisfied"
+                    else "no deterministic check, and no audit has attested it met"
                 ),
             )
         )
@@ -187,6 +190,7 @@ def decide_commit(
     validation: ValidationReport,
     coverage: CoverageReport,
     require_clean_validation: bool = True,
+    audit_gating_allowed: bool = True,
 ) -> CommitDecision:
     """Decide whether this text may become a committed version.
 
@@ -198,11 +202,16 @@ def decide_commit(
             blocking validation failure no longer stops the commit — coverage still does. This is
             configuration, so a project can lower a bar it set itself; it cannot lower the
             requirement bar, because that one came from the author's own material.
+        audit_gating_allowed: `workflow.allow_audit_gated_requirements` (ADR-0039). Configuration,
+            not a model channel: it only changes what the refusal *says* about an unmet check-less
+            blocking requirement — with it off, "run the review stage" would be false advice,
+            because no audit verdict can satisfy the requirement and the user's real options are a
+            deterministic check, a demotion, or turning the setting back on.
 
     Returns:
         The decision, with every reason it was refused. Every reason traces to a deterministic
-        check or an exhausted bound — never to a model's opinion — which is what makes the gate a
-        gate (risk T1).
+        check, an exhausted bound, or — for a check-less requirement — an audit's explicit
+        attestation carried in ``coverage``; never to a model's unprompted opinion (risk T1).
     """
     reasons: list[str] = []
     if not text.strip():
@@ -220,14 +229,22 @@ def decide_commit(
             reasons.append(f"{len(mechanical)} blocking requirement(s) unmet: {unmet}")
         if awaiting_audit:
             # A blocking requirement the compiler could not express as a literal check is not a
-            # defect in the text: nothing mechanical can settle it, so only a review stage can
-            # (workflows §3). Saying "unmet" would send the reader looking for missing content
-            # that is very likely already there.
+            # defect in the text: nothing mechanical can settle it, so only a review stage's
+            # explicit attestation can (workflows §3, ADR-0039). Saying "unmet" would send the
+            # reader looking for missing content that is very likely already there.
             pending = ", ".join(entry.requirement.key for entry in awaiting_audit)
-            reasons.append(
-                f"{len(awaiting_audit)} blocking requirement(s) have no deterministic check and "
-                f"no audit has reported on them: {pending}. Run the review stage; a requirement "
-                "nothing mechanical can settle is settled by audit, and the coverage report says "
-                "so rather than implying the guarantee is mechanical."
-            )
+            if audit_gating_allowed:
+                reasons.append(
+                    f"{len(awaiting_audit)} blocking requirement(s) have no deterministic check "
+                    f"and no audit has attested them met: {pending}. Run the review stage; a "
+                    "requirement nothing mechanical can settle needs the audit's explicit "
+                    "attestation, and the coverage report labels that as a model-review "
+                    "guarantee rather than implying it is mechanical."
+                )
+            else:
+                reasons.append(
+                    f"{len(awaiting_audit)} blocking requirement(s) have no deterministic check "
+                    f"and workflow.allow_audit_gated_requirements is false: {pending}. Give them "
+                    "a deterministic check, demote them to advisory, or allow audit gating."
+                )
     return CommitDecision(allowed=not reasons, reasons=tuple(reasons))

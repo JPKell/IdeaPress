@@ -107,6 +107,12 @@ Rules:
 * Deterministic `checks` are what the coverage gate evaluates; a requirement with no deterministic
   check is evaluated by audit and is flagged as such in the coverage report, so the user can see which
   guarantees are mechanical and which are model-assisted.
+* Audit evaluation is an **explicit attestation, never an inference from silence**
+  ([ADR-0039](../../adr/0039-audit-gated-blocking-requirements.md)): the audit stages return a
+  verdict (`met` / `not_met` / `cannot_judge`) for every check-less requirement, and only a literal
+  `met` satisfies one — an absent verdict, `cannot_judge`, or an invented word all leave it
+  unsatisfied and pause the unit. `workflow.allow_audit_gated_requirements = false` refuses even
+  attestation, for a wholly mechanical gate.
 
 ---
 

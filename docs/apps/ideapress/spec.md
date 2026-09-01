@@ -187,6 +187,9 @@ project_review     = "ollama/qwen3.5:9b-q8_0"
 [workflow]   max_revision_rounds = 3   diminishing_returns_threshold = 0.05
              max_attempts_per_stage = 3  audit_escalation_threshold = 0.6
              require_clean_validation_to_commit = true
+             allow_audit_gated_requirements = true  # ADR-0039: whether an audit's explicit
+                                               # attestation may satisfy a check-less blocking
+                                               # requirement; silence never satisfies either way
              structured_output_tokens = 8192   # output budget for the structured stages
                                                # (requirements, outline, audits, critique,
                                                # project review); raised above 8192 it also

@@ -28,11 +28,17 @@ packaging and release standards §3.
   risk T6 matters most (M7 finding 2).
 
 ### Changed
-- A blocking requirement with no deterministic check is now labelled **"guaranteed by model
+- **A model's silence no longer settles a blocking gate** (ADR-0039, accepted; M7 finding 3 /
+  M7-20). A requirement with no deterministic check was satisfied whenever the audit's findings
+  did not mention its key; the audit stages (`audit_fast`/`audit_deep` prompts 1.1.0) now return
+  an explicit per-requirement verdict (`met` / `not_met` / `cannot_judge`) and only a literal
+  `met` satisfies — an absent verdict, `cannot_judge`, or an invented word all leave the
+  requirement unsatisfied and pause the unit. New `workflow.allow_audit_gated_requirements`
+  (default true); set false, even attestation is refused and the gate is wholly mechanical.
+- A blocking requirement with no deterministic check is labelled **"guaranteed by model
   review, not a deterministic check"** everywhere it appears: the commit event, the unit and plan
-  pages, `plan show`, `unit show`, and the coverage note of all three exports. This is the interim
-  safeguard for M7 finding 3 (M7-20); what actually satisfies such a requirement is unchanged and
-  is decided by ADR-0039, which is Proposed and awaiting sign-off.
+  pages, `plan show`, `unit show`, and the coverage note of all three exports (the ADR-0039
+  interim safeguard, kept under the accepted mechanism).
 - The requirement compiler prompt (`stages.requirements.compile` 1.1.0, M7-21) now pushes a
   blocking requirement toward the strongest literal check the material supports
   (`must_contain_all`, or `must_not_contain` for prohibitions) and confines single-word

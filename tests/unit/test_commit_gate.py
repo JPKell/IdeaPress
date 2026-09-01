@@ -127,10 +127,20 @@ def test_the_gate_has_no_parameter_a_model_could_speak_through() -> None:
 
     A `critique_verdict`, an `audit_says_ok` or a `model_confidence` parameter is how a gate that
     Python owns becomes one a model can satisfy. There is none, and adding one would fail here
-    before it failed in a review.
+    before it failed in a review. The two extras are **configuration**, set by the user in
+    `config.toml` and threaded by Python — `audit_gating_allowed` (ADR-0039) only changes what
+    the refusal says about an unmet check-less blocking requirement, never whether a model's
+    output can satisfy one; growing this set with anything model-derived is still the failure
+    this test exists to catch.
     """
     parameters = set(inspect.signature(decide_commit).parameters)
-    assert parameters == {"text", "validation", "coverage", "require_clean_validation"}
+    assert parameters == {
+        "text",
+        "validation",
+        "coverage",
+        "require_clean_validation",
+        "audit_gating_allowed",
+    }
 
 
 def test_a_model_assisted_requirement_needs_an_audit_and_never_a_claim() -> None:

@@ -333,6 +333,7 @@ def run_unit(
         validation=report,
         coverage=coverage,
         require_clean_validation=settings.workflow.require_clean_validation_to_commit,
+        audit_gating_allowed=settings.workflow.allow_audit_gated_requirements,
     )
     if not decision.allowed:
         _pause(runtime, project_id, unit.key, decision.refusal, emit, from_state="auditing")

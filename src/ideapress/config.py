@@ -340,6 +340,15 @@ class WorkflowSettings(BaseModel):
             "specification are never dropped to fit it; overflow fails with both numbers."
         ),
     )
+    allow_audit_gated_requirements: bool = Field(
+        default=True,
+        description=(
+            "Whether an audit's explicit per-requirement attestation may satisfy a blocking "
+            "requirement that has no deterministic check (ADR-0039). Silence never satisfies "
+            "one either way. False forces a wholly mechanical gate: such a requirement pauses "
+            "its unit until it gets a deterministic check or is demoted to advisory."
+        ),
+    )
     structured_output_tokens: int = Field(
         default=8_192,
         ge=1_024,
@@ -728,6 +737,10 @@ diminishing_returns_threshold = 0.05
 max_attempts_per_stage = 3
 audit_escalation_threshold = 0.6
 require_clean_validation_to_commit = true
+# Whether an audit's explicit attestation may satisfy a blocking requirement that has no
+# deterministic check (ADR-0039). Silence never satisfies one either way; false forces a wholly
+# mechanical gate, pausing such units instead.
+allow_audit_gated_requirements = true
 # Output-token budget for the structured stages (requirements, outline, audits, critique,
 # project review); raised above 8192 it also lifts the thinking floor of the text-writing
 # stages (draft, repair, revise). A reasoning model spends output tokens thinking before its
