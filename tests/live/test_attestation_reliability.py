@@ -82,7 +82,7 @@ def _requirement(key: str, text: str, quote: str) -> Requirement:
 REQUIREMENTS: tuple[Requirement, ...] = (
     _requirement(
         "R-001",
-        "The unit must state that inference runs on the reader's own machine.",
+        "The unit must be explicit about where inference happens.",
         "inference runs on the reader's own machine",
     ),
     _requirement(

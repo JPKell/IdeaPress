@@ -90,7 +90,7 @@ def _answer(requirements: Sequence[dict[str, Any]]) -> str:
 def test_a_grounded_requirement_is_accepted() -> None:
     requirement = ground_requirement(
         key="R-001",
-        text="The article must state that inference runs on the reader's own machine.",
+        text="The article must be explicit about where inference happens.",
         blocking=True,
         source=SourceReference(
             document="brief",
@@ -166,7 +166,7 @@ def test_a_quote_matches_across_a_line_wrap_the_model_did_not_reproduce() -> Non
     """Normalisation must not be so strict that honest quoting fails; the brief is hard-wrapped."""
     requirement = ground_requirement(
         key="R-005",
-        text="The article must not claim a local model is more accurate than a hosted one.",
+        text="The article must not rank local models above hosted ones for quality.",
         blocking=True,
         source=SourceReference(
             document="brief",

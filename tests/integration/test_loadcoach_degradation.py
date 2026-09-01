@@ -330,7 +330,7 @@ def _plan_answers() -> list[str]:
     requirements = {
         "requirements": [
             {
-                "text": "The unit must state that inference runs on the reader's own machine.",
+                "text": "The unit must be explicit about where inference happens.",
                 "blocking": True,
                 "source_document": "brief",
                 "source_quote": "inference runs entirely on the reader's own machine",

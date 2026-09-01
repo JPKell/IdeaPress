@@ -34,14 +34,14 @@ than a hosted one. Keep it under 1200 words.
 GOOD_REQUIREMENTS = {
     "requirements": [
         {
-            "text": "The article must state that inference runs on the reader's own machine.",
+            "text": "The article must be explicit about where inference happens.",
             "blocking": True,
             "source_document": "brief",
             "source_quote": "inference runs entirely on the reader's own machine",
             "checks": [{"kind": "must_contain_any", "values": ["own machine", "locally"]}],
         },
         {
-            "text": "The article must not claim a local model is more accurate than a hosted one.",
+            "text": "The article must not rank local models above hosted ones for quality.",
             "blocking": True,
             "source_document": "brief",
             "source_quote": "never promise that a local model is more accurate than a hosted one",

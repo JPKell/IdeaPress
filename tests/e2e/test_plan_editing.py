@@ -36,14 +36,14 @@ BRIEF = (
 REQUIREMENTS = {
     "requirements": [
         {
-            "text": "The article must state that inference runs on the reader's own machine.",
+            "text": "The article must be explicit about where inference happens.",
             "blocking": True,
             "source_document": "brief",
             "source_quote": "inference runs entirely on the reader's own machine",
             "checks": [{"kind": "must_contain_any", "values": ["own machine"]}],
         },
         {
-            "text": "The article must state that nothing is uploaded.",
+            "text": "The article must be explicit about what leaves the device.",
             "blocking": True,
             "source_document": "brief",
             "source_quote": "no document content is uploaded anywhere",

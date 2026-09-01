@@ -50,7 +50,7 @@ NOTES = [
 def _requirement(key: str = "R-001", *, text: str | None = None) -> Requirement:
     return Requirement(
         key=key,
-        text=text or "The unit must state that inference runs on the reader's own machine.",
+        text=text or "The unit must be explicit about where inference happens.",
         blocking=True,
         source=SourceReference(document="brief", quote="a quotation long enough to be evidence"),
         compiled_by=COMPILED_BY,

@@ -59,7 +59,7 @@ def _requirement(
 ) -> Requirement:
     return Requirement(
         key="R-001",
-        text="The unit must state that inference runs on the reader's own machine.",
+        text="The unit must be explicit about where inference happens.",
         blocking=blocking,
         source=SourceReference(document="brief", quote="a quotation long enough to be evidence"),
         compiled_by=COMPILED_BY,

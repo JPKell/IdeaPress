@@ -107,7 +107,7 @@ def _big_project_runtime(settings: Settings) -> Runtime:
     requirements = {
         "requirements": [
             {
-                "text": "The unit must state that inference runs on the reader's own machine.",
+                "text": "The unit must be explicit about where inference happens.",
                 "blocking": True,
                 "source_document": "brief",
                 "source_quote": "inference runs entirely on the reader's own machine",
@@ -252,7 +252,7 @@ def test_validation_of_a_five_thousand_word_unit() -> None:
     requirements = tuple(
         Requirement(
             key=f"R-{index:03d}",
-            text="The unit must state that inference runs on the reader's own machine.",
+            text="The unit must be explicit about where inference happens.",
             blocking=True,
             source=SourceReference(document="brief", quote="own machine"),
             compiled_by=CompiledBy(prompt_id="stages.requirements.compile", version="1.1.0"),

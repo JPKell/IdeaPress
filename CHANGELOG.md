@@ -123,6 +123,15 @@ the project unrecoverable from the CLI.
   and a network-level retry within one run is still idempotent.
 - `X-Request-ID` is now actually propagated to the backend. Nothing ever set
   `Correlation.request_id`, so the header documented as propagated was absent from every request.
+- **A deterministic check may no longer be a restatement of its own requirement** (ADR-0042). The
+  compiler emitted `must_contain_any` over phrases lifted from the requirement it had just written,
+  so a unit satisfied the check by *quoting the requirement* — and the coverage report called that
+  `deterministic_check`, a stronger claim than the audit makes and a false one. Observed on a real
+  brief: a unit committed reporting `2/2 requirements satisfied` while its own critique read
+  *"fails the blocking requirement R-006"*. Such checks are now dropped at compile time and logged;
+  the requirement becomes honestly check-less and routes to the audit under ADR-0039. The gate's
+  asymmetry is unchanged — a surviving check still settles its requirement and a model still cannot
+  overturn it.
 - A review-stage output budget exhausted on one unit (the model returning no text at all, twice)
   now **pauses that unit** with the stage and the budget in the reason, and the draft stage
   continues to the remaining units. Before, the failure aborted the whole stage: one

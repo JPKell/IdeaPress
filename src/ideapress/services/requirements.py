@@ -17,7 +17,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
 from baseaicore import ValidationError
 
@@ -209,26 +209,89 @@ def parse_candidates(text: str) -> list[dict[str, Any]]:
     return [candidate for candidate in candidates if isinstance(candidate, dict)]
 
 
-def _build_checks(raw: Any) -> list[RequirementCheck]:
+_STRING_CHECK_KINDS: Final[frozenset[str]] = frozenset(
+    {"must_contain_any", "must_contain_all", "must_not_contain"}
+)
+"""The kinds whose values are literal needles searched for in the unit's text."""
+
+
+def _normalised(text: str) -> str:
+    """Lowercased, whitespace-collapsed, for comparing a needle against a requirement."""
+    return " ".join(text.lower().split())
+
+
+def restates_its_requirement(check: RequirementCheck, requirement_text: str) -> bool:
+    """Whether a check's needle is lifted from the requirement it is supposed to check (ADR-0042).
+
+    Args:
+        check: The compiled check.
+        requirement_text: The text of the requirement it belongs to.
+
+    Returns:
+        ``True`` when this is a string check and **any** of its needles occurs in the requirement's
+        own sentence, compared case-insensitively with whitespace collapsed.
+
+    A check whose text appears in the thing it checks cannot distinguish compliance from
+    quotation. Asked to guarantee *"every claim must be grounded in usage figures, named programme
+    types, and …"*, the compiler emitted `must_contain_any` over those very phrases, and a unit
+    satisfied it by repeating them — three times in one 294-word section — while its own critique
+    said the requirement was not met. The check reported `deterministic_check`, a stronger claim
+    than the audit makes and a false one.
+
+    `must_not_contain` is included deliberately. A negative check drawn from the requirement's
+    wording is the same error wearing a different sign: *"must not write advocacy copy"* compiled
+    to `must_not_contain: 'advocacy copy'`, which forbids a phrase rather than a manner of writing,
+    and passes for any advocacy that avoids naming itself.
+    """
+    if check.kind not in _STRING_CHECK_KINDS:
+        return False
+    haystack = _normalised(requirement_text)
+    return any(_normalised(value) in haystack for value in check.values if value.strip())
+
+
+def _build_checks(raw: Any, *, requirement_text: str = "") -> list[RequirementCheck]:
     """Turn a candidate's check dictionaries into validated checks, dropping the invalid ones.
+
+    Args:
+        raw: The candidate's ``checks`` array, whatever the model produced.
+        requirement_text: The requirement these checks belong to, for the ADR-0042 refusal.
+
+    Returns:
+        The checks worth running. A requirement left with none is **honestly check-less** and
+        routes to the audit under ADR-0039, which is the mechanism that exists for a requirement
+        Python cannot settle.
 
     A malformed check is dropped rather than failing the whole requirement: the requirement may
     still be grounded and useful, and it is then honestly recorded as having no mechanical check.
+    A check that merely restates its requirement is dropped for the same reason and a stronger one
+    — it does not merely fail to help, it reports a guarantee it does not provide (ADR-0042).
     """
     checks: list[RequirementCheck] = []
     for entry in raw if isinstance(raw, list) else []:
         if not isinstance(entry, dict):
             continue
         try:
-            checks.append(
-                RequirementCheck(
-                    kind=entry.get("kind", ""),
-                    values=tuple(str(v) for v in entry.get("values", ()) if str(v).strip()),
-                    threshold=entry.get("threshold"),
-                )
+            check = RequirementCheck(
+                kind=entry.get("kind", ""),
+                values=tuple(str(v) for v in entry.get("values", ()) if str(v).strip()),
+                threshold=entry.get("threshold"),
             )
         except ValidationError as exc:
             logger.info("requirements.check_dropped", extra={"detail": exc.message})
+            continue
+        if restates_its_requirement(check, requirement_text):
+            # Recorded, not silent: a compiler prompt that starts producing these would otherwise
+            # degrade every requirement to audit-gated with nothing to show for it (ADR-0042 §3).
+            logger.info(
+                "requirements.check_dropped",
+                extra={
+                    "detail": "the check restates its own requirement (ADR-0042)",
+                    "kind": check.kind,
+                    "values": list(check.values),
+                },
+            )
+            continue
+        checks.append(check)
     return checks
 
 
@@ -305,7 +368,10 @@ def compile_requirements(
                     blocking=bool(candidate.get("blocking", False)),
                     source=source,
                     compiled_by=compiled_by,
-                    checks=_build_checks(candidate.get("checks")),
+                    checks=_build_checks(
+                        candidate.get("checks"),
+                        requirement_text=str(candidate.get("text", "")),
+                    ),
                     documents=documents,
                     generation=generation,
                 )
