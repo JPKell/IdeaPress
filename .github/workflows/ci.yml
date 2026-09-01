@@ -4,6 +4,10 @@ on:
   push:
     branches: [main]
   pull_request:
+  schedule:
+    # Nightly, for the jobs that do not belong on every push. 03:17 rather than 03:00 so this
+    # repository is not queued behind every other cron in the world at the top of the hour.
+    - cron: "17 3 * * *"
 
 jobs:
   format:
@@ -157,3 +161,18 @@ jobs:
         with: { name: dist, path: dist/ }
       - run: pip install dist/*.whl
       - run: python -c "import ideapress"
+
+  performance:
+    # Spec §15's seven budgets. Nightly only: a timing assertion on a shared runner is a flake
+    # generator on every push, and a budget that fails intermittently teaches people to rerun the
+    # job rather than to read it. The measurements print beside their budgets, so a nightly run is
+    # a record of where the headroom went as well as a pass or a fail.
+    name: performance budgets (nightly)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -e ".[dev]"
+      - run: pytest -m performance -s

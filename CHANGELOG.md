@@ -7,6 +7,12 @@ packaging and release standards §3.
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-09-01
+
+IdeaPress 1.0: the optional LoadCoach backend, a workspace to work in, and the hardening pass.
+It still does the thing it was built to do with **only Ollama present** — no LoadCoach, no
+FreeWeight, no configuration beyond the stage model bindings.
+
 ### Added
 - **The optional LoadCoach backend** (P7). `inference.mode = "loadcoach"` routes every model-using
   stage through a running LoadCoach by task profile, with version negotiation on first contact,
