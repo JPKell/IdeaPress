@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 from fastapi import APIRouter, Request
 from starlette.responses import HTMLResponse
 
-from ideapress.web.rendering import render
+from ideapress.web.csrf import render_form_page
 
 if TYPE_CHECKING:
     pass
@@ -29,4 +29,17 @@ def plan_page(request: Request, project_id: str) -> HTMLResponse:
     from ideapress.services.stage_reports import plan_report
 
     report = plan_report(request.app.state.runtime, project_id=project_id)
-    return HTMLResponse(render("plan/index.html", page="projects", page_title="Plan", **report))
+    # `render_form_page` rather than `render`: the page now carries the plan editor's forms, and a
+    # form without the double-submit token is refused by MirrorWall's CSRF middleware (ADR-0026 §2).
+    return render_form_page(
+        request,
+        "plan/index.html",
+        page="projects",
+        page_title="Plan",
+        # Defaults rather than a `is defined` guard in the template: the environment runs under
+        # `StrictUndefined`, and keeping it strict is what makes a mistyped variable a loud error
+        # instead of a silently blank panel.
+        edit_refusal="",
+        edit_refusal_details={},
+        **report,
+    )

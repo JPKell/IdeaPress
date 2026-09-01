@@ -26,6 +26,26 @@ packaging and release standards §3.
 - A test asserting that only `services/inference.py` calls a backend's `generate`. The gateway's
   docstring has claimed since P2 that a test walks the source to prove this; none did.
 
+### Added
+- **The project workspace** (`/projects/{id}/workspace`, P8) — unit navigator, content, findings,
+  requirement coverage, version history and provenance on one page, so the questions a person asks
+  between stages are answered without a page change.
+- **The plan editor**: reorder, split, merge, reassign and rewrite goals. Every edit re-validates
+  the whole plan and one that would leave a blocking requirement with no unit responsible for it
+  is refused **by name**, with the plan unchanged. Structural edits are refused once a unit holds
+  committed text — finished work is never renumbered out from under itself (workflows §9).
+- **The diff view**: line-by-line between any two committed versions, with `+`/`-` markers so
+  colour is never the sole indicator, and unicode and 900-character lines carried through intact.
+- **The export dialog**: what each format contains, which units will be left out and why, and the
+  fact that exports are byte-identical — stated on the page rather than left to be discovered.
+- A paused unit now shows its reason **and its remedy** on the page a person is already looking
+  at: a budget-exhaustion pause names `workflow.structured_output_tokens`, its default and its
+  range, with the resume action beside it.
+- Routing metadata (decision id, score, flags) is rendered per attempt, and an egress badge says
+  plainly whether work leaves this machine (P7 AC2, risk S4).
+- `tests/accessibility/test_ui_checklist.py` covers UI/UX Standards §13 across **every** UI page,
+  enumerated from the routers rather than from a hand-written list.
+
 ### Changed
 - `BackendCapabilities` gains `routes_internally`. When a backend sets it, the gateway resolves no
   `[models.stages]` binding and performs no unload — model choice and residency belong to the

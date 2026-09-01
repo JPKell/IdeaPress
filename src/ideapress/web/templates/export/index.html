@@ -1,0 +1,60 @@
+{# The export dialog. Format, scope and what each one includes, stated plainly — a person choosing
+   here is deciding what leaves this application and in what shape. #}
+{% extends "base.html" %}
+{% from "mirrorwall/components.html" import badge, empty_state %}
+{% block content %}
+<h2>{{ project.title }} — export</h2>
+<p class="crumbs">
+  <a href="/projects/{{ project.id }}">Project</a> ·
+  <a href="/projects/{{ project.id }}/workspace">Workspace</a> ·
+  <span aria-current="page">Export</span>
+</p>
+
+{% if written %}
+<div class="notice" role="status">
+  <p>Written to <code>{{ written }}</code>.</p>
+</div>
+{% endif %}
+
+<h3>What will be included</h3>
+<p>
+  {{ committed_count }} of {{ unit_count }} unit(s) are committed.
+  <strong>Only committed units are exported.</strong>
+</p>
+{% if uncommitted %}
+  <p>{{ badge("not included", tone="warning") }}
+     {% for key in uncommitted %}<strong>{{ key }}</strong>{% if not loop.last %}, {% endif %}{% endfor %}
+     — not yet committed. Finish or resume them first if they belong in the document.</p>
+{% endif %}
+{% if committed_count == 0 %}
+  {{ empty_state("Nothing is committed yet, so an export would be empty.") }}
+{% endif %}
+
+<h3>Format</h3>
+<form method="post" action="/projects/{{ project.id }}/export">
+  <input type="hidden" name="{{ csrf_field_name }}" value="{{ csrf_token }}">
+  <fieldset>
+    <legend>Choose a format</legend>
+    {% for entry in formats %}
+    <div class="format-choice">
+      <input type="radio" id="format-{{ entry.format }}" name="format" value="{{ entry.format }}"
+             {% if loop.first %}checked{% endif %}>
+      <label for="format-{{ entry.format }}">
+        <strong>{{ entry.format }}</strong> <code>.{{ entry.extension }}</code>
+        <span class="format-describes">{{ entry.describes }}</span>
+      </label>
+    </div>
+    {% endfor %}
+  </fieldset>
+  <p class="note">The export is deterministic: the same committed project exports byte-identically
+     every time, so two exports can be compared with <code>sha256sum</code>.</p>
+  <button type="submit"{% if committed_count == 0 %} disabled{% endif %}>Write the export</button>
+</form>
+
+<h3>Or read it without writing anything</h3>
+<ul>
+  {% for entry in formats %}
+  <li><a href="/api/v1/projects/{{ project.id }}/export?format={{ entry.format }}">{{ entry.format }}</a></li>
+  {% endfor %}
+</ul>
+{% endblock %}

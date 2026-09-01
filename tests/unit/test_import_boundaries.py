@@ -22,7 +22,7 @@ SRC = Path(__file__).resolve().parents[2] / "src" / "ideapress"
 ADAPTER_ONLY = SRC / "infrastructure" / "backends"
 
 # How many generated modules are still a docstring and a TODO. Ratcheted down by each unit.
-SCAFFOLD_REMAINING = 2
+SCAFFOLD_REMAINING = 1
 
 
 def _python_files() -> Iterator[Path]:

@@ -1,0 +1,219 @@
+{# The workspace: navigator, content, findings, coverage and the actions on one unit.
+
+   Every string reaching this template is model output or user input and is escaped by the
+   environment's autoescaping. Nothing here uses `| safe`, and nothing may: risk S1 names unescaped
+   model output as this application's highest-impact security risk, and the unit content is the
+   single largest piece of it.
+
+   Works with JavaScript disabled (ADR-0020). The navigator is links, every action is a form, and
+   the live region is filled by `workspace.js` only as an enhancement. #}
+{% extends "base.html" %}
+{% from "mirrorwall/components.html" import badge, empty_state, kv_list %}
+{% block head %}<link rel="stylesheet" href="{{ 'css/workspace.css' | asset_url }}">{% endblock %}
+{% block scripts %}
+<script src="{{ 'js/workspace.js' | asset_url }}" defer></script>
+<script src="{{ 'js/diff.js' | asset_url }}" defer></script>
+{% endblock %}
+{% block content %}
+
+<h2>{{ project.title }}</h2>
+<p class="crumbs">
+  <a href="/projects/{{ project.id }}">Project</a> ·
+  <a href="/projects/{{ project.id }}/plan">Plan</a> ·
+  <span aria-current="page">Workspace</span>
+</p>
+
+<p class="backend-line">
+  Backend: <strong>{{ backend.mode }}</strong>
+  {% if backend.egress %}{{ badge("leaves this machine", tone="warning") }}{% else %}{{ badge("stays on this machine", tone="success") }}{% endif %}
+  {% if backend.routes_internally %}{{ badge("routes by task profile", tone="neutral") }}{% endif %}
+  {% if backend.mode != "none" and not backend.structured_output %}{{ badge("no schema enforcement — validated here", tone="neutral") }}{% endif %}
+</p>
+
+{% if running_task_id %}
+<section class="stage-live" data-stage-stream="/api/v1/projects/{{ project.id }}/tasks/{{ running_task_id }}/stream"
+         aria-labelledby="live-heading">
+  <h3 id="live-heading">A stage is running</h3>
+  <p data-stage-status role="status">Reload this page to see progress. With JavaScript enabled it
+     updates here as it happens.</p>
+  <ul class="stage-log" data-stage-log aria-live="polite"></ul>
+</section>
+{% endif %}
+
+{% if not units %}
+  {{ empty_state("Nothing has been planned yet. Build a plan to start work.") }}
+{% else %}
+
+<div class="workspace">
+
+  <nav class="unit-navigator" aria-label="Units">
+    <h3 id="units-heading">Units</h3>
+    <ol aria-labelledby="units-heading">
+    {% for u in units %}
+      <li{% if u.unit_key == selected_unit_key %} class="current"{% endif %}>
+        <a href="/projects/{{ project.id }}/workspace?unit={{ u.unit_key }}"
+           {% if u.unit_key == selected_unit_key %}aria-current="true"{% endif %}>
+          <span class="unit-key">{{ u.unit_key }}</span>
+          <span class="unit-title">{{ u.title if u.title is defined else u.unit_title }}</span>
+        </a>
+        {{ badge(u.state, tone="success" if u.state == "committed" else ("warning" if u.state == "paused" else "neutral")) }}
+      </li>
+    {% endfor %}
+    </ol>
+  </nav>
+
+  <div class="unit-panel">
+  {% if not unit %}
+    {{ empty_state("Select a unit.") }}
+  {% else %}
+
+    <h3>{{ unit.unit_key }} — {{ unit.title }}</h3>
+    {{ kv_list([
+      {"label": "State", "value": unit.state},
+      {"label": "Goal", "value": unit.goal},
+      {"label": "Version", "value": unit.version if unit.version is not none else "not committed"},
+      {"label": "Words", "value": unit.word_count if unit.word_count is not none else "—"},
+    ]) }}
+
+    {% if pause.paused %}
+    <section class="pause" aria-labelledby="pause-heading">
+      <h4 id="pause-heading">This unit is paused</h4>
+      <p class="pause-reason">{{ pause.reason }}</p>
+      {% if pause.hint %}<p class="pause-hint">{{ pause.hint }}</p>{% endif %}
+      <form method="post" action="/projects/{{ project.id }}/units/{{ unit.unit_key }}/resume">
+        <input type="hidden" name="{{ csrf_field_name }}" value="{{ csrf_token }}">
+        <button type="submit">Resume this unit</button>
+      </form>
+      <p class="note">Other units are unaffected: a paused unit never stops the rest of the stage.</p>
+    </section>
+    {% endif %}
+
+    <section aria-labelledby="coverage-heading">
+      <h4 id="coverage-heading">Requirement coverage</h4>
+      <p>
+        {{ coverage_summary.satisfied }} of {{ coverage_summary.total }} satisfied.
+        {% if coverage_summary.model_guaranteed %}
+          {{ badge(coverage_summary.model_guaranteed ~ " guaranteed by model review, not a deterministic check", tone="warning") }}
+        {% endif %}
+      </p>
+      {% if unit.coverage %}
+      <div class="table-scroll"><table>
+        <caption>What settled each requirement, and how</caption>
+        <thead><tr><th scope="col">Requirement</th><th scope="col">Satisfied</th><th scope="col">Decided by</th><th scope="col">Detail</th></tr></thead>
+        <tbody>
+        {% for entry in unit.coverage %}
+          <tr>
+            <td>{{ entry.requirement_key }}</td>
+            <td>{{ badge("yes" if entry.satisfied else "no", tone="success" if entry.satisfied else "danger") }}</td>
+            <td>{{ entry.satisfied_by }}{% if entry.satisfied_by == "audit" %} {{ badge("model review, not a deterministic check", tone="warning") }}{% elif entry.satisfied_by not in ("deterministic_check", "") %} {{ badge("model-assisted", tone="neutral") }}{% endif %}</td>
+            <td>{{ entry.detail }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table></div>
+      {% else %}{{ empty_state("No coverage recorded yet.") }}{% endif %}
+    </section>
+
+    <section aria-labelledby="content-heading">
+      <h4 id="content-heading">Content</h4>
+      {% if unit.content %}<pre class="unit-content">{{ unit.content }}</pre>
+      {% else %}{{ empty_state("No committed content yet.") }}{% endif %}
+    </section>
+
+    <section aria-labelledby="findings-heading">
+      <h4 id="findings-heading">Findings</h4>
+      {% if unit.findings %}
+      <div class="table-scroll"><table>
+        <caption>What the reviews found, and in which round</caption>
+        <thead><tr><th scope="col">Round</th><th scope="col">Severity</th><th scope="col">Problem</th><th scope="col">Would resolve it</th></tr></thead>
+        <tbody>
+        {% for finding in unit.findings %}
+          <tr><td>{{ finding.round }}</td>
+              <td>{{ badge(finding.severity, tone="danger" if finding.severity in ("critical", "major") else "neutral") }}</td>
+              <td>{{ finding.problem }}</td>
+              <td>{{ finding.fix }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table></div>
+      {% else %}{{ empty_state("No findings.") }}{% endif %}
+    </section>
+
+    <section aria-labelledby="history-heading">
+      <h4 id="history-heading">Versions</h4>
+      {% if unit.history and unit.history | length > 1 %}
+        <form method="get" action="/projects/{{ project.id }}/workspace">
+          <input type="hidden" name="unit" value="{{ unit.unit_key }}">
+          <label for="compare">Compare the current version against</label>
+          <select id="compare" name="compare">
+            {% for entry in unit.history %}<option value="{{ entry.version }}">Version {{ entry.version }}</option>{% endfor %}
+          </select>
+          <button type="submit">Show the difference</button>
+        </form>
+      {% endif %}
+      {% if unit.history %}
+      <ul>{% for entry in unit.history %}
+        <li>Version {{ entry.version }} — {{ entry.word_count }} words{% if entry.committed %} (committed {{ entry.committed_at }}){% endif %}</li>
+      {% endfor %}</ul>
+      {% else %}{{ empty_state("No versions yet.") }}{% endif %}
+    </section>
+
+    {% if diff %}
+    <section aria-labelledby="diff-heading">
+      <h4 id="diff-heading">Difference</h4>
+      {% if diff.unavailable %}<p class="notice">{{ diff.unavailable }}</p>
+      {% elif diff.diff_unchanged %}<p class="notice">Versions {{ diff.diff_old_version }} and {{ diff.diff_new_version }} are identical — the revision changed nothing.</p>
+      {% else %}
+        <p>Version {{ diff.diff_old_version }} → {{ diff.diff_new_version }}:
+           {{ diff.diff_added }} line(s) added, {{ diff.diff_removed }} removed.
+           {% if diff.diff_truncated %}Unchanged passages are elided.{% endif %}</p>
+        <button type="button" data-diff-toggle aria-pressed="false" hidden>Hide unchanged lines</button>
+        <div class="table-scroll"><table class="diff">
+          <caption>Line-by-line difference. <code>+</code> is new text, <code>-</code> is removed.</caption>
+          <thead><tr><th scope="col">Old</th><th scope="col">New</th><th scope="col"><span class="visually-hidden">Change</span></th><th scope="col">Line</th></tr></thead>
+          <tbody>
+          {% for line in diff.diff_lines %}
+            <tr class="diff-{{ line.kind }}">
+              <td class="line-number">{{ line.old_number if line.old_number is not none else "" }}</td>
+              <td class="line-number">{{ line.new_number if line.new_number is not none else "" }}</td>
+              <td class="diff-marker" aria-label="{{ line.kind }}">{{ line.marker }}</td>
+              <td class="diff-text">{{ line.text }}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table></div>
+      {% endif %}
+    </section>
+    {% endif %}
+
+    <section aria-labelledby="provenance-heading">
+      <h4 id="provenance-heading">How this was produced</h4>
+      {% if unit.attempts %}
+      <div class="table-scroll"><table>
+        <caption>Every attempt, with the model, the prompt version and the routing decision behind it</caption>
+        <thead><tr><th scope="col">Stage</th><th scope="col">Attempt</th><th scope="col">Backend</th><th scope="col">Model</th><th scope="col">Prompt</th><th scope="col">Routing</th><th scope="col">Degradations</th></tr></thead>
+        <tbody>
+        {% for attempt in unit.attempts %}
+          <tr>
+            <td>{{ attempt.stage }}</td>
+            <td>{{ attempt.attempt }}</td>
+            <td>{{ attempt.backend }}</td>
+            <td>{{ attempt.model_canonical_id or "—" }}</td>
+            <td>{{ attempt.prompt_id }} {{ attempt.prompt_version }}</td>
+            <td>{% if attempt.routing %}
+                  decision {{ attempt.routing.decision_id or "—" }}{% if attempt.routing.final_score is defined and attempt.routing.final_score is not none %}, score {{ attempt.routing.final_score }}{% endif %}
+                  {% if attempt.routing.flags %}<br>{% for flag in attempt.routing.flags %}{{ badge(flag, tone="warning") }} {% endfor %}{% endif %}
+                {% else %}—{% endif %}</td>
+            <td>{% if attempt.degradations %}<ul class="degradations">{% for degradation in attempt.degradations %}<li>{{ degradation }}</li>{% endfor %}</ul>{% else %}—{% endif %}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table></div>
+      {% else %}{{ empty_state("No attempts recorded.") }}{% endif %}
+    </section>
+
+    <p><a href="/projects/{{ project.id }}/units/{{ unit.unit_key }}">The full unit record</a></p>
+  {% endif %}
+  </div>
+</div>
+{% endif %}
+{% endblock %}

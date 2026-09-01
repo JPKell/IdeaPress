@@ -5,7 +5,24 @@
 {% from "mirrorwall/components.html" import badge, empty_state %}
 {% block content %}
 <h2>{{ project.title }} — plan</h2>
-<p><a href="/projects/{{ project.id }}">Back to the project</a></p>
+<p><a href="/projects/{{ project.id }}">Back to the project</a> ·
+   <a href="/projects/{{ project.id }}/workspace">Workspace</a></p>
+
+{% if edit_refusal %}
+<div class="refusal" role="alert">
+  <h3>That edit was refused</h3>
+  <p>{{ edit_refusal }}</p>
+  {% if edit_refusal_details.get("unassigned_requirement_keys") %}
+    <p>Left with no unit responsible for it:
+      {% for key in edit_refusal_details["unassigned_requirement_keys"] %}<strong>{{ key }}</strong>{% if not loop.last %}, {% endif %}{% endfor %}.</p>
+  {% endif %}
+  {% if edit_refusal_details.get("protected_unit_keys") %}
+    <p>Units holding finished work:
+      {% for key in edit_refusal_details["protected_unit_keys"] %}<strong>{{ key }}</strong>{% if not loop.last %}, {% endif %}{% endfor %}.</p>
+  {% endif %}
+  <p class="note">The plan is unchanged.</p>
+</div>
+{% endif %}
 
 <h3>Requirements</h3>
 {% if requirements %}
@@ -60,5 +77,82 @@
   </div>
 {% else %}
   {{ empty_state("No plan yet. Build one to begin.") }}
+{% endif %}
+
+{% if units %}
+<h3 id="edit-heading">Edit the plan</h3>
+<p class="note">Every edit re-checks the whole plan. One that would leave a blocking requirement
+   with no unit responsible for it is refused, and the requirement is named. Structural edits
+   (reorder, split, merge) are refused once a unit holds committed text — finished work is never
+   renumbered out from under itself.</p>
+
+<div class="plan-editor" aria-labelledby="edit-heading">
+
+  <form method="post" action="/projects/{{ project.id }}/plan/edit" class="edit-form">
+    <input type="hidden" name="{{ csrf_field_name }}" value="{{ csrf_token }}">
+    <input type="hidden" name="operation" value="reorder">
+    <h4>Move a unit</h4>
+    <label for="reorder-unit">Unit</label>
+    <select id="reorder-unit" name="unit_keys">
+      {% for unit in units %}<option value="{{ unit.key }}">{{ unit.key }} — {{ unit.title }}</option>{% endfor %}
+    </select>
+    <label for="reorder-position">To position</label>
+    <input id="reorder-position" name="position" type="number" min="1" max="{{ units | length }}" value="1" required>
+    <button type="submit">Move</button>
+  </form>
+
+  <form method="post" action="/projects/{{ project.id }}/plan/edit" class="edit-form">
+    <input type="hidden" name="{{ csrf_field_name }}" value="{{ csrf_token }}">
+    <input type="hidden" name="operation" value="split">
+    <h4>Split a unit</h4>
+    <label for="split-unit">Unit</label>
+    <select id="split-unit" name="unit_keys">
+      {% for unit in units %}<option value="{{ unit.key }}">{{ unit.key }} — {{ unit.title }}</option>{% endfor %}
+    </select>
+    <label for="split-title">Title of the new unit</label>
+    <input id="split-title" name="text" type="text" required>
+    <label for="split-requirements">Requirements that move to it (comma-separated)</label>
+    <input id="split-requirements" name="requirement_keys" type="text" placeholder="R-002, R-003">
+    <button type="submit">Split</button>
+  </form>
+
+  <form method="post" action="/projects/{{ project.id }}/plan/edit" class="edit-form">
+    <input type="hidden" name="{{ csrf_field_name }}" value="{{ csrf_token }}">
+    <input type="hidden" name="operation" value="merge">
+    <h4>Merge units</h4>
+    <label for="merge-units">Units, first one kept (comma-separated)</label>
+    <input id="merge-units" name="unit_keys" type="text" placeholder="U-02, U-03" required>
+    <label for="merge-title">New title (optional)</label>
+    <input id="merge-title" name="text" type="text">
+    <button type="submit">Merge</button>
+  </form>
+
+  <form method="post" action="/projects/{{ project.id }}/plan/edit" class="edit-form">
+    <input type="hidden" name="{{ csrf_field_name }}" value="{{ csrf_token }}">
+    <input type="hidden" name="operation" value="reassign">
+    <h4>Reassign requirements</h4>
+    <label for="reassign-unit">Unit</label>
+    <select id="reassign-unit" name="unit_keys">
+      {% for unit in units %}<option value="{{ unit.key }}">{{ unit.key }} — {{ unit.title }}</option>{% endfor %}
+    </select>
+    <label for="reassign-requirements">Exactly the requirements it should carry (comma-separated)</label>
+    <input id="reassign-requirements" name="requirement_keys" type="text" placeholder="R-001, R-004">
+    <button type="submit">Reassign</button>
+  </form>
+
+  <form method="post" action="/projects/{{ project.id }}/plan/edit" class="edit-form">
+    <input type="hidden" name="{{ csrf_field_name }}" value="{{ csrf_token }}">
+    <input type="hidden" name="operation" value="goal">
+    <h4>Rewrite a goal</h4>
+    <label for="goal-unit">Unit</label>
+    <select id="goal-unit" name="unit_keys">
+      {% for unit in units %}<option value="{{ unit.key }}">{{ unit.key }} — {{ unit.title }}</option>{% endfor %}
+    </select>
+    <label for="goal-text">Goal</label>
+    <input id="goal-text" name="text" type="text" required>
+    <button type="submit">Set the goal</button>
+  </form>
+
+</div>
 {% endif %}
 {% endblock %}

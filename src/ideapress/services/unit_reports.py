@@ -159,6 +159,11 @@ def unit_detail(runtime: Runtime, *, project_id: str, unit_key: str) -> dict[str
                 "provider_ms": attempt.provider_ms,
                 "degradations": list(attempt.degradations_json),
                 "rejection_reason": attempt.rejection_reason,
+                # LoadCoach only, and `None` everywhere else: the routing decision that chose this
+                # model, so a person asking "why this model?" can reach the answer from the
+                # attempt rather than from another application's logs (P7 AC2).
+                "routing": dict(attempt.routing_json) if attempt.routing_json else None,
+                "idempotency_key": attempt.idempotency_key,
             }
             for attempt in attempts
         ],
