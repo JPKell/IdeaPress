@@ -1,0 +1,528 @@
+{
+  "GET /health": {
+    "shape": {
+      "checked_at": "str",
+      "components": [
+        {
+          "detail": "str",
+          "name": "str",
+          "status": "str"
+        }
+      ],
+      "status": "str",
+      "version": "str"
+    },
+    "status": 200
+  },
+  "GET /models": {
+    "shape": {
+      "models": [
+        {
+          "available": "bool",
+          "canonical_id": "str",
+          "declared_capabilities": {
+            "tool_use": "float"
+          },
+          "evidence_summary": {
+            "bound": "int",
+            "capabilities": "int",
+            "stale": "int",
+            "unmatched": "int"
+          },
+          "family": "str",
+          "first_seen_at": "str",
+          "identity_confidence": "str",
+          "last_seen_at": "str",
+          "max_context": "int",
+          "model_ref": "str",
+          "parameter_count": "int",
+          "provider_kind": "str",
+          "provider_model_name": "str",
+          "quantization": "str",
+          "reliability": {
+            "attempts_7d": "int",
+            "circuit_state": "str",
+            "lowest_factor": "null",
+            "pairs": "int",
+            "regressions": "int"
+          },
+          "residency": {
+            "gpu_indexes": [],
+            "resident": "bool"
+          },
+          "size_bytes": "int",
+          "unavailable_reason": "null"
+        }
+      ]
+    },
+    "status": 200
+  },
+  "GET /reliability": {
+    "shape": {
+      "minimums": {
+        "factor_attempts": "int",
+        "mean_samples": "int",
+        "percentile_samples": "int",
+        "rate_samples": "int",
+        "regression_drop": "float",
+        "regression_samples": "int",
+        "regression_z": "float"
+      },
+      "regressions": [],
+      "reliability": [
+        {
+          "circuit_breaker": {
+            "opened_at": "null",
+            "reason": "str",
+            "state": "str"
+          },
+          "factor": {
+            "acceptance_rate": "null",
+            "attempts": "int",
+            "error_rate": "null",
+            "feedback_count": "int",
+            "minimum_samples": "int",
+            "neutral": "bool",
+            "reason": "str",
+            "source": "str",
+            "success_rate": "null",
+            "timeout_rate": "null",
+            "validation_pass_rate": "null",
+            "value": "float",
+            "window": "null"
+          },
+          "model": {
+            "canonical_id": "str",
+            "model_ref": "str"
+          },
+          "regression": {
+            "baseline_rate": "null",
+            "baseline_samples": "int",
+            "drop": "null",
+            "minimum_drop": "float",
+            "minimum_samples": "int",
+            "reason": "str",
+            "recent_rate": "float",
+            "recent_samples": "int",
+            "status": "str",
+            "z_score": "null",
+            "z_threshold": "float"
+          },
+          "task_profile_id": "str",
+          "updated_at": "str",
+          "windows": {
+            "30d": {
+              "acceptance_rate": {
+                "minimum": "int",
+                "reason": "str",
+                "samples": "int",
+                "value": "null"
+              },
+              "attempts": "int",
+              "cancellations": "int",
+              "counted": "int",
+              "error_rate": {
+                "minimum": "int",
+                "reason": "null",
+                "samples": "int",
+                "value": "float"
+              },
+              "errors": "int",
+              "mean_output_tokens": {
+                "minimum": "int",
+                "reason": "null",
+                "samples": "int",
+                "value": "float"
+              },
+              "mean_quality": {
+                "minimum": "int",
+                "reason": "str",
+                "samples": "int",
+                "value": "null"
+              },
+              "mean_tokens_per_second": {
+                "minimum": "int",
+                "reason": "null",
+                "samples": "int",
+                "value": "float"
+              },
+              "p50_latency_ms": {
+                "minimum": "int",
+                "reason": "str",
+                "samples": "int",
+                "value": "null"
+              },
+              "p95_latency_ms": {
+                "minimum": "int",
+                "reason": "str",
+                "samples": "int",
+                "value": "null"
+              },
+              "success_rate": {
+                "minimum": "int",
+                "reason": "null",
+                "samples": "int",
+                "value": "float"
+              },
+              "successes": "int",
+              "timeout_rate": {
+                "minimum": "int",
+                "reason": "null",
+                "samples": "int",
+                "value": "float"
+              },
+              "timeouts": "int",
+              "validated_success_rate": {
+                "minimum": "int",
+                "reason": "null",
+                "samples": "int",
+                "value": "float"
+              },
+              "validation_pass_rate": {
+                "minimum": "int",
+                "reason": "null",
+                "samples": "int",
+                "value": "float"
+              },
+              "validation_passes": "int",
+              "window": "str"
+            },
+            "7d": {
+              "acceptance_rate": {
+                "minimum": "int",
+                "reason": "str",
+                "samples": "int",
+                "value": "null"
+              },
+              "attempts": "int",
+              "cancellations": "int",
+              "counted": "int",
+              "error_rate": {
+                "minimum": "int",
+                "reason": "null",
+                "samples": "int",
+                "value": "float"
+              },
+              "errors": "int",
+              "mean_output_tokens": {
+                "minimum": "int",
+                "reason": "null",
+                "samples": "int",
+                "value": "float"
+              },
+              "mean_quality": {
+                "minimum": "int",
+                "reason": "str",
+                "samples": "int",
+                "value": "null"
+              },
+              "mean_tokens_per_second": {
+                "minimum": "int",
+                "reason": "null",
+                "samples": "int",
+                "value": "float"
+              },
+              "p50_latency_ms": {
+                "minimum": "int",
+                "reason": "str",
+                "samples": "int",
+                "value": "null"
+              },
+              "p95_latency_ms": {
+                "minimum": "int",
+                "reason": "str",
+                "samples": "int",
+                "value": "null"
+              },
+              "success_rate": {
+                "minimum": "int",
+                "reason": "null",
+                "samples": "int",
+                "value": "float"
+              },
+              "successes": "int",
+              "timeout_rate": {
+                "minimum": "int",
+                "reason": "null",
+                "samples": "int",
+                "value": "float"
+              },
+              "timeouts": "int",
+              "validated_success_rate": {
+                "minimum": "int",
+                "reason": "null",
+                "samples": "int",
+                "value": "float"
+              },
+              "validation_pass_rate": {
+                "minimum": "int",
+                "reason": "null",
+                "samples": "int",
+                "value": "float"
+              },
+              "validation_passes": "int",
+              "window": "str"
+            },
+            "all": {
+              "acceptance_rate": {
+                "minimum": "int",
+                "reason": "str",
+                "samples": "int",
+                "value": "null"
+              },
+              "attempts": "int",
+              "cancellations": "int",
+              "counted": "int",
+              "error_rate": {
+                "minimum": "int",
+                "reason": "null",
+                "samples": "int",
+                "value": "float"
+              },
+              "errors": "int",
+              "mean_output_tokens": {
+                "minimum": "int",
+                "reason": "null",
+                "samples": "int",
+                "value": "float"
+              },
+              "mean_quality": {
+                "minimum": "int",
+                "reason": "str",
+                "samples": "int",
+                "value": "null"
+              },
+              "mean_tokens_per_second": {
+                "minimum": "int",
+                "reason": "null",
+                "samples": "int",
+                "value": "float"
+              },
+              "p50_latency_ms": {
+                "minimum": "int",
+                "reason": "str",
+                "samples": "int",
+                "value": "null"
+              },
+              "p95_latency_ms": {
+                "minimum": "int",
+                "reason": "str",
+                "samples": "int",
+                "value": "null"
+              },
+              "success_rate": {
+                "minimum": "int",
+                "reason": "null",
+                "samples": "int",
+                "value": "float"
+              },
+              "successes": "int",
+              "timeout_rate": {
+                "minimum": "int",
+                "reason": "null",
+                "samples": "int",
+                "value": "float"
+              },
+              "timeouts": "int",
+              "validated_success_rate": {
+                "minimum": "int",
+                "reason": "null",
+                "samples": "int",
+                "value": "float"
+              },
+              "validation_pass_rate": {
+                "minimum": "int",
+                "reason": "null",
+                "samples": "int",
+                "value": "float"
+              },
+              "validation_passes": "int",
+              "window": "str"
+            }
+          }
+        }
+      ],
+      "windows": [
+        "str"
+      ]
+    },
+    "status": 200
+  },
+  "GET /task-profiles": {
+    "shape": {
+      "task_profiles": [
+        {
+          "constraints": {
+            "allow_remote_providers": "bool",
+            "exclude_models": [],
+            "max_latency_p95_seconds": "float",
+            "min_capability_scores": {},
+            "min_context_tokens": "int",
+            "requires_capabilities": []
+          },
+          "description": "str",
+          "enabled": "bool",
+          "execution": {
+            "fallback_depth": "int",
+            "json_schema_ref": "null",
+            "max_attempts": "int",
+            "max_output_tokens": "int",
+            "min_output_tokens": "null",
+            "response_format": "str",
+            "temperature": "float"
+          },
+          "profile_id": "str",
+          "updated_at": "str",
+          "validation": {
+            "max_output_chars": "int",
+            "require_schema": "bool",
+            "require_valid_json": "bool",
+            "required_fields": []
+          },
+          "version": "str",
+          "weights": {
+            "creative_writing": "float",
+            "instruction_following": "float",
+            "reasoning": "float",
+            "reliability": "float"
+          }
+        }
+      ]
+    },
+    "status": 200
+  },
+  "GET /version": {
+    "shape": {
+      "api": {
+        "current": "str",
+        "deprecated": [],
+        "supported": [
+          "str"
+        ]
+      },
+      "application": {
+        "git_commit": "null",
+        "name": "str",
+        "version": "str"
+      }
+    },
+    "status": 200
+  },
+  "POST /generate": {
+    "shape": {
+      "attempts": [
+        {
+          "attempt": "int",
+          "error_code": "null",
+          "model": "str",
+          "outcome": "str",
+          "prompt_id": "null",
+          "prompt_sha256": "null",
+          "prompt_version": "null",
+          "provider_ms": "int",
+          "rank": "int",
+          "runtime_profile_hash": "str",
+          "ttft_ms": "int"
+        }
+      ],
+      "degradations": [],
+      "job_id": "str",
+      "model": {
+        "canonical_id": "str",
+        "model_ref": "str",
+        "runtime_profile_hash": "str",
+        "served_context": "int",
+        "served_context_source": "str",
+        "target_gpu_index": "int"
+      },
+      "output": {
+        "structured": "null",
+        "text": "str",
+        "tool_calls": []
+      },
+      "reasoning": {
+        "available": "bool",
+        "source": "str",
+        "summary": "str"
+      },
+      "routing": {
+        "decision_id": "str",
+        "explanation_url": "str",
+        "final_score": "float",
+        "flags": [
+          "str"
+        ],
+        "rank": "int"
+      },
+      "status": "str",
+      "timing": {
+        "loadcoach_overhead_ms": "int",
+        "provider_ms": "int",
+        "queue_wait_ms": "int",
+        "total_ms": "int",
+        "ttft_ms": "int"
+      },
+      "usage": {
+        "input_tokens": "int",
+        "output_tokens": "int",
+        "thinking_tokens": "str"
+      },
+      "validation": {
+        "attempts": "int",
+        "checks": [
+          {
+            "detail": {},
+            "kind": "str",
+            "passed": "bool"
+          }
+        ],
+        "passed": "bool",
+        "performed": "bool"
+      }
+    },
+    "status": 200
+  },
+  "POST /generate (declined)": {
+    "shape": {
+      "error": {
+        "code": "str",
+        "details": {
+          "candidates": [
+            {
+              "canonical_id": "str",
+              "detail": {
+                "estimate": {
+                  "activation_bytes": "...",
+                  "kv_bytes": "...",
+                  "kv_bytes_per_token": "...",
+                  "kv_precision_assumed": "...",
+                  "kv_source": "...",
+                  "served_context": "...",
+                  "total_bytes": "...",
+                  "unknown_reason": "...",
+                  "weights_bytes": "..."
+                },
+                "estimated_bytes": "null",
+                "free_bytes_by_gpu": {
+                  "0": "..."
+                },
+                "headroom_bytes": "int"
+              },
+              "model_id": "str",
+              "reason": "str",
+              "runtime_profile_hash": "str",
+              "served_context": "int",
+              "served_context_source": "str"
+            }
+          ],
+          "decision_id": "str",
+          "task_profile_id": "str"
+        },
+        "message": "str",
+        "request_id": "str",
+        "timestamp": "str"
+      }
+    },
+    "status": 422
+  }
+}

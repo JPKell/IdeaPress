@@ -354,7 +354,7 @@ class MockLoadCoach:
         if request.method == "GET" and path == "/api/v1/task-profiles":
             # `profile_id` is the running service's key (M8-05); the mock said `id` and every
             # offline test passed on the shared misconception.
-            return self._json({"task_profiles": [{"profile_id": name} for name in self._profiles]})
+            return self._json({"task_profiles": [self._profile(n) for n in self._profiles]})
         if request.method == "GET" and path == "/api/v1/models":
             return self._json(
                 {"items": [{"canonical_id": self._model_canonical_id, "served_context": 32768}]}
@@ -447,13 +447,77 @@ class MockLoadCoach:
                 "ttft_ms": 640,
                 "queue_wait_ms": self._queue_wait_ms,
             },
-            "validation": {"performed": False, "passed": None, "attempts": 1},
-            "attempts": [{"attempt": 1, "model": self._model_canonical_id, "outcome": "completed"}],
+            "validation": {
+                "performed": False,
+                "passed": None,
+                "attempts": 1,
+                "checks": [{"kind": "non_empty", "passed": True, "detail": {}}],
+            },
+            "attempts": [
+                {
+                    "attempt": 1,
+                    "rank": 1,
+                    "model": self._model_canonical_id,
+                    "runtime_profile_hash": "8f2c",
+                    "outcome": "completed",
+                    "error_code": None,
+                    "provider_ms": 18310,
+                    "ttft_ms": 640,
+                    "prompt_id": None,
+                    "prompt_version": None,
+                    "prompt_sha256": None,
+                }
+            ],
             "degradations": list(self._degradations),
         }
         if isinstance(key, str):
             self._by_idempotency_key[key] = payload
         return payload
+
+    @staticmethod
+    def _profile(profile_id: str) -> dict[str, Any]:
+        """One task profile, field for field as a real LoadCoach 1.0.0 serves it.
+
+        Recorded from a running service, not written from the documents. A mock that served only
+        `profile_id` let M8-05 hide: the adapter keyed on `id`, the served set came back empty, and
+        every offline test agreed with it. `test_golden_shapes.py` holds this against the recording.
+        """
+        return {
+            "profile_id": profile_id,
+            "version": "1.0.0",
+            "description": f"Recorded shape for {profile_id}.",
+            "weights": {
+                "reasoning": 0.5,
+                "instruction_following": 0.2,
+                "reliability": 0.2,
+                "creative_writing": 0.1,
+            },
+            "constraints": {
+                "min_context_tokens": 8192,
+                "requires_capabilities": [],
+                "max_latency_p95_seconds": 180.0,
+                "min_capability_scores": {},
+                "exclude_models": [],
+                "allow_remote_providers": False,
+            },
+            "execution": {
+                "temperature": 0.2,
+                "max_output_tokens": 4096,
+                "min_output_tokens": None,
+                "response_format": "text",
+                "json_schema_ref": None,
+                "max_attempts": 2,
+                "fallback_depth": 1,
+            },
+            "validation": {
+                "require_valid_json": False,
+                "require_schema": False,
+                "required_fields": [],
+                "max_output_chars": 100000,
+            },
+            "enabled": True,
+            "updated_at": "2026-09-01T00:00:00+00:00",
+        }
 
     def _failure(self, job_id: str, *, code: str, message: str, state: str) -> dict[str, Any]:
         """A terminal non-completion, field for field as a real LoadCoach 1.0.0 emits it.

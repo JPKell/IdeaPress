@@ -160,6 +160,10 @@ the project unrecoverable from the CLI.
   findings — because the review stopped on `diminishing_returns` rather than because they were
   fixed — exported as though it had none.
 - `ideapress export run` reports a refusal as a one-line message and exit 2, not a traceback.
+- The LoadCoach adapter refuses a task-profile list it cannot read, instead of reporting an empty
+  catalogue. Zero profiles is a valid number and a running LoadCoach never serves it, so reading
+  "no identifier found" as "none served" made the check that exists to catch a renamed profile
+  report the exact opposite of the truth — which is the shape that defect actually took.
 - A review-stage output budget exhausted on one unit (the model returning no text at all, twice)
   now **pauses that unit** with the stage and the budget in the reason, and the draft stage
   continues to the remaining units. Before, the failure aborted the whole stage: one

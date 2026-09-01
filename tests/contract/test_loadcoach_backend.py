@@ -19,8 +19,9 @@ from __future__ import annotations
 
 import hashlib
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
+import httpx
 import pytest
 from tests.contract.loadcoach_mock import (
     MockLoadCoach,
@@ -38,7 +39,7 @@ from ideapress.domain.inference import (
     StageRequest,
 )
 from ideapress.domain.stages import MODEL_STAGES
-from ideapress.errors import BackendVersionMismatch
+from ideapress.errors import BackendUnavailable, BackendVersionMismatch
 from ideapress.infrastructure.backends.loadcoach import (
     LOADCOACH_TASK_MAP,
     LoadCoachBackend,
@@ -569,3 +570,60 @@ def test_feedback_validates_against_the_producers_schema(
     backend.post_feedback("01J9K0001", accepted=False, notes="rejected: coverage")
     document = load_snapshot()
     validate(mock.requests[-1].body, document["components"]["schemas"]["FeedbackBody"], document)
+
+
+# ------------------------------------------------- an unreadable profile list is not an empty one
+#
+# M8-05's shape: the adapter read `id` where LoadCoach 1.0.0 emits `profile_id`, so the served set
+# came back **empty**, every mapped profile looked absent, and the check that exists to catch a
+# rename reported the exact opposite of the truth — silently, because zero profiles is a valid
+# number. A running LoadCoach always serves profiles; zero means the body was not understood.
+
+
+def _serving(body: dict[str, Any]) -> LoadCoachBackend:
+    """A LoadCoach whose `/task-profiles` answers with `body`."""
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/version"):
+            return httpx.Response(
+                200,
+                json={
+                    "application": {"name": "loadcoach", "version": "1.0.0"},
+                    "api": {"current": "v1", "supported": ["v1"], "deprecated": []},
+                },
+            )
+        return httpx.Response(200, json=body)
+
+    client = httpx.Client(base_url="http://127.0.0.1:8766", transport=httpx.MockTransport(respond))
+    return LoadCoachBackend(LoadCoachSettings(), client=client)
+
+
+def test_a_profile_list_with_no_readable_identifier_is_refused() -> None:
+    """The exact M8-05 body, had `profile_id` never been added: entries the adapter cannot key."""
+    backend = _serving(
+        {"task_profiles": [{"slug": "content.review"}, {"slug": "general.reasoning"}]}
+    )
+    with pytest.raises(BackendUnavailable, match="could not read"):
+        backend.task_profiles()
+
+
+def test_a_genuinely_empty_catalogue_is_refused_too() -> None:
+    """Deliberate: a LoadCoach serving nothing cannot serve IdeaPress either, and reporting it as
+    'every profile is missing' sends the reader to the wrong problem."""
+    with pytest.raises(BackendUnavailable):
+        _serving({"task_profiles": []}).task_profiles()
+
+
+def test_the_refusal_says_what_it_saw() -> None:
+    """A shape the adapter does not understand is a defect in the adapter; the next person needs
+    the body's keys to fix it."""
+    with pytest.raises(BackendUnavailable) as caught:
+        _serving({"profiles_v2": [{"slug": "x"}]}).task_profiles()
+    assert caught.value.details["path"] == "/task-profiles"
+    assert "profiles_v2" in caught.value.details["body_keys"]
+
+
+def test_a_readable_list_still_works() -> None:
+    """The other half, so the guard cannot pass by refusing everything."""
+    backend = _serving({"task_profiles": [{"profile_id": "content.review", "version": "1.0.0"}]})
+    assert backend.task_profiles() == {"content.review"}

@@ -538,6 +538,27 @@ class LoadCoachBackend:
                         found.add(str(identifier))
                 else:
                     found.add(str(entry))
+        if not found:
+            # A running LoadCoach always serves profiles — it ships a default set and refuses to
+            # start without one. Zero means this adapter did not understand the body, not that the
+            # service has none, and reading it as "none served" is precisely the shape M8-05 took:
+            # the served set came back empty, every mapped profile looked absent, and the check
+            # that exists to catch a rename reported the opposite of the truth. Fail loudly.
+            message = (
+                f"LoadCoach at {self._base_url} returned a task-profile list this adapter could "
+                "not read: no profile identifier was found in it. A running LoadCoach always "
+                "serves profiles, so this is a shape this adapter does not understand rather "
+                "than an empty catalogue."
+            )
+            raise BackendUnavailable(
+                message,
+                details={
+                    "backend": self.name,
+                    "base_url": self._base_url,
+                    "path": "/task-profiles",
+                    "body_keys": sorted(body)[:12],
+                },
+            )
         return found
 
     def unmapped_task_profiles(self) -> list[str]:
