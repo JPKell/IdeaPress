@@ -298,3 +298,28 @@ def test_no_feedback_is_posted_about_a_job_that_never_ran(harness: _Harness) -> 
     assert "committed" not in states, f"a unit committed from a declined draft: {states}"
     posted = [r for r in harness.mock.requests if r.path.endswith("/feedback")]
     assert posted == [], f"feedback was posted about a job that never ran: {posted}"
+
+
+def test_a_completed_job_that_carries_no_text_cannot_commit_an_empty_unit(
+    harness: _Harness,
+) -> None:
+    """The residual of M8-16: a job that *completes* and carries no text.
+
+    The adapter reports that faithfully — a model that genuinely stops having emitted nothing is
+    `finish_reason='stop'` with empty text, and inventing a degradation for it would be the
+    adapter guessing again. So the refusal has to come from the workflow, and this asserts it
+    does: whatever else happens, a unit must not reach `committed` with no content.
+    """
+    project_id = harness.runtime.projects.create(title="Silent", brief=BRIEF).id
+    assert harness.wait(start_plan(harness.runtime, project_id=project_id).run_id) == "completed"
+
+    harness.mock._answers = [""] * 12  # noqa: SLF001 — the model says nothing, repeatedly
+    harness.mock._answer_index = 0  # noqa: SLF001
+    harness.wait(start_stage(harness.runtime, project_id=project_id, stage="draft").run_id)
+
+    committed = [
+        unit
+        for unit in unit_list(harness.runtime, project_id=project_id)
+        if unit["state"] == "committed"
+    ]
+    assert committed == [], f"a unit committed with no content: {committed}"
