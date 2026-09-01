@@ -476,3 +476,79 @@ def test_a_completed_job_is_still_returned_normally() -> None:
     mock = MockLoadCoach(answers=["A local answer."])
     backend = LoadCoachBackend(LoadCoachSettings(), client=mock.client())
     assert backend.generate(_request("critique")).text == "A local answer."
+
+
+# ------------------------------------- capacity is not a content rejection, on either path
+#
+# Found by probing a real LoadCoach: `NO_ELIGIBLE_MODEL` arrives as a **422**, and the adapter's
+# 4xx branch turned it into `ContentRejected` — which is not recoverable, so the fallback never
+# engaged, and which tells the user their *content* was refused because a GPU was busy. The same
+# condition reaches the adapter as a 200 carrying a failed job record on the other path (M8-16),
+# so the two classifications now share one set of codes.
+
+
+def _erroring(code: str, status: int) -> LoadCoachBackend:
+    """A LoadCoach that answers `POST /generate` with one of its documented error envelopes."""
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/version"):
+            return httpx.Response(
+                200,
+                json={
+                    "application": {"name": "loadcoach", "version": "1.0.0"},
+                    "api": {"current": "v1", "supported": ["v1"], "deprecated": []},
+                },
+            )
+        return httpx.Response(status, json={"error": {"code": code, "message": f"{code}."}})
+
+    client = httpx.Client(base_url="http://127.0.0.1:8766", transport=httpx.MockTransport(respond))
+    return LoadCoachBackend(LoadCoachSettings(), client=client)
+
+
+@pytest.mark.parametrize(
+    ("code", "status"),
+    [
+        ("NO_ELIGIBLE_MODEL", 422),  # nothing fit the profile — a capacity answer at 4xx
+        ("QUEUE_FULL", 429),
+        ("MODEL_NOT_FOUND", 404),
+        ("TASK_PROFILE_NOT_FOUND", 404),
+        ("CAPABILITY_UNSUPPORTED", 422),
+        ("ATTEMPT_REFUSED", 409),
+    ],
+)
+def test_a_capacity_answer_is_recoverable_even_when_it_arrives_as_a_4xx(
+    code: str, status: int
+) -> None:
+    """`BackendUnavailable`, not `ContentRejected`: the fallback must be able to engage."""
+    from ideapress.errors import ContentRejected
+
+    backend = _erroring(code, status)
+    with pytest.raises(BackendUnavailable) as raised:
+        backend.generate(_request("critique"))
+    assert code in str(raised.value)
+    assert not isinstance(raised.value, ContentRejected)
+
+
+def test_a_request_too_large_is_still_a_context_limit() -> None:
+    """The 422 that genuinely is about the request keeps its own class and its own remedy."""
+    from ideapress.errors import ContextLimitExceeded
+
+    with pytest.raises(ContextLimitExceeded):
+        _erroring("CONTEXT_LIMIT_EXCEEDED", 422).generate(_request("critique"))
+
+
+def test_a_genuine_client_error_is_still_a_content_rejection() -> None:
+    """The other half: a 400 that really is about what was sent is not laundered into an outage."""
+    from ideapress.errors import ContentRejected
+
+    with pytest.raises(ContentRejected):
+        _erroring("VALIDATION_ERROR", 400).generate(_request("critique"))
+
+
+def test_a_busy_loadcoach_falls_back_rather_than_failing_the_stage() -> None:
+    """Why the classification matters: `ContentRejected` would not have reached the fallback."""
+    result = _gateway(_erroring("QUEUE_FULL", 429), fallback=FakeBackend()).run(
+        _request("critique")
+    )
+    assert result.text.strip()
+    assert any("fallback" in entry for entry in result.degradations), result.degradations

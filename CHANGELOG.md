@@ -107,6 +107,12 @@ the project unrecoverable from the CLI.
   paths share; `CONTEXT_LIMIT_EXCEEDED` raises `ContextLimitExceeded` and every other terminal
   non-completion — including an unrecognised code — raises the recoverable `BackendUnavailable`,
   which engages the fallback and leaves the project resumable.
+- **A busy LoadCoach now engages the fallback instead of reporting a content rejection.**
+  `NO_ELIGIBLE_MODEL` arrives as a 422 and `QUEUE_FULL` as a 429, and the adapter's 4xx branch
+  turned every such answer into `ContentRejected` — which is not recoverable, so the configured
+  fallback never engaged, and which told the user their *content* had been refused because a GPU
+  was busy. Capacity codes are now classified by code rather than by status class, and the same
+  set is shared with the failed-job path so the two cannot disagree.
 - A review-stage output budget exhausted on one unit (the model returning no text at all, twice)
   now **pauses that unit** with the stage and the budget in the reason, and the draft stage
   continues to the remaining units. Before, the failure aborted the whole stage: one

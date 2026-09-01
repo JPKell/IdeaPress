@@ -110,15 +110,52 @@ one of these is authoritative about whether anything was generated — whichever
 _TERMINAL_SUCCESS: Final[str] = "completed"
 
 _CONTEXT_CODES: Final[frozenset[str]] = frozenset({"CONTEXT_LIMIT_EXCEEDED"})
-"""The one failure code that is about the *request* being too large rather than LoadCoach being
-unable to serve it.
+"""The one code that is about the *request* being too large rather than LoadCoach being unable to
+serve it. LoadCoach answers it 422, and shrinking the request is the remedy."""
 
-Every other code in LoadCoach's documented vocabulary — `NO_ELIGIBLE_MODEL`, `QUEUE_FULL`,
-`MAX_WAIT_EXCEEDED`, `RATE_LIMITED`, `PROVIDER_UNAVAILABLE`, `INSUFFICIENT_RESOURCES` … — says
-LoadCoach could not serve this now, not that the content was refused. Those become
-:class:`BackendUnavailable`, which is recoverable: it engages the configured fallback and leaves
-the project resumable. An unrecognised code takes the same route deliberately — guessing that an
-unknown code means "your content was rejected" is how a retryable outage becomes a dead unit.
+_CAPACITY_CODES: Final[frozenset[str]] = frozenset(
+    {
+        # "LoadCoach is up and cannot serve this now" — read off its own `_STATUS_BY_CODE`.
+        "NO_ELIGIBLE_MODEL",  # 422, but a capacity answer: nothing fit the profile
+        "QUEUE_FULL",  # 429
+        "MAX_WAIT_EXCEEDED",  # 504
+        "RATE_LIMITED",
+        "INSUFFICIENT_RESOURCES",  # 503
+        "PROVIDER_UNAVAILABLE",  # 503
+        "PROVIDER_TIMEOUT",  # 504
+        "PROVIDER_PROTOCOL_ERROR",  # 502
+        "ALL_CANDIDATES_FAILED",  # 502
+        "ATTEMPTS_EXHAUSTED",
+        "MODEL_NOT_FOUND",  # 404 — a configuration answer, not a content one
+        "TASK_PROFILE_NOT_FOUND",  # 404
+        "CAPABILITY_UNSUPPORTED",  # 422 — the fallback may well have the capability
+        # Queue-state answers: operational, and none of them is about the caller's content.
+        "ATTEMPT_REFUSED",
+        "JOB_NOT_FOUND",
+        "JOB_NOT_CANCELLABLE",
+        "TRANSITION_REFUSED",
+        "ILLEGAL_TRANSITION",
+        "GENERATION_CANCELLED",
+        # Infrastructure answers.
+        "STORAGE_BUSY",
+        "STORAGE_FULL",
+        "DATABASE_UNAVAILABLE",
+        "DATABASE_ERROR",
+        "MIGRATION_REQUIRED",
+        "INTERNAL_ERROR",
+    }
+)
+"""Codes that say LoadCoach could not serve this, not that the content was refused.
+
+They become :class:`BackendUnavailable`, which is **recoverable**: it engages the configured
+fallback and leaves the project resumable. `ContentRejected` does neither, and telling a user their
+content was refused because a queue was full is both wrong and unactionable.
+
+Several of these arrive as **4xx** — `NO_ELIGIBLE_MODEL` is a 422 and `QUEUE_FULL` a 429 — so a
+status-code rule alone gets them wrong; the code has to be read. That is why this set exists rather
+than a `>= 500` test, and why :meth:`_decode` and :meth:`_refuse_a_terminal_failure` share it: the
+same condition reaches this adapter as an HTTP error on one path and as a `200` carrying a failed
+job record on another, and the two must not disagree.
 """
 _REFUSAL_MARKERS: Final[tuple[str, ...]] = (
     "i cannot help",
@@ -333,8 +370,10 @@ class LoadCoachBackend:
             code, detail = self._error_of(response)
             details["loadcoach_code"] = code
             message = f"LoadCoach refused the request ({code}): {detail}"
-            if code in {"CONTEXT_LIMIT_EXCEEDED", "INSUFFICIENT_RESOURCES"}:
+            if code in _CONTEXT_CODES:
                 raise ContextLimitExceeded(message, details=details)
+            if code in _CAPACITY_CODES:
+                raise BackendUnavailable(message, details=details)
             raise ContentRejected(message, details=details)
         try:
             body = response.json()
@@ -770,6 +809,9 @@ class LoadCoachBackend:
         }
         if code in _CONTEXT_CODES:
             raise ContextLimitExceeded(message, details=details)
+        # Unrecognised codes take the recoverable route deliberately: guessing that a code this
+        # adapter has never seen means "your content was rejected" is how a retryable outage
+        # becomes a dead unit.
         raise BackendUnavailable(message, details=details)
 
     def _to_result(
