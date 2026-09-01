@@ -79,7 +79,7 @@ def render_markdown(document: ExportDocument) -> str:
             lines.append(
                 f"| {row.key} — {_cell(row.text)} "
                 f"| {'blocking' if row.blocking else 'advisory'} "
-                f"| {'yes' if row.satisfied else 'no'} "
+                f"| {row.satisfied_label} "
                 f"| {row.satisfied_by} "
                 f"| {_cell(row.checks)} "
                 f"| {_cell(_grounding(row))} |"

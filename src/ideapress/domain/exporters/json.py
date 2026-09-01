@@ -70,6 +70,8 @@ def build_payload(document: ExportDocument) -> dict[str, Any]:
                         "blocking": entry.blocking,
                         "satisfied": entry.satisfied,
                         "satisfied_by": entry.satisfied_by,
+                        "demands_grounding": entry.demands_grounding,
+                        "checked_against_source": entry.checked_against_source,
                         "mechanical": entry.is_mechanical,
                         "detail": entry.detail,
                         "checks": entry.checks,

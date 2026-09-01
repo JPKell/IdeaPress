@@ -126,3 +126,79 @@ def test_every_offending_requirement_is_named_not_just_the_first() -> None:
             sources=None,
         )
     assert caught.value.details["requirement_keys"] == ["R-006", "R-007"]
+
+
+# ------------------------------------------------ §3: satisfied is not the same as unchecked
+
+
+def test_a_grounding_requirement_with_no_source_is_labelled_as_unchecked() -> None:
+    """ADR-0043 §3. `satisfied` and `satisfied against no source` are different states.
+
+    Reporting them identically is what let M8 commit invented figures under a green report: the
+    coverage table said `yes` for a requirement demanding evidence in a project that had none.
+    """
+    from ideapress.domain.exporters.model import RequirementCoverage
+
+    row = RequirementCoverage(
+        key="R-009",
+        text=R006_TEXT,
+        blocking=False,
+        satisfied=True,
+        satisfied_by="audit",
+        detail="",
+        checks="",
+        demands_grounding=True,
+        checked_against_source=False,
+    )
+    assert row.satisfied_label == "yes — not checked against any source"
+
+
+def test_a_grounding_requirement_checked_against_a_source_reads_plainly() -> None:
+    """The other half, so the qualifier means something when it appears."""
+    from ideapress.domain.exporters.model import RequirementCoverage
+
+    row = RequirementCoverage(
+        key="R-006",
+        text=R006_TEXT,
+        blocking=True,
+        satisfied=True,
+        satisfied_by="audit",
+        detail="",
+        checks="",
+        demands_grounding=True,
+        checked_against_source=True,
+    )
+    assert row.satisfied_label == "yes"
+
+
+def test_an_ordinary_requirement_is_never_qualified() -> None:
+    """A requirement that never asked for evidence must not acquire a caveat about sources."""
+    from ideapress.domain.exporters.model import RequirementCoverage
+
+    row = RequirementCoverage(
+        key="R-001",
+        text="The unit must be explicit about scope.",
+        blocking=True,
+        satisfied=True,
+        satisfied_by="deterministic_check",
+        detail="",
+        checks="contains any of: 'scope'",
+    )
+    assert row.satisfied_label == "yes"
+
+
+def test_an_unsatisfied_requirement_says_no_whatever_else_is_true() -> None:
+    from ideapress.domain.exporters.model import RequirementCoverage
+
+    row = RequirementCoverage(
+        key="R-006",
+        text=R006_TEXT,
+        blocking=True,
+        satisfied=False,
+        satisfied_by="audit",
+        detail="",
+        checks="",
+        demands_grounding=True,
+        checked_against_source=False,
+    )
+    assert row.satisfied_label == "no"

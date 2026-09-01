@@ -87,7 +87,7 @@ def _coverage_table(document: ExportDocument) -> list[str]:
             "<tr>"
             f"<td>{_e(row.key)} — {_e(row.text)}</td>"
             f"<td>{'blocking' if row.blocking else 'advisory'}</td>"
-            f'<td class="{"yes" if row.satisfied else ""}">{"yes" if row.satisfied else "no"}</td>'
+            f'<td class="{"yes" if row.satisfied else ""}">{_e(row.satisfied_label)}</td>'
             f"<td>{_e(row.satisfied_by)}</td>"
             f"<td>{_e(row.checks)}</td>"
             f"<td>{grounding}</td>"

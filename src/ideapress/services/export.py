@@ -34,6 +34,7 @@ from ideapress.infrastructure.db.models import Coverage as CoverageRow
 from ideapress.infrastructure.db.models import Critique as CritiqueRow
 from ideapress.infrastructure.db.models import Export as ExportRow
 from ideapress.infrastructure.db.models import Requirement as RequirementRow
+from ideapress.infrastructure.db.models import Source as SourceRow
 from ideapress.infrastructure.db.models import Unit as UnitRow
 from ideapress.infrastructure.db.models import UnitVersion as UnitVersionRow
 from ideapress.services.plan import load_requirements
@@ -67,7 +68,11 @@ _RENDERERS: Final[dict[str, Callable[[ExportDocument], str]]] = {
 
 
 def _coverage_entry(
-    entry: CoverageRow, requirement_keys: dict[str, str], requirements: dict[str, Requirement]
+    entry: CoverageRow,
+    requirement_keys: dict[str, str],
+    requirements: dict[str, Requirement],
+    *,
+    has_sources: bool = False,
 ) -> RequirementCoverage:
     """Resolve one stored coverage row against its requirement, source and quote included.
 
@@ -83,6 +88,8 @@ def _coverage_entry(
         key=key,
         text=requirement.text if requirement else "",
         blocking=requirement.blocking if requirement else True,
+        demands_grounding=bool(requirement and requirement.demands_grounding),
+        checked_against_source=has_sources,
         satisfied=entry.satisfied,
         satisfied_by=entry.satisfied_by,
         detail=entry.detail_json.get("detail", ""),
@@ -166,6 +173,12 @@ def build_document(runtime: Runtime, *, project_id: str) -> ExportDocument:
     project = runtime.projects.get(project_id)
     with runtime.storage.read() as session:
         requirements = {r.key: r for r in load_requirements(session, project_id)}
+        # Whether anything existed for `fact_check` to check claims against (ADR-0043 §3).
+        has_sources = bool(
+            session.execute(
+                select(SourceRow.id).where(SourceRow.project_id == project_id).limit(1)
+            ).first()
+        )
         requirement_keys = {
             row.id: row.requirement_key
             for row in session.scalars(
@@ -219,7 +232,12 @@ def build_document(runtime: Runtime, *, project_id: str) -> ExportDocument:
                     coverage=tuple(
                         sorted(
                             (
-                                _coverage_entry(entry, requirement_keys, requirements)
+                                _coverage_entry(
+                                    entry,
+                                    requirement_keys,
+                                    requirements,
+                                    has_sources=has_sources,
+                                )
                                 for entry in coverage_rows
                             ),
                             key=lambda entry: entry.key,

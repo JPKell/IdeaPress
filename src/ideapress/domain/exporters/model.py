@@ -62,6 +62,26 @@ class RequirementCoverage:
     source_document: str = ""
     source_quote: str = ""
     source_anchor: str | None = None
+    demands_grounding: bool = False
+    """Whether the requirement asks for claims to rest on evidence (ADR-0043)."""
+    checked_against_source: bool = False
+    """Whether a source existed for `fact_check` to check those claims against.
+
+    ADR-0043 §3: *satisfied* and *satisfied against no source* are different states, and reporting
+    them the same way is what let M8 commit invented figures under a green report. A blocking
+    grounding requirement in a project with no sources is refused at plan time (§1), so this can
+    only be false for a **non-blocking** one — which is exactly the case the refusal deliberately
+    lets through, and therefore exactly the case the report must be honest about.
+    """
+
+    @property
+    def satisfied_label(self) -> str:
+        """`yes`, `no`, or `yes` qualified by what could not be checked."""
+        if not self.satisfied:
+            return "no"
+        if self.demands_grounding and not self.checked_against_source:
+            return "yes — not checked against any source"
+        return "yes"
 
     @property
     def is_mechanical(self) -> bool:
