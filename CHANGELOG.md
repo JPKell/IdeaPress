@@ -132,7 +132,7 @@ the project unrecoverable from the CLI.
   the requirement becomes honestly check-less and routes to the audit under ADR-0039. The gate's
   asymmetry is unchanged — a surviving check still settles its requirement and a model still cannot
   overturn it.
-- **Grounding is verified, not assumed** (ADR-0043). Two mechanisms, layered.
+- **Grounding is verified, not assumed** (ADR-0043). Three mechanisms, layered.
   **(1)** A blocking requirement that asks for claims to rest on evidence, in a project with **no
   sources attached**, is now refused by `plan build` before any unit is written — naming the
   requirement and the remedy — because it is unsatisfiable, not merely hard. M8 observed the
@@ -144,6 +144,11 @@ the project unrecoverable from the CLI.
   in a project that has sources. It reports claims the sources do not support as `major` findings
   that flow into the existing review loop. **It cannot pass a requirement** — only add findings — so
   a model still does not decide the gate.
+  **(3)** Requirement coverage distinguishes *satisfied* from *satisfied against no source*, in the
+  table and in all three export formats. Reporting them identically is what let a unit commit
+  invented figures under a green report. Only a **non-blocking** grounding requirement can reach
+  that state — a blocking one is refused at plan time — which is exactly the case the refusal
+  deliberately lets through, and therefore exactly the case the report must be honest about.
 - **A partially committed export now discloses what it is missing, or refuses.** A project with
   *nothing* committed has always refused; a project with *some* of its plan committed silently
   succeeded — dropping the uncommitted units, dropping the requirements they owed, reporting the
