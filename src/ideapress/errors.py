@@ -19,6 +19,7 @@ __all__ = [
     "ContentRejected",
     "ContextLimitExceeded",
     "ExportFailed",
+    "GroundingUnavailable",
     "InsufficientVram",
     "ModelNotConfigured",
     "ProjectNotFound",
@@ -88,6 +89,17 @@ class StagePreconditionFailed(SuiteError):
     """The stage cannot run from the project's current state. Names the state and what is needed."""
 
     code: ClassVar[str] = "STAGE_PRECONDITION_FAILED"
+
+
+class GroundingUnavailable(SuiteError):
+    """A requirement asks for evidence and the project has none attached (ADR-0043).
+
+    Raised by `plan build`, before any unit is written. It names the requirement and the remedy,
+    because the alternative — compiling it, assigning it to units and reporting it satisfied — is
+    a green report the system has no means to justify, and that is what M8 observed it doing.
+    """
+
+    code: ClassVar[str] = "GROUNDING_UNAVAILABLE"
 
 
 class RevisionLimitReached(SuiteError):

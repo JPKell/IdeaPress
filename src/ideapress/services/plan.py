@@ -29,6 +29,7 @@ from ideapress.domain.requirements import (
     RequirementCheck,
     SourceReference,
 )
+from ideapress.errors import GroundingUnavailable
 from ideapress.infrastructure.db.models import Requirement as RequirementRow
 from ideapress.infrastructure.db.models import Unit as UnitRow
 from ideapress.services.prompts import render
@@ -132,6 +133,56 @@ def _parse_units(text: str) -> list[dict[str, Any]]:
     return [unit for unit in payload["units"] if isinstance(unit, dict)]
 
 
+def refuse_ungroundable(
+    requirements: Sequence[Requirement], *, sources: Mapping[str, str] | None
+) -> None:
+    """Refuse a plan whose blocking requirements ask for evidence the project does not have.
+
+    Args:
+        requirements: The compiled requirements.
+        sources: The attached source documents, or ``None``/empty when there are none.
+
+    Raises:
+        GroundingUnavailable: A **blocking** requirement is marked `demands_grounding` and no
+            source is attached. Names every such requirement and the two ways out.
+
+    ADR-0043 §1. A requirement asking that claims rest on evidence, in a project with nothing for
+    them to rest on, is not a hard requirement — it is an unsatisfiable one, and the honest moment
+    to say so is before any unit is written.
+
+    M8 is why this exists. A brief asked that claims be grounded in "usage figures, named programme
+    types, and the specific services that have no other local provider" and attached no sources.
+    The model supplied a daily footfall count, a workshop attendance figure and a named 2023 audit,
+    none of which exist, and every gate passed: 23 checks, an audit scoring 1.00, a critique of
+    `leave_it_alone`, full coverage. Nothing in the run observed that the requirement asked for
+    evidence and the project had none.
+
+    Only **blocking** requirements refuse. A non-blocking one asking for evidence is a preference
+    the author can take or leave, and stopping a project over it would be the refusal outstaying
+    its welcome.
+    """
+    if sources:
+        return
+    ungroundable = [r for r in requirements if r.blocking and r.demands_grounding]
+    if not ungroundable:
+        return
+    named = ", ".join(f"{r.key} ({r.text.strip()[:80]})" for r in ungroundable)
+    message = (
+        f"{'This requirement asks' if len(ungroundable) == 1 else 'These requirements ask'} for "
+        f"claims to be grounded in evidence, and this project has no sources attached: {named}. "
+        "Attach a source, or reword the brief so the requirement is about content rather than "
+        "about evidence."
+    )
+    raise GroundingUnavailable(
+        message,
+        details={
+            "requirement_keys": [r.key for r in ungroundable],
+            "sources_attached": 0,
+            "remedy": "attach a source document, or reword the brief",
+        },
+    )
+
+
 def build_plan(
     gateway: InferenceGateway,
     *,
@@ -170,6 +221,7 @@ def build_plan(
         generation=generation,
         structured_output_tokens=structured_output_tokens,
     )
+    refuse_ungroundable(compilation.requirements, sources=sources)
     prompt = render(
         OUTLINE_PROMPT_ID,
         {

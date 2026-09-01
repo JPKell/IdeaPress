@@ -249,6 +249,56 @@ def restates_its_requirement(check: RequirementCheck, requirement_text: str) -> 
     return any(_normalised(value) in haystack for value in check.values if value.strip())
 
 
+_GROUNDING_VOCABULARY: Final[tuple[str, ...]] = (
+    "grounded in",
+    "grounded on",
+    "ground every claim",
+    "cite",
+    "citation",
+    "evidence",
+    "sourced",
+    "source material",
+    "according to",
+    "statistic",
+    "usage figures",
+    "data from",
+    "supported by",
+    "verifiable",
+    "referenced",
+    "attribution",
+)
+"""Phrasings that make a requirement one about *evidence* rather than about content.
+
+Deliberately conservative. A false positive costs a refusal a person can answer by attaching a
+source or rewording the brief; a false negative costs what M8 observed — invented figures committed
+against a requirement demanding real ones, with a green report attached.
+"""
+
+
+def demands_grounding(text: str, *, declared: object = None) -> bool:
+    """Whether a requirement asks for claims to rest on evidence (ADR-0043 §1).
+
+    Args:
+        text: The requirement's text.
+        declared: What the compiler model said, when it said anything. Any truthy value marks the
+            requirement; ``None`` means the model did not answer and only the vocabulary applies.
+
+    Returns:
+        ``True`` if either the model marked it or its wording is about evidence.
+
+    **Both, deliberately, and OR-ed.** Relying on the model alone would let the mechanism fail
+    silently the moment a prompt revision or a smaller model stopped emitting the field — and a
+    safety refusal that quietly stops firing is worse than none, because the plan still says
+    everything is fine. Relying on the vocabulary alone would miss phrasings nobody listed. Each
+    covers the other's failure, and the result is stored on the requirement so a person can see
+    which requirements the refusal will apply to before it applies.
+    """
+    if declared is not None and bool(declared):
+        return True
+    haystack = " ".join(text.lower().split())
+    return any(phrase in haystack for phrase in _GROUNDING_VOCABULARY)
+
+
 def _build_checks(raw: Any, *, requirement_text: str = "") -> list[RequirementCheck]:
     """Turn a candidate's check dictionaries into validated checks, dropping the invalid ones.
 
@@ -371,6 +421,10 @@ def compile_requirements(
                     checks=_build_checks(
                         candidate.get("checks"),
                         requirement_text=str(candidate.get("text", "")),
+                    ),
+                    demands_grounding=demands_grounding(
+                        str(candidate.get("text", "")),
+                        declared=candidate.get("demands_grounding"),
                     ),
                     documents=documents,
                     generation=generation,

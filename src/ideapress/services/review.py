@@ -30,7 +30,7 @@ from ideapress.services.prompts import render
 from ideapress.services.requirements import STRUCTURED_OUTPUT_TOKENS
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Mapping, Sequence
 
     from ideapress.domain.stages import StageId
     from ideapress.services.inference import InferenceGateway
@@ -43,6 +43,7 @@ __all__ = [
     "render_findings",
     "render_requirements",
     "run_audit",
+    "run_fact_check",
     "run_critique",
     "run_revision",
 ]
@@ -325,6 +326,72 @@ def run_audit(
     prefix = "D" if stage == "audit_deep" else "A"
     return AuditOutcome(
         report=parse_findings(result.text, stage=stage, key_prefix=prefix),
+        result=result,
+        prompt_id=prompt.prompt_id,
+        prompt_version=prompt.version,
+        prompt_sha256=prompt.sha256,
+    )
+
+
+def render_sources(sources: Mapping[str, str]) -> str:
+    """The project's source documents, rendered for the fact checker, newest ordering preserved."""
+    return "\n\n".join(f"--- {name} ---\n{body}" for name, body in sources.items())
+
+
+def run_fact_check(
+    gateway: InferenceGateway,
+    *,
+    project_id: str,
+    unit_key: str,
+    content: str,
+    sources: Mapping[str, str],
+    round_number: int = 0,
+    structured_output_tokens: int = STRUCTURED_OUTPUT_TOKENS,
+) -> AuditOutcome:
+    """Check a unit's factual claims against the project's sources (ADR-0043 §2).
+
+    Args:
+        gateway: The single choke point.
+        project_id, unit_key: For correlation.
+        content: The unit's text.
+        sources: The attached source documents, by name. Never empty — a project with none is
+            refused at plan time when a requirement demands grounding (ADR-0043 §1), and this
+            stage does not run otherwise.
+        round_number: The revision round.
+        structured_output_tokens: The output budget, reasoning included.
+
+    Returns:
+        An :class:`AuditOutcome` whose findings are the claims the sources do not support. Every
+        one is `major` by construction of the prompt: an unsupported claim is not a matter of
+        taste.
+
+    Raises:
+        ValidationError: The checker's answer was not parseable.
+
+    **This stage cannot pass a requirement.** It only adds findings, which flow into the same
+    review loop as any audit's, so the existing revise/re-audit machinery handles them and no new
+    control flow exists for a model to influence. A model still does not decide the gate — risk T1
+    is unchanged by adding this stage, and that is why it was safe to add.
+    """
+    prompt = render(
+        "stages.fact_check.verify",
+        {"sources": render_sources(sources), "content": content},
+    )
+    result = gateway.run(
+        StageRequest(
+            stage="fact_check",
+            system=prompt.system or "",
+            user=prompt.user,
+            response_format=ResponseFormat(kind="json_schema", schema=FINDINGS_SCHEMA),
+            limits=StageLimits(temperature=0.0, max_output_tokens=structured_output_tokens),
+            correlation=Correlation(project_id=project_id, unit_id=unit_key, round=round_number),
+            prompt_id=prompt.prompt_id,
+            prompt_version=prompt.version,
+            prompt_sha256=prompt.sha256,
+        )
+    )
+    return AuditOutcome(
+        report=parse_findings(result.text, stage="fact_check", key_prefix="F"),
         result=result,
         prompt_id=prompt.prompt_id,
         prompt_version=prompt.version,

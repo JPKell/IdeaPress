@@ -132,6 +132,18 @@ the project unrecoverable from the CLI.
   the requirement becomes honestly check-less and routes to the audit under ADR-0039. The gate's
   asymmetry is unchanged — a surviving check still settles its requirement and a model still cannot
   overturn it.
+- **Grounding is verified, not assumed** (ADR-0043). Two mechanisms, layered.
+  **(1)** A blocking requirement that asks for claims to rest on evidence, in a project with **no
+  sources attached**, is now refused by `plan build` before any unit is written — naming the
+  requirement and the remedy — because it is unsatisfiable, not merely hard. M8 observed the
+  alternative: a brief asking for claims "grounded in usage figures" with nothing attached produced
+  an invented footfall count, an invented attendance figure and a named 2023 audit that does not
+  exist, and every gate passed it.
+  **(2)** `fact_check` moves from a stage that existed in the vocabulary to one the unit loop runs,
+  after the audits and before the critique, for any unit carrying a grounding-demanding requirement
+  in a project that has sources. It reports claims the sources do not support as `major` findings
+  that flow into the existing review loop. **It cannot pass a requirement** — only add findings — so
+  a model still does not decide the gate.
 - A review-stage output budget exhausted on one unit (the model returning no text at all, twice)
   now **pauses that unit** with the stage and the budget in the reason, and the draft stage
   continues to the remaining units. Before, the failure aborted the whole stage: one

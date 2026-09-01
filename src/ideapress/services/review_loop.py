@@ -30,7 +30,12 @@ from ideapress.domain.validation import ValidationContext, run_validators
 from ideapress.domain.validators import DEFAULT_VALIDATORS
 from ideapress.infrastructure.db.models import AuditFinding as AuditFindingRow
 from ideapress.infrastructure.db.models import Critique as CritiqueRow
-from ideapress.services.review import run_audit, run_critique, run_revision
+from ideapress.services.review import (
+    run_audit,
+    run_critique,
+    run_fact_check,
+    run_revision,
+)
 from ideapress.services.stages import record_attempt
 from ideapress.services.units import record_validation
 
@@ -106,6 +111,62 @@ def _store_findings(
                     source_stage=finding.source_stage,
                 )
             )
+
+
+def _project_sources(runtime: Runtime, project_id: str) -> dict[str, str]:
+    """The project's attached source documents, by title, for the fact checker.
+
+    A source with no stored text — an opt-in URL never fetched, a file whose body was not kept —
+    is omitted rather than passed as an empty document, because a checker told a source is empty
+    reports every claim in the unit as unsupported and floods the round with noise.
+    """
+    from sqlalchemy import select
+
+    from ideapress.infrastructure.db.models import Source
+
+    with runtime.storage.read() as session:
+        rows = session.execute(
+            select(Source.title, Source.content_text)
+            .where(Source.project_id == project_id)
+            .order_by(Source.created_at, Source.id)
+        ).all()
+    return {str(title): str(body) for title, body in rows if body and str(body).strip()}
+
+
+def _fact_check_applies(
+    runtime: Runtime, project_id: str, *, requirements: Sequence[Requirement]
+) -> bool:
+    """Whether this unit's round runs `fact_check` (ADR-0043 §2).
+
+    Args:
+        runtime: The process's handles.
+        project_id: The project.
+        requirements: The unit's requirements.
+
+    Returns:
+        ``True`` when the project has at least one source carrying text **and** either the content
+        type turns fact checking on by default (a report does; an article does not — workflows §2
+        stage 10) or one of this unit's requirements demands grounding.
+
+    Both halves are load-bearing. Without a source there is nothing to check against and the stage
+    would report every claim unsupported; without a grounding-demanding requirement or a content
+    type that asks for it, a model call per unit buys nothing the audit does not already cover.
+    """
+    if not _project_sources(runtime, project_id):
+        return False
+    if any(r.demands_grounding for r in requirements):
+        return True
+    from sqlalchemy import select
+
+    from ideapress.content_types.registry import discover
+    from ideapress.infrastructure.db.models import Project
+
+    with runtime.storage.read() as session:
+        name = session.execute(
+            select(Project.content_type).where(Project.id == project_id)
+        ).scalar_one_or_none()
+    content_type = discover().get(str(name or ""))
+    return bool(content_type and content_type.fact_check_by_default)
 
 
 def run_review_loop(
@@ -244,6 +305,51 @@ def run_review_loop(
                     "stage": "audit_deep",
                     "escalated": True,
                     "score": round(deep.report.score, 3),
+                },
+            )
+
+        # Fact check (ADR-0043 §2): only where there is something to check against, and only for
+        # a unit that carries a grounding-demanding requirement. It reports; it cannot pass
+        # anything. Its findings join the round like any other, so the existing revise/re-audit
+        # machinery handles them and no new control flow exists for a model to influence.
+        if _fact_check_applies(runtime, project_id, requirements=requirements):
+            runtime.runner.checkpoint(task)
+            sources = _project_sources(runtime, project_id)
+            checked = run_fact_check(
+                gateway,
+                project_id=project_id,
+                unit_key=unit.key,
+                content=text,
+                sources=sources,
+                round_number=rounds,
+                structured_output_tokens=structured_output_tokens,
+            )
+            checked_attempt = record_attempt(
+                database,
+                stage_run_id=task.run_id,
+                stage="fact_check",
+                result=checked.result,
+                unit_id=_unit_id(runtime, project_id, unit.key),
+                attempt=1,
+                round_=rounds,
+                prompt_id=checked.prompt_id,
+                prompt_version=checked.prompt_version,
+                prompt_sha256=checked.prompt_sha256,
+                store_content=runtime.runner.store_content,
+            )
+            _store_findings(runtime, checked_attempt, checked.report.findings, escalated=False)
+            round_findings.extend(checked.report.findings)
+            emit(
+                "fact_check.completed",
+                f"{unit.key}: {len(checked.report.findings)} unsupported claim(s)",
+                {
+                    "unit_key": unit.key,
+                    "round": rounds,
+                    "stage": "fact_check",
+                    "sources": sorted(sources),
+                    "findings": [
+                        {"key": f.key, "problem": f.problem_text} for f in checked.report.findings
+                    ],
                 },
             )
 

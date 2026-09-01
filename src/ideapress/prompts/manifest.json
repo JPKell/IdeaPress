@@ -25,6 +25,11 @@
       "sha256": "sha256:a9d0040b8b39516126407d6d4b9ed69e76abec93e77167ed166652aff6580c89"
     },
     {
+      "prompt_id": "stages.fact_check.verify",
+      "version": "1.0.0",
+      "sha256": "sha256:6f8d32c4ce01a26c6c0a2b63e6555c0497a1124b22632098d218aeb114589b96"
+    },
+    {
       "prompt_id": "stages.hello",
       "version": "1.0.0",
       "sha256": "sha256:b9f17cf04bb076bcd7a660e169a73238e41e63987fead814d52bb36d6d7e1cb5"
@@ -55,5 +60,5 @@
       "sha256": "sha256:3a3fcd74a9da646be2a2c2c46095911887119a7c9ff655555940877cc7ba5330"
     }
   ],
-  "pack_sha256": "sha256:90978cd14ff4c667c31a6c6c4c2d31b6c8c4297a7e739a114e8cf2839404a93e"
+  "pack_sha256": "sha256:0d541b1f75be07fb20f9fa7cef659274c9c8926d55c1b1322361fc0a852c5a45"
 }

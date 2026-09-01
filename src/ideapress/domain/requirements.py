@@ -312,6 +312,17 @@ class Requirement:
     compiled_by: CompiledBy
     checks: tuple[RequirementCheck, ...] = ()
     unit_keys: tuple[str, ...] = ()
+    demands_grounding: bool = False
+    """Whether this requirement asks for claims to rest on evidence (ADR-0043).
+
+    Marked once at compile time and carried on the requirement, rather than re-derived from prose
+    whenever a gate needs it: a property the system will refuse a plan over must be inspectable in
+    the plan a person reads, not recomputed behind them.
+
+    Its consequence is a refusal. A blocking requirement with this set, in a project with no
+    sources attached, is unsatisfiable — there is nothing for a claim to be grounded in — and
+    `plan build` says so instead of committing invented figures against it.
+    """
     generation: int = 1
 
     @property
@@ -359,6 +370,7 @@ def ground_requirement(
     checks: Sequence[RequirementCheck] = (),
     documents: Mapping[str, str],
     generation: int = 1,
+    demands_grounding: bool = False,
 ) -> Requirement:
     """Build a requirement, refusing one the author material does not support.
 
@@ -371,6 +383,7 @@ def ground_requirement(
         checks: Its deterministic checks, if any.
         documents: The author material, by name — the brief and every source.
         generation: Which compilation generation this belongs to.
+        demands_grounding: Whether it asks for claims to rest on evidence (ADR-0043).
 
     Returns:
         The requirement.
@@ -441,4 +454,5 @@ def ground_requirement(
         compiled_by=compiled_by,
         checks=tuple(checks),
         generation=generation,
+        demands_grounding=demands_grounding,
     )
