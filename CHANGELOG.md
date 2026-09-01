@@ -59,6 +59,24 @@ packaging and release standards §3.
 - The backend-parity test now runs the identical workflow across **four** adapters, and asserts
   that one configured output budget reaches all four unchanged.
 
+### Security
+- **The sanitization sweep** (P9): model output is inert in every view and every export format,
+  with the surfaces **enumerated mechanically** — export formats from `FORMATS`, templates by
+  walking the tree, UI pages from the routers — so the named failure mode (a gap in exactly one
+  surface) cannot be introduced by adding a page or a format.
+- **Portable project archives**, hardened: `ideapress project export|import` (M7-27, spec §7.2).
+  Nothing is written until everything is validated — containment, symlinks, hardlinks, device
+  files, an entry-count cap, a per-entry cap, a total cap and a compression-ratio cap. A refused
+  archive leaves no directory and no row, and `--inspect` reports what an archive contains without
+  importing it.
+- **ADR-0026 proven on a non-loopback bind** (M7-31): a LAN bind with no `allowed_hosts` refuses to
+  start; `Host` is validated before routing, so a path that does not exist is still 421; CSRF is
+  enforced on every form route, enumerated from the routers; egress is labelled.
+
+### Performance
+- All **seven** of spec §15's budgets are now asserted under the `performance` marker (M7-28), the
+  four project-sized ones against a real 100-unit committed project (M7-30's missing fixture).
+
 ### Documentation
 - [ADR-0040](../docs/adr/0040-routing-backend-owns-model-choice.md) — a routing backend owns model
   choice and residency.

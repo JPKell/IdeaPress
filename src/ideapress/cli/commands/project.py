@@ -162,3 +162,90 @@ def delete(
             raise typer.Exit(0)
         service.delete(project_id, confirm=True)
         typer.echo(f"Deleted {preview.project.title}.")
+
+
+@app.command(name="export")
+def export_archive(
+    project_id: Annotated[str, typer.Argument(help="The project to export.")],
+    destination: Annotated[
+        str, typer.Option("--to", help="File to write, or a directory to write into.")
+    ] = ".",
+) -> None:
+    """Write a project's whole record to a portable archive (spec §7.2).
+
+    The archive carries the brief, the compiled requirements, the plan, every committed version and
+    the provenance of every attempt — everything needed to open the project on another machine, or
+    to keep as a backup that outlives this installation.
+    """
+    from pathlib import Path
+
+    from ideapress.config import load_settings
+    from ideapress.services.project_archive import export_project_archive
+    from ideapress.services.runtime import build_runtime
+
+    runtime = build_runtime(load_settings().settings)
+    try:
+        written = export_project_archive(
+            runtime, project_id=project_id, destination=Path(destination)
+        )
+    finally:
+        runtime.close()
+    typer.echo(f"Wrote {written}")
+
+
+@app.command(name="import")
+def import_archive(
+    path: Annotated[str, typer.Argument(help="The archive to read.")],
+    title: Annotated[
+        str, typer.Option("--title", help="Use this title instead of the archive's.")
+    ] = "",
+    inspect_only: Annotated[
+        bool,
+        typer.Option(
+            "--inspect", help="Report what the archive contains and stop, writing nothing."
+        ),
+    ] = False,
+) -> None:
+    """Create a project from an archive, after checking every byte of its structure.
+
+    Nothing is written until the archive has passed every check: containment, symlinks, entry
+    counts, sizes and the compression ratio. A refused archive leaves no directory and no row —
+    and `--inspect` reports what it found without importing at all, which is the safe thing to run
+    first on an archive somebody sent you.
+    """
+    from pathlib import Path
+
+    from baseaicore import SuiteError
+
+    from ideapress.config import load_settings
+    from ideapress.services.project_archive import (
+        describe_report,
+        import_project_archive,
+        inspect_archive,
+    )
+    from ideapress.services.runtime import build_runtime
+
+    archive_path = Path(path)
+    try:
+        report = inspect_archive(archive_path)
+    except SuiteError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=2) from exc
+
+    for line in describe_report(report):
+        typer.echo(line)
+    if inspect_only:
+        raise typer.Exit(code=0 if report.safe else 1)
+    if not report.safe:
+        typer.echo("Refused. Nothing was written.", err=True)
+        raise typer.Exit(code=1)
+
+    runtime = build_runtime(load_settings().settings)
+    try:
+        result = import_project_archive(runtime, path=archive_path, title=title or None)
+    except SuiteError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+    finally:
+        runtime.close()
+    typer.echo(f"Imported {result['title']} as {result['project_id']} ({result['units']} unit(s))")
