@@ -16,6 +16,7 @@ from typing import Final, Literal, cast, get_args
 from baseaicore import ValidationError
 
 __all__ = [
+    "IN_FLIGHT_UNIT_STATES",
     "RUN_STATES",
     "TERMINAL_RUN_STATES",
     "TRANSITIONS",
@@ -40,6 +41,18 @@ TERMINAL_RUN_STATES: Final[frozenset[str]] = frozenset(
 )
 """A run in one of these is over. An SSE stream closes when it sees one, and a `--resume` reads
 `interrupted` as "pick this up" rather than "this failed"."""
+
+IN_FLIGHT_UNIT_STATES: Final[frozenset[str]] = frozenset(
+    {"drafting", "validating", "auditing", "revising"}
+)
+"""States that exist only while a stage run is actively working the unit.
+
+``planned``, ``paused`` and ``committed`` are stable between runs; these four are not. A unit
+found in one of them when no live run owns it was orphaned — the process died, or a failure
+propagated past the per-unit loop — and it cannot be re-entered directly, because ``--resume``
+enters through ``drafting`` and only ``planned`` and ``paused`` have that arrow. Every in-flight
+state does have a ``paused`` arrow, which is what a resume uses to make an orphan resumable
+(M7 finding 1b)."""
 
 TRANSITIONS: Final[dict[UnitState, frozenset[UnitState]]] = {
     "planned": frozenset({"drafting"}),

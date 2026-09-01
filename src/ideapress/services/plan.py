@@ -139,6 +139,7 @@ def build_plan(
     brief: str,
     sources: Mapping[str, str] | None = None,
     generation: int = 1,
+    structured_output_tokens: int = STRUCTURED_OUTPUT_TOKENS,
 ) -> PlanResult:
     """Compile requirements, then plan units against them, then gate the plan.
 
@@ -148,6 +149,8 @@ def build_plan(
         brief: The project's brief.
         sources: Attached source documents.
         generation: Which compilation generation this produces.
+        structured_output_tokens: The output budget for both model tasks, reasoning included —
+            ``workflow.structured_output_tokens`` when the caller holds settings.
 
     Returns:
         The compilation and the gated plan.
@@ -160,7 +163,12 @@ def build_plan(
             model reported that it covered everything.
     """
     compilation = compile_requirements(
-        gateway, project_id=project_id, brief=brief, sources=sources, generation=generation
+        gateway,
+        project_id=project_id,
+        brief=brief,
+        sources=sources,
+        generation=generation,
+        structured_output_tokens=structured_output_tokens,
     )
     prompt = render(
         OUTLINE_PROMPT_ID,
@@ -177,7 +185,7 @@ def build_plan(
             system=prompt.system or "",
             user=prompt.user,
             response_format=ResponseFormat(kind="json_schema", schema=_PLAN_SCHEMA),
-            limits=StageLimits(temperature=0.0, max_output_tokens=STRUCTURED_OUTPUT_TOKENS),
+            limits=StageLimits(temperature=0.0, max_output_tokens=structured_output_tokens),
             correlation=Correlation(project_id=project_id),
             prompt_id=prompt.prompt_id,
             prompt_version=prompt.version,

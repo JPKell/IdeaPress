@@ -187,6 +187,9 @@ project_review     = "ollama/qwen3.5:9b-q8_0"
 [workflow]   max_revision_rounds = 3   diminishing_returns_threshold = 0.05
              max_attempts_per_stage = 3  audit_escalation_threshold = 0.6
              require_clean_validation_to_commit = true
+             structured_output_tokens = 8192   # output budget for the structured stages
+                                               # (requirements, outline, audits, critique,
+                                               # project review); accepted range 1024-131072
 [providers]  allow_remote = false
 [logging]    level = "INFO"  include_content = false
 ```
@@ -253,6 +256,16 @@ Model time dominates; IdeaPress's own budgets:
 | Draft autosave round-trip | ≤ 100 ms |
 
 Long documents stream to disk rather than being held in memory more than once.
+
+**Output-token budgets include the model's reasoning.** A thinking model spends output tokens on
+its reasoning before the first word of its answer, from the same allowance — measured on the
+reference machine, `qwen3.5:9b-q8_0` compiling requirements from a six-line brief produced nothing
+at all at 4 096 tokens and finished in 278 tokens of answer at 8 192. The structured stages
+therefore run under `workflow.structured_output_tokens` (default 8192, range 1024–131072), which is
+configuration rather than a constant: a model that thinks longer than the reference machine's
+exhausts the budget with empty output, and the user's lever for that is `config.toml`, not a code
+edit. A unit whose review exhausts the budget twice **pauses with the stage and the budget in the
+reason** while the remaining units continue; it never aborts the stage.
 
 ## 16. Cross-platform considerations
 

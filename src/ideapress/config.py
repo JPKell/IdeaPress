@@ -340,6 +340,18 @@ class WorkflowSettings(BaseModel):
             "specification are never dropped to fit it; overflow fails with both numbers."
         ),
     )
+    structured_output_tokens: int = Field(
+        default=8_192,
+        ge=1_024,
+        le=131_072,
+        description=(
+            "Output-token budget for the structured stages (requirements, outline, audit_fast, "
+            "audit_deep, critique, project_review). Includes the model's reasoning: a thinking "
+            "model spends output tokens before its first word of answer, and 8192 is the "
+            "measured floor for the default models (spec §15). Raise this when a stage pauses "
+            "with CONTEXT_LIMIT_EXCEEDED naming this budget."
+        ),
+    )
 
 
 class ProvidersSettings(BaseModel):
@@ -715,6 +727,11 @@ diminishing_returns_threshold = 0.05
 max_attempts_per_stage = 3
 audit_escalation_threshold = 0.6
 require_clean_validation_to_commit = true
+# Output-token budget for the structured stages (requirements, outline, audits, critique,
+# project review). A reasoning model spends output tokens thinking before its first word of
+# answer; a stage that pauses with CONTEXT_LIMIT_EXCEEDED naming this budget needs it raised.
+# Accepted range: 1024-131072.
+structured_output_tokens = 8192
 
 [providers]
 allow_remote = false        # a remote backend sends your drafts off this machine

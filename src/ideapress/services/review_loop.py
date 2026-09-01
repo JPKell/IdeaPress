@@ -141,6 +141,7 @@ def run_review_loop(
     max_rounds = settings.workflow.max_revision_rounds
     threshold = settings.workflow.diminishing_returns_threshold
     escalation_threshold = settings.workflow.audit_escalation_threshold
+    structured_output_tokens = settings.workflow.structured_output_tokens
 
     all_findings: list[AuditFinding] = []
     verdicts: list[str] = []
@@ -163,6 +164,7 @@ def run_review_loop(
             content=text,
             requirements=requirements,
             round_number=rounds,
+            structured_output_tokens=structured_output_tokens,
         )
         fast_attempt = record_attempt(
             database,
@@ -206,6 +208,7 @@ def run_review_loop(
                 requirements=requirements,
                 prior_findings=fast.report.findings,
                 round_number=rounds,
+                structured_output_tokens=structured_output_tokens,
             )
             deep_attempt = record_attempt(
                 database,
@@ -265,6 +268,7 @@ def run_review_loop(
             rounds_used=rounds,
             max_rounds=max_rounds,
             improvement_delta=delta,
+            structured_output_tokens=structured_output_tokens,
         )
         critique_attempt = record_attempt(
             database,

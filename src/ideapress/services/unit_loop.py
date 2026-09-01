@@ -26,6 +26,7 @@ from ideapress.domain.inference import Correlation, StageLimits, StageRequest
 from ideapress.domain.stages import StageId
 from ideapress.domain.validation import ValidationContext, run_validators
 from ideapress.domain.validators import DEFAULT_VALIDATORS
+from ideapress.errors import ContextLimitExceeded
 from ideapress.infrastructure.db.models import Unit as UnitRow
 from ideapress.services.plan import load_plan, load_requirements
 from ideapress.services.prompts import render
@@ -35,6 +36,7 @@ from ideapress.services.units import (
     commit_unit,
     committed_units,
     record_validation,
+    reset_orphaned_units,
     set_unit_state,
 )
 
@@ -120,6 +122,11 @@ def run_unit(
     Raises:
         ContextLimitExceeded: The requirements alone exceed the context budget. Not caught here:
             the stage fails with the numbers rather than drafting against a truncated contract.
+            A ``ContextLimitExceeded`` from a **model call** — the output budget exhausted twice
+            with no text at all, or a review round's context overflowing — is different: that is
+            one unit being hard to draft or hard to critique, and it **pauses the unit** with the
+            stage and the budget in the reason rather than aborting the stage, so the units after
+            it still run (M7 finding 1).
         StageCancelled: The user cancelled at a model-call boundary.
 
     The repair bound is ``workflow.max_attempts_per_stage``. When it is exhausted, the unit is
@@ -168,25 +175,35 @@ def run_unit(
             f"{unit.key}: {stage} attempt {attempt} of {limit}",
             {"unit_key": unit.key, "stage": stage, "attempt": attempt},
         )
-        result = gateway.run(
-            StageRequest(
-                stage=stage,
-                system=prompt.system or "",
-                user=prompt.user,
-                limits=StageLimits(
-                    temperature=0.4 if not is_repair else 0.2,
-                    # The floor clears a reasoning model's thinking phase, which is spent from the
-                    # same allowance as the answer: measured at over 4 096 tokens for a short
-                    # structured task on this machine's models. Four tokens per target word on top
-                    # is the answer's own room.
-                    max_output_tokens=DRAFT_THINKING_FLOOR_TOKENS + (unit.target_words or 400) * 4,
-                ),
-                correlation=Correlation(project_id=project_id, unit_id=unit.key, attempt=attempt),
-                prompt_id=prompt.prompt_id,
-                prompt_version=prompt.version,
-                prompt_sha256=prompt.sha256,
+        try:
+            result = gateway.run(
+                StageRequest(
+                    stage=stage,
+                    system=prompt.system or "",
+                    user=prompt.user,
+                    limits=StageLimits(
+                        temperature=0.4 if not is_repair else 0.2,
+                        # The floor clears a reasoning model's thinking phase, which is spent from
+                        # the same allowance as the answer: measured at over 4 096 tokens for a
+                        # short structured task on this machine's models. Four tokens per target
+                        # word on top is the answer's own room.
+                        max_output_tokens=DRAFT_THINKING_FLOOR_TOKENS
+                        + (unit.target_words or 400) * 4,
+                    ),
+                    correlation=Correlation(
+                        project_id=project_id, unit_id=unit.key, attempt=attempt
+                    ),
+                    prompt_id=prompt.prompt_id,
+                    prompt_version=prompt.version,
+                    prompt_sha256=prompt.sha256,
+                )
             )
-        )
+        except ContextLimitExceeded as exc:
+            # One unit exhausting a model's output budget is that unit's problem, not the
+            # stage's: pause it with the numbers and let the loop reach the units after it.
+            reason = f"the {stage!r} stage exhausted its output budget: {exc.message}"
+            _pause(runtime, project_id, unit.key, reason, emit, from_state="drafting")
+            return UnitOutcome(unit.key, False, attempt, reason, report, None)
         text = result.text
         attempt_id = record_attempt(
             database,
@@ -251,17 +268,26 @@ def run_unit(
     runtime.runner.checkpoint(task)
     set_unit_state(database, project_id=project_id, unit_key=unit.key, state="validating")
     set_unit_state(database, project_id=project_id, unit_key=unit.key, state="auditing")
-    review = run_review_loop(
-        runtime,
-        task,
-        project_id=project_id,
-        unit=unit,
-        requirements=requirements,
-        text=text,
-        validation=report,
-        attempt_id=attempt_id,
-        emit=emit,
-    )
+    try:
+        review = run_review_loop(
+            runtime,
+            task,
+            project_id=project_id,
+            unit=unit,
+            requirements=requirements,
+            text=text,
+            validation=report,
+            attempt_id=attempt_id,
+            emit=emit,
+        )
+    except ContextLimitExceeded as exc:
+        # The M7 blocker: a critique whose model returned nothing twice at the structured-output
+        # budget aborted the whole stage and left the unit wedged mid-review. A review budget
+        # exhausted on one unit pauses that unit — the reason names the stage and the budget
+        # (both are in the message, with the numbers in the details) — and the loop moves on.
+        reason = f"the review of this unit exhausted an output budget: {exc.message}"
+        _pause(runtime, project_id, unit.key, reason, emit, from_state="auditing")
+        return UnitOutcome(unit.key, False, limit, reason, report, None)
     text = review.text
     report = review.validation
     audit_satisfied = review.audit_satisfied
@@ -355,7 +381,10 @@ def draft_body(
         project_id: Which project.
         unit_keys: The units to work on, in plan order.
         resume: Skip units that already have a committed version — workflows §9's
-            ``--resume`` continuing from the first incomplete unit.
+            ``--resume`` continuing from the first incomplete unit. Also moves any unit a dead
+            run left mid-flight back to ``paused`` before re-entering it
+            (:func:`~ideapress.services.units.reset_orphaned_units`), so a crash mid-review
+            cannot wedge the project.
 
     Returns:
         The callable the runner executes.
@@ -367,6 +396,19 @@ def draft_body(
 
         def emit(event_type: str, message: str, data: dict[str, Any]) -> None:
             sink.emit(database, task.run_id, event_type=event_type, message=message, data=data)
+
+        if resume:
+            # A crash can leave a unit mid-flight ('drafting'…'revising'), from which no arrow
+            # leads back into the loop. Before reading states, move each orphan to 'paused' — but
+            # only when the run that owned it is demonstrably gone (M7 finding 1b).
+            for unit_key, previous in reset_orphaned_units(
+                database, project_id=project_id, active_run_id=task.run_id
+            ):
+                emit(
+                    "unit.reset",
+                    f"{unit_key}: an earlier run left it in '{previous}'; reset to paused",
+                    {"unit_key": unit_key, "previous_state": previous},
+                )
 
         with database.read() as session:
             plan = load_plan(session, project_id)

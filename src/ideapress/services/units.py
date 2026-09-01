@@ -21,10 +21,11 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import func, select
 
 from ideapress.domain.commit import content_hash, word_count
-from ideapress.domain.stage_state import assert_transition
+from ideapress.domain.stage_state import IN_FLIGHT_UNIT_STATES, assert_transition
 from ideapress.errors import StagePreconditionFailed, UnitNotFound
 from ideapress.infrastructure.db.models import Coverage as CoverageRow
 from ideapress.infrastructure.db.models import Requirement as RequirementRow
+from ideapress.infrastructure.db.models import StageRun as StageRunRow
 from ideapress.infrastructure.db.models import Unit as UnitRow
 from ideapress.infrastructure.db.models import UnitVersion as UnitVersionRow
 from ideapress.infrastructure.db.models import Validation as ValidationRow
@@ -43,6 +44,7 @@ __all__ = [
     "committed_units",
     "load_unit",
     "record_validation",
+    "reset_orphaned_units",
     "set_unit_state",
     "unit_history",
 ]
@@ -96,6 +98,92 @@ def set_unit_state(
         assert_transition(unit.state, state, unit_key=unit_key)
         unit.state = state
         unit.paused_reason = paused_reason
+
+
+def reset_orphaned_units(
+    database: Database, *, project_id: str, active_run_id: str | None = None
+) -> tuple[tuple[str, str], ...]:
+    """Move units a dead run left mid-flight back to ``paused``, so a resume can re-enter them.
+
+    A hard process death — or, before M7's fix, a failure that propagated past the per-unit
+    loop — can leave a unit in ``drafting``, ``validating``, ``auditing`` or ``revising``. None
+    of those states has a ``drafting`` arrow, so ``--resume`` (which re-enters through
+    ``drafting``) could not touch the unit and the project was wedged. This resets each such
+    orphan to ``paused``, an arrow every in-flight state has, with a reason naming the state it
+    was found in. Nothing else is touched: a ``committed`` unit is immutable, a ``paused`` unit
+    already carries its own reason, and a ``planned`` unit needs no help.
+
+    Args:
+        database: Where the units live.
+        project_id: Which project.
+        active_run_id: The caller's own stage run, exempt from the liveness check — a resume
+            calls this from inside the run it just started.
+
+    Returns:
+        ``(unit_key, previous_state)`` for every unit that was reset, in plan order; empty when
+        no unit was mid-flight.
+
+    Raises:
+        StagePreconditionFailed: A stage run other than ``active_run_id`` is ``running`` or
+            ``queued`` and its owner is not demonstrably dead — either its recorded process is
+            alive on this boot, or it predates owner tracking and nothing can prove it dead.
+            Resetting under a live run would yank units out from under a writer, so the refusal
+            names the run and leaves everything alone.
+
+    **Refuses to guess.** The liveness rule is :meth:`StageRunner.mark_interrupted`'s, applied to
+    unit state: an owner from this boot that answers ``kill -0`` is alive; an owner from another
+    boot is dead; a run with no recorded owner is *unknown*, and unknown refuses rather than
+    resets, because an un-reset orphan is visible and recoverable by hand while a reset under a
+    live writer corrupts work in progress.
+    """
+    from ideapress.services.stages import boot_id, process_is_alive
+
+    with database.write() as session:
+        units = session.scalars(
+            select(UnitRow)
+            .where(UnitRow.project_id == project_id, UnitRow.state.in_(IN_FLIGHT_UNIT_STATES))
+            .order_by(UnitRow.ordinal)
+        ).all()
+        if not units:
+            return ()
+
+        current_boot = boot_id()
+        runs = session.scalars(
+            select(StageRunRow).where(
+                StageRunRow.project_id == project_id,
+                StageRunRow.state.in_(("running", "queued")),
+            )
+        ).all()
+        for run in runs:
+            if run.id == active_run_id:
+                continue
+            owner_pid = run.owner_pid
+            if owner_pid is None:
+                obstacle = "has no recorded owner, so nothing can prove it dead"
+            elif run.owner_boot_id == current_boot and process_is_alive(owner_pid):
+                obstacle = f"its process {owner_pid} is alive"
+            else:
+                continue  # demonstrably dead: another boot, or a dead PID on this one
+            message = (
+                f"Stage run {run.id} ({run.stage!r}) is {run.state!r} and {obstacle}; the units "
+                "it may be working on cannot be reset. Wait for it, cancel it, or mark it "
+                "interrupted before resuming."
+            )
+            raise StagePreconditionFailed(
+                message, details={"project_id": project_id, "run_id": run.id}
+            )
+
+        reset: list[tuple[str, str]] = []
+        for unit in units:
+            previous = unit.state
+            assert_transition(previous, "paused", unit_key=unit.unit_key)
+            unit.state = "paused"
+            unit.paused_reason = (
+                f"reset by --resume: an earlier run left this unit in {previous!r} and is gone; "
+                "nothing was committed"
+            )
+            reset.append((unit.unit_key, previous))
+        return tuple(reset)
 
 
 def record_validation(database: Database, *, attempt_id: str, report: ValidationReport) -> None:

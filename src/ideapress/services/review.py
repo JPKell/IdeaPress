@@ -218,6 +218,7 @@ def run_audit(
     requirements: Sequence[Requirement],
     prior_findings: Sequence[AuditFinding] = (),
     round_number: int = 0,
+    structured_output_tokens: int = STRUCTURED_OUTPUT_TOKENS,
 ) -> AuditOutcome:
     """Run one audit stage over a unit's text.
 
@@ -229,6 +230,8 @@ def run_audit(
         requirements: What it must satisfy.
         prior_findings: What a fast audit found, for a deep one.
         round_number: The revision round.
+        structured_output_tokens: The output budget, reasoning included —
+            ``workflow.structured_output_tokens`` when the caller holds settings.
 
     Returns:
         The findings, and everything the attempt record needs.
@@ -250,7 +253,7 @@ def run_audit(
             system=prompt.system or "",
             user=prompt.user,
             response_format=ResponseFormat(kind="json_schema", schema=FINDINGS_SCHEMA),
-            limits=StageLimits(temperature=0.0, max_output_tokens=STRUCTURED_OUTPUT_TOKENS),
+            limits=StageLimits(temperature=0.0, max_output_tokens=structured_output_tokens),
             correlation=Correlation(project_id=project_id, unit_id=unit_key, round=round_number),
             prompt_id=prompt.prompt_id,
             prompt_version=prompt.version,
@@ -289,8 +292,13 @@ def run_critique(
     rounds_used: int,
     max_rounds: int,
     improvement_delta: float | None = None,
+    structured_output_tokens: int = STRUCTURED_OUTPUT_TOKENS,
 ) -> CritiqueOutcome:
-    """Ask for a quality verdict. The verdict asks; it never decides."""
+    """Ask for a quality verdict. The verdict asks; it never decides.
+
+    ``structured_output_tokens`` is the verdict's output budget, reasoning included —
+    ``workflow.structured_output_tokens`` when the caller holds settings.
+    """
     prompt = render(
         "stages.critique.judge",
         {
@@ -307,7 +315,7 @@ def run_critique(
             system=prompt.system or "",
             user=prompt.user,
             response_format=ResponseFormat(kind="json_schema", schema=_CRITIQUE_SCHEMA),
-            limits=StageLimits(temperature=0.0, max_output_tokens=STRUCTURED_OUTPUT_TOKENS),
+            limits=StageLimits(temperature=0.0, max_output_tokens=structured_output_tokens),
             correlation=Correlation(project_id=project_id, unit_id=unit_key, round=rounds_used),
             prompt_id=prompt.prompt_id,
             prompt_version=prompt.version,

@@ -17,7 +17,6 @@ from ideapress.domain.inference import Correlation, ResponseFormat, StageLimits,
 from ideapress.errors import StagePreconditionFailed
 from ideapress.infrastructure.db.models import AuditFinding as AuditFindingRow
 from ideapress.services.prompts import render
-from ideapress.services.requirements import STRUCTURED_OUTPUT_TOKENS
 from ideapress.services.review import FINDINGS_SCHEMA, parse_findings
 from ideapress.services.stages import record_attempt
 from ideapress.services.units import committed_units
@@ -83,7 +82,10 @@ def project_review_body(runtime: Runtime, *, project_id: str) -> Callable[[Stage
                 system=prompt.system or "",
                 user=prompt.user,
                 response_format=ResponseFormat(kind="json_schema", schema=FINDINGS_SCHEMA),
-                limits=StageLimits(temperature=0.0, max_output_tokens=STRUCTURED_OUTPUT_TOKENS),
+                limits=StageLimits(
+                    temperature=0.0,
+                    max_output_tokens=runtime.settings.workflow.structured_output_tokens,
+                ),
                 correlation=Correlation(project_id=project_id),
                 prompt_id=prompt.prompt_id,
                 prompt_version=prompt.version,

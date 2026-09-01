@@ -67,6 +67,7 @@ def start_plan(runtime: Runtime, *, project_id: str) -> StageTask:
             project_id=project_id,
             brief=project.brief_text,
             sources=None,
+            structured_output_tokens=runtime.settings.workflow.structured_output_tokens,
         )
         record_attempt(
             database,

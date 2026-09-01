@@ -58,13 +58,17 @@ logger = logging.getLogger(__name__)
 COMPILE_PROMPT_ID = "stages.requirements.compile"
 
 STRUCTURED_OUTPUT_TOKENS = 8192
-"""The output budget for a structured-extraction stage.
+"""The default output budget for a structured-extraction stage.
 
 **Includes the model's reasoning**, which is why it is this large. Measured on the reference
 machine: `qwen3.5:9b-q8_0` compiling requirements from a six-line brief produced **nothing at all**
 at 4 096 tokens — the whole allowance went on thinking — and completed in 278 tokens of answer at
 8 192. A budget that a reasoning model cannot finish thinking inside returns an empty string, which
-a JSON parser then reports as a malformed answer rather than as an absent one."""
+a JSON parser then reports as a malformed answer rather than as an absent one.
+
+This is a *default*, not a policy: the effective budget is ``workflow.structured_output_tokens``
+(spec §12), threaded in by every caller that holds settings, so a user whose model thinks longer
+than the reference machine's can raise it in ``config.toml`` rather than editing code."""
 
 _REQUIREMENTS_SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -236,6 +240,7 @@ def compile_requirements(
     sources: Mapping[str, str] | None = None,
     generation: int = 1,
     attempt: int = 1,
+    structured_output_tokens: int = STRUCTURED_OUTPUT_TOKENS,
 ) -> CompilationResult:
     """Compile requirements from the author material, keeping only what is grounded in it.
 
@@ -247,6 +252,10 @@ def compile_requirements(
         generation: Which compilation generation this is. Recompiling makes a new one; the old
             rows are retained, because a project records which generation it is working against.
         attempt: Which attempt within the stage.
+        structured_output_tokens: The output budget for the compilation, reasoning included.
+            Callers that hold settings pass ``workflow.structured_output_tokens``; the default is
+            the measured floor for the reference machine's models (see
+            :data:`STRUCTURED_OUTPUT_TOKENS`).
 
     Returns:
         The grounded requirements and the rejected candidates, with full prompt provenance.
@@ -269,7 +278,7 @@ def compile_requirements(
             system=prompt.system or "",
             user=prompt.user,
             response_format=ResponseFormat(kind="json_schema", schema=_REQUIREMENTS_SCHEMA),
-            limits=StageLimits(temperature=0.0, max_output_tokens=STRUCTURED_OUTPUT_TOKENS),
+            limits=StageLimits(temperature=0.0, max_output_tokens=structured_output_tokens),
             correlation=Correlation(project_id=project_id, attempt=attempt),
             prompt_id=prompt.prompt_id,
             prompt_version=prompt.version,

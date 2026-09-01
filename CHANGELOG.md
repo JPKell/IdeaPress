@@ -7,7 +7,22 @@ packaging and release standards §3.
 
 ## [Unreleased]
 
+### Fixed
+- A review-stage output budget exhausted on one unit (the model returning no text at all, twice)
+  now **pauses that unit** with the stage and the budget in the reason, and the draft stage
+  continues to the remaining units. Before, the failure aborted the whole stage: one
+  hard-to-critique unit left every unit after it undrafted (M7 finding 1a).
+- `stage run <id> draft --resume` now recovers a unit that a crash or stage failure left
+  mid-review (`drafting`/`validating`/`auditing`/`revising`): the unit is reset to `paused` —
+  only when the run that owned it is demonstrably gone — and then re-entered. Before, such a unit
+  had no legal transition back into the loop and the project was unrecoverable from the CLI
+  (M7 finding 1b).
+
 ### Added
+- `workflow.structured_output_tokens` (default 8192, range 1024–131072): the output-token budget
+  for the structured stages (requirements, outline, audits, critique, project review), previously
+  a module constant. A model that spends more reasoning tokens than the reference machine's can
+  now be given room in `config.toml` instead of a code edit (M7 finding 1c).
 - `GET`/`PUT /settings`, `GET /workflows/{id}`, `POST /projects/{id}/units/{unit_id}/revise`, and
   the `workflow` and `prompts` command groups — the four endpoints and two groups the specification
   lists that the phases had not yet built.

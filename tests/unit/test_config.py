@@ -207,3 +207,23 @@ def test_example_config_is_valid(tmp_path: Path) -> None:
     loaded = load_settings(config_path=config)
     assert loaded.config_file_used is True
     assert loaded.settings.models.stages.draft == "ollama/gemma4:12b"
+
+
+def test_structured_output_tokens_defaults_and_loads_from_file(tmp_path: Path) -> None:
+    """M7 finding 1c: the budget is a `config.toml` lever, defaulting to the measured floor."""
+    assert load_settings().settings.workflow.structured_output_tokens == 8192
+
+    config = _write(tmp_path / "ideapress.toml", "[workflow]\nstructured_output_tokens = 16384\n")
+    loaded = load_settings(config_path=config)
+    assert loaded.settings.workflow.structured_output_tokens == 16384
+    assert loaded.sources["workflow.structured_output_tokens"] == "file"
+
+
+@pytest.mark.parametrize("value", [512, 1_000_000])
+def test_structured_output_tokens_out_of_range_is_refused(tmp_path: Path, value: int) -> None:
+    """The documented range is 1024-131072; outside it the refusal names the field."""
+    config = _write(
+        tmp_path / "ideapress.toml", f"[workflow]\nstructured_output_tokens = {value}\n"
+    )
+    with pytest.raises(ConfigurationError, match="structured_output_tokens"):
+        load_settings(config_path=config)
