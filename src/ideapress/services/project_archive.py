@@ -41,7 +41,7 @@ from typing import TYPE_CHECKING, Any
 from baseaicore import ValidationError
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Sequence
+    from collections.abc import Iterator, Mapping, Sequence
 
     from ideapress.services.runtime import Runtime
 
@@ -414,28 +414,95 @@ def import_project_archive(
 
     with tempfile.TemporaryDirectory(prefix="ideapress-import-") as staging:
         manifest = _extract_manifest(path, Path(staging))
-        project_data = manifest.get("project", {})
-        project = runtime.projects.create(
-            title=title or str(project_data.get("title", "Imported project")),
-            brief=str(project_data.get("brief", "")),
-            content_type=str(project_data.get("content_type", "article")),
-        )
 
-    units = manifest.get("units", [])
+    project_data = manifest.get("project", {})
+    project = runtime.projects.create(
+        title=title or str(project_data.get("title", "Imported project")),
+        brief=str(project_data.get("brief", "")),
+        content_type=str(project_data.get("content_type", "article")),
+    )
+    restored = _restore_units(runtime, project_id=project.id, manifest=manifest)
     logger.info(
         "archive.imported",
-        extra={
-            "project_id": project.id,
-            "path": str(path),
-            "units": len(units) if isinstance(units, list) else 0,
-        },
+        extra={"project_id": project.id, "path": str(path), "units": restored},
     )
     return {
         "project_id": project.id,
         "title": project.title,
-        "units": len(units) if isinstance(units, list) else 0,
+        "units": restored,
         "imported_at": datetime.now(UTC).isoformat(),
     }
+
+
+def _restore_units(runtime: Runtime, *, project_id: str, manifest: Mapping[str, Any]) -> int:
+    """Recreate the archive's committed units under a freshly created project.
+
+    Args:
+        runtime: The process's handles.
+        project_id: The project just created for this import.
+        manifest: The archive's parsed manifest.
+
+    Returns:
+        How many units were restored.
+
+    The units come back **committed, with their content, their version number, their content hash
+    and their coverage** — an archive that restored only the brief would be a backup of the
+    intention rather than of the work.
+
+    What does not come back is the attempt history. Those attempts happened on another
+    installation, against models and prompts this one may not have, and writing them here as this
+    installation's own attempts would put a provenance record into the database that is not true of
+    it. The manifest retains them, and a restored unit's `content_hash` is the link back: it is the
+    hash of the text that was committed there, and it still identifies it here.
+    """
+
+    from ideapress.infrastructure.db.models import Unit as UnitRow
+    from ideapress.infrastructure.db.models import UnitVersion as UnitVersionRow
+
+    entries = manifest.get("units")
+    if not isinstance(entries, list):
+        return 0
+
+    restored = 0
+    with runtime.storage.write() as session:
+        for ordinal, entry in enumerate(entries, start=1):
+            if not isinstance(entry, dict):
+                continue
+            content = str(entry.get("content") or "")
+            key = str(entry.get("key") or f"U-{ordinal:02d}")
+            unit = UnitRow(
+                project_id=project_id,
+                unit_key=key,
+                ordinal=ordinal,
+                title=str(entry.get("title") or key),
+                goal_text=str(entry.get("goal_text") or ""),
+                requirement_keys_json=[
+                    str(row.get("requirement_key"))
+                    for row in entry.get("coverage", [])
+                    if isinstance(row, dict) and row.get("requirement_key")
+                ],
+                state="committed" if content else "planned",
+            )
+            session.add(unit)
+            session.flush()
+            if not content:
+                restored += 1
+                continue
+            version = UnitVersionRow(
+                unit_id=unit.id,
+                version=int(entry.get("version") or 1),
+                content_text=content,
+                content_hash=str(entry.get("content_hash") or ""),
+                word_count=int(entry.get("word_count") or len(content.split())),
+                char_count=len(content),
+                committed=True,
+                committed_at=datetime.now(UTC),
+            )
+            session.add(version)
+            session.flush()
+            unit.current_version_id = version.id
+            restored += 1
+    return restored
 
 
 def _extract_manifest(path: Path, staging: Path) -> dict[str, Any]:

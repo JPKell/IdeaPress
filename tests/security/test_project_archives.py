@@ -347,3 +347,95 @@ def test_the_importer_never_calls_extractall() -> None:
     # `.extractall(` — an actual call, not the prose explaining why there is none. The module
     # documents the reasoning, so matching the bare word would fail on its own rationale.
     assert ".extractall(" not in body, "the importer calls extractall"
+
+
+def _seed_committed_unit(runtime: Runtime, project_id: str, text: str) -> None:
+    """Put one committed unit into a project without running a stage."""
+    from datetime import UTC, datetime
+
+    from baseaicore import sha256_of
+
+    from ideapress.infrastructure.db.models import Unit as UnitRow
+    from ideapress.infrastructure.db.models import UnitVersion as UnitVersionRow
+
+    with runtime.storage.write() as session:
+        unit = UnitRow(
+            project_id=project_id,
+            unit_key="U-01",
+            ordinal=1,
+            title="Where the work happens",
+            goal_text="Say plainly where inference runs.",
+            requirement_keys_json=[],
+            state="committed",
+        )
+        session.add(unit)
+        session.flush()
+        version = UnitVersionRow(
+            unit_id=unit.id,
+            version=1,
+            content_text=text,
+            content_hash=f"sha256:{sha256_of(text)}",
+            word_count=len(text.split()),
+            char_count=len(text),
+            committed=True,
+            committed_at=datetime.now(UTC),
+        )
+        session.add(version)
+        session.flush()
+        unit.current_version_id = version.id
+
+
+def test_an_imported_project_carries_its_committed_units_back(
+    runtime: Runtime, tmp_path: Path
+) -> None:
+    """A backup of the intention is not a backup of the work.
+
+    The round trip has to bring the committed text back, with its version and its hash — otherwise
+    "portable project" means "portable brief", and the archive is not the thing that survives an
+    installation being deleted.
+    """
+    from ideapress.services.export import build_document
+    from ideapress.services.unit_reports import unit_list
+
+    project = runtime.projects.create(title="Local inference", brief="A brief.")
+    _seed_committed_unit(runtime, project.id, "Everything runs on your own machine.")
+
+    archive = export_project_archive(runtime, project_id=project.id, destination=tmp_path)
+    with zipfile.ZipFile(archive) as opened:
+        manifest = json.loads(opened.read(MANIFEST_NAME))
+    assert manifest["units"], "the export carried no units, so the import cannot restore any"
+
+    result = import_project_archive(runtime, path=archive, title="Restored")
+    assert result["units"] == 1
+
+    units = unit_list(runtime, project_id=str(result["project_id"]))
+    assert len(units) == 1
+    assert units[0]["state"] == "committed"
+    assert units[0]["content_hash"] == manifest["units"][0]["content_hash"]
+
+    document = build_document(runtime, project_id=str(result["project_id"]))
+    assert "own machine" in document.units[0].content
+
+
+def test_an_import_does_not_claim_another_installations_attempts_as_its_own(
+    runtime: Runtime, tmp_path: Path
+) -> None:
+    """The attempts happened elsewhere, against models and prompts this installation may not have.
+
+    Writing them here as this installation's own provenance would put a record into the database
+    that is not true of it — the same offence as coercing an unmeasurable value to zero. The
+    content hash is the honest link back.
+    """
+    from sqlalchemy import select
+
+    from ideapress.infrastructure.db.models import Attempt
+
+    project = runtime.projects.create(title="Local inference", brief="A brief.")
+    _seed_committed_unit(runtime, project.id, "Everything runs on your own machine.")
+    archive = export_project_archive(runtime, project_id=project.id, destination=tmp_path)
+    result = import_project_archive(runtime, path=archive, title="Restored")
+
+    with runtime.storage.read() as session:
+        attempts = session.execute(select(Attempt)).scalars().all()
+    assert attempts == [], "the import fabricated attempt provenance"
+    assert result["units"] == 1
