@@ -58,6 +58,16 @@ def test_config_show_names_the_layer_behind_every_value() -> None:
     assert "server.port" in result.stdout
 
 
+def test_config_show_exits_two_cleanly_on_an_invalid_config(tmp_path: Path) -> None:
+    """M7 finding 4: a mistyped config gets the refusal's message, never a traceback."""
+    config = tmp_path / "bad.toml"
+    config.write_text("[execution]\nmax_concurrent_stages = 2\n", encoding="utf-8")
+    result = runner.invoke(app, ["config", "show", "--config", str(config)])
+    assert result.exit_code == 2
+    assert "max_concurrent_stages" in result.output
+    assert "Traceback" not in result.output
+
+
 def test_config_validate_reports_a_valid_default() -> None:
     result = runner.invoke(app, ["config", "validate"])
     assert result.exit_code == 0

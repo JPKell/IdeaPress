@@ -18,6 +18,9 @@ packaging and release standards §3.
   had no legal transition back into the loop and the project was unrecoverable from the CLI
   (M7 finding 1b).
 
+- `ideapress config show` on an invalid `config.toml` now exits 2 with the refusal's one-line
+  message, matching `config validate` and `serve`, instead of printing a raw traceback
+  (M7 finding 4).
 - The requirement grounding evidence — the source document and the **verbatim quote** the
   compiler cited — now appears in the coverage section of all three exporters (Markdown, HTML
   with escaping, JSON as a structured `source` object). It was shown in the live views but

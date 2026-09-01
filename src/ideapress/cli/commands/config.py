@@ -34,10 +34,19 @@ def show(
     json_output: Annotated[bool, typer.Option("--json", help="Emit JSON.")] = False,
     config: Annotated[str | None, typer.Option("--config")] = None,
 ) -> None:
-    """Print the effective configuration and where each value came from. Mode: local."""
-    from ideapress.config import load_settings
+    """Print the effective configuration and where each value came from. Mode: local.
 
-    loaded = load_settings(config_path=config)
+    An invalid configuration exits 2 with the refusal's own message — the same handling as
+    ``config validate`` and ``serve``, because a person who mistyped a key is owed the key's
+    name, not a traceback (M7 finding 4).
+    """
+    from ideapress.config import ConfigurationError, load_settings
+
+    try:
+        loaded = load_settings(config_path=config)
+    except ConfigurationError as exc:
+        typer.secho(exc.message, err=True, fg=typer.colors.RED)
+        raise typer.Exit(2) from exc
     dumped = loaded.settings.model_dump(mode="json")
     if json_output:
         typer.echo(
