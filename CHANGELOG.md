@@ -113,6 +113,16 @@ the project unrecoverable from the CLI.
   fallback never engaged, and which told the user their *content* had been refused because a GPU
   was busy. Capacity codes are now classified by code rather than by status class, and the same
   set is shared with the failed-job path so the two cannot disagree.
+- **A retry through LoadCoach is a retry again, not a replay of the previous failure.** LoadCoach
+  replays the original job for a repeated idempotency key "whether the execution is still running
+  or finished long ago", for 24 hours by default — including a job that *failed*. IdeaPress's key
+  digested only the request's coordinates and text, so a stage declined once for a transient
+  reason (a busy GPU, a full queue) produced the identical key on every later attempt and replayed
+  that failure for a day, while the error told the user the project was resumable. The key now
+  includes the stage run id, stamped by `InferenceGateway.begin_run`, so a fresh run is new work
+  and a network-level retry within one run is still idempotent.
+- `X-Request-ID` is now actually propagated to the backend. Nothing ever set
+  `Correlation.request_id`, so the header documented as propagated was absent from every request.
 - A review-stage output budget exhausted on one unit (the model returning no text at all, twice)
   now **pauses that unit** with the stage and the budget in the reason, and the draft stage
   continues to the remaining units. Before, the failure aborted the whole stage: one

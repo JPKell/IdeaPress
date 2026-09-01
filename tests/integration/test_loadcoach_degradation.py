@@ -12,6 +12,7 @@ committed units intact.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import TYPE_CHECKING, Any
 
 import httpx
@@ -28,7 +29,7 @@ from ideapress.config import (
 from ideapress.domain.inference import Correlation, StageLimits, StageRequest
 from ideapress.errors import BackendUnavailable, BackendVersionMismatch, ProviderTimeout
 from ideapress.infrastructure.backends.fake import FakeBackend
-from ideapress.infrastructure.backends.loadcoach import LoadCoachBackend
+from ideapress.infrastructure.backends.loadcoach import LoadCoachBackend, idempotency_key_for
 from ideapress.services.backends import backend_health_component, build_backend, describe_backends
 from ideapress.services.inference import InferenceGateway
 
@@ -552,3 +553,76 @@ def test_a_busy_loadcoach_falls_back_rather_than_failing_the_stage() -> None:
     )
     assert result.text.strip()
     assert any("fallback" in entry for entry in result.degradations), result.degradations
+
+
+# ------------------------------------------- a retry must be a retry, not a replayed failure
+#
+# LoadCoach replays the original job for a repeated idempotency key "whether the execution is
+# still running or finished long ago" — its own words — for `queue.idempotency_ttl_hours`, 24 by
+# default. That applies to a job that **failed**. Observed live: a stage declined once for a busy
+# GPU replayed that same failure on every later attempt, while the error told the user the project
+# was resumable.
+
+
+def test_the_idempotency_key_changes_between_stage_runs() -> None:
+    """Two runs of the same stage are different work, so they must not share a key."""
+    first = _request("critique")
+    second = replace(first, correlation=replace(first.correlation, request_id="01RUN_TWO"))
+    pinned = replace(first, correlation=replace(first.correlation, request_id="01RUN_ONE"))
+    assert idempotency_key_for(pinned) != idempotency_key_for(second)
+
+
+def test_the_idempotency_key_is_stable_within_one_stage_run() -> None:
+    """The other half — a network-level retry inside one run is what the key is actually for."""
+    request = _request("critique")
+    stamped = replace(request, correlation=replace(request.correlation, request_id="01RUN_ONE"))
+    assert idempotency_key_for(stamped) == idempotency_key_for(stamped)
+
+
+def test_the_gateway_stamps_the_run_onto_every_request() -> None:
+    """`begin_run` is what puts the run id there; nothing else sets `request_id`.
+
+    Asserted through the wire header rather than the object, because that is the thing that was
+    actually missing: `X-Request-ID` was documented as propagated and, with nothing ever setting
+    `correlation.request_id`, was absent from every request IdeaPress ever sent.
+    """
+    mock = MockLoadCoach(answers=["A local answer."])
+    gateway = _gateway(LoadCoachBackend(LoadCoachSettings(), client=mock.client()))
+    gateway.begin_run("01STAGERUN")
+    gateway.run(_request("critique"))
+    generated = [r for r in mock.requests if r.path.endswith("/generate")]
+    assert generated[-1].headers.get("x-request-id") == "01STAGERUN"
+
+
+def test_a_caller_that_set_its_own_request_id_keeps_it() -> None:
+    """The stamp fills a gap; it does not overwrite a correlation the caller chose."""
+    mock = MockLoadCoach(answers=["A local answer."])
+    gateway = _gateway(LoadCoachBackend(LoadCoachSettings(), client=mock.client()))
+    gateway.begin_run("01STAGERUN")
+    request = _request("critique")
+    gateway.run(replace(request, correlation=replace(request.correlation, request_id="01MINE")))
+    generated = [r for r in mock.requests if r.path.endswith("/generate")]
+    assert generated[-1].headers.get("x-request-id") == "01MINE"
+
+
+def test_a_failure_in_one_run_does_not_poison_the_next() -> None:
+    """The whole point, at the level a user meets it.
+
+    Run one is declined. Run two submits the identical stage and prompt — and must reach LoadCoach
+    as new work rather than being handed run one's cached failure.
+    """
+    mock = MockLoadCoach(answers=["A local answer."])
+    backend = LoadCoachBackend(LoadCoachSettings(), client=mock.client())
+    gateway = _gateway(backend)
+
+    mock.fail_next("NO_ELIGIBLE_MODEL")
+    gateway.begin_run("01RUN_ONE")
+    with pytest.raises(BackendUnavailable):
+        gateway.run(_request("critique"))
+
+    gateway.begin_run("01RUN_TWO")
+    assert gateway.run(_request("critique")).text == "A local answer."
+    submitted = [
+        r.body.get("idempotency_key") for r in mock.requests if r.path.endswith("/generate")
+    ]
+    assert submitted[0] != submitted[1], f"the retry reused the failed run's key: {submitted}"

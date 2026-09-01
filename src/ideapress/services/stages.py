@@ -315,6 +315,11 @@ class StageRunner:
 
     def _run(self, task: StageTask, body: Callable[[StageTask], None]) -> None:
         """Run a stage body, and record how it ended whatever happens."""
+        # Tell the gateway which run these requests belong to. It stamps the id onto every
+        # request, which gives the backend an `X-Request-ID` and — for a routing backend that
+        # replays by idempotency key — is what makes a retry new work rather than a replay of the
+        # previous run's answer, including a replay of its *failure*.
+        self.gateway.begin_run(task.run_id)
         with correlation(project_id=task.project_id, stage=task.stage):
             try:
                 body(task)

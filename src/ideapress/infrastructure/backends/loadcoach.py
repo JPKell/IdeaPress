@@ -204,13 +204,22 @@ def idempotency_key_for(request: StageRequest) -> str:
         A key of the form ``ideapress-<32 hex>``, stable for an identical request and different for
         any other.
 
-    The digest covers the attempt's **coordinates and its content** — project, unit, stage, attempt,
-    round, and the rendered `system` and `user` text. Coordinates alone would be wrong in a way that
-    is hard to see: LoadCoach reserves a key for `queue.idempotency_ttl_hours` (24 by default) and
-    replays the original job for a repeat, so a project resumed within a day would replay a stale
-    answer for a `repair` whose findings had changed since. Including the prompt makes a retry of
-    the *same* request idempotent — which is all the key is for — while a genuinely different
-    request is genuinely new work.
+    The digest covers the attempt's **coordinates, its run, and its content** — project, unit,
+    stage, attempt, round, the stage run id, and the rendered `system` and `user` text.
+
+    Coordinates alone would be wrong in a way that is hard to see: LoadCoach reserves a key for
+    `queue.idempotency_ttl_hours` (24 by default) and replays the original job for a repeat, so a
+    project resumed within a day would replay a stale answer for a `repair` whose findings had
+    changed since. Including the prompt fixes that.
+
+    **The run id is what makes a retry a retry.** LoadCoach replays the original job whether it
+    completed or *failed* — its own words: "whether the execution is still running or finished
+    long ago". Without the run id, a stage that failed for a transient reason (a busy GPU, a full
+    queue) produced the identical key on every subsequent attempt, so it replayed that failure for
+    a full day and no retry could succeed — while the error told the user the project was
+    resumable. The run id is stamped by :meth:`InferenceGateway.begin_run`, so every fresh stage
+    run is new work and a network-level retry *within* one run is still idempotent, which is all
+    the key is for.
     """
     correlation = request.correlation
     material = "\x1f".join(
@@ -220,6 +229,7 @@ def idempotency_key_for(request: StageRequest) -> str:
             request.stage,
             str(correlation.attempt),
             str(correlation.round),
+            correlation.request_id or "",
             request.system,
             request.user,
         )

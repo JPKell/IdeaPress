@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import json
 import os
+import uuid
 from typing import TYPE_CHECKING, Any
 
 import pytest
@@ -58,13 +59,27 @@ def loadcoach() -> Iterator[LoadCoachBackend]:
     yield backend
 
 
+SESSION_RUN_ID = f"01LIVE{uuid.uuid4().hex[:20].upper()}"
+"""A fresh run id per pytest session, standing in for the stage run id.
+
+In production `InferenceGateway.begin_run` stamps this and a raw backend is never called — a test
+asserts that only `services/inference.py` calls `generate`. These tests deliberately drive the
+adapter directly, so they must supply what the gateway would, and for the same reason: LoadCoach
+replays the original job for a repeated idempotency key **including a failed one**, so without a
+per-run id the second run of this suite is served the first run's answers rather than talking to a
+model at all. A suite that silently grades yesterday's replies is worse than one that fails.
+"""
+
+
 def _request(stage: str, system: str, user: str, *, budget: int = 2048) -> StageRequest:
     return StageRequest(
         stage=stage,  # type: ignore[arg-type]  # StageId is a Literal; the test names one
         system=system,
         user=user,
         limits=StageLimits(max_output_tokens=budget, temperature=0.2, timeout_seconds=600),
-        correlation=Correlation(project_id="01LIVEPROJECT", unit_id="U-01", attempt=1),
+        correlation=Correlation(
+            project_id="01LIVEPROJECT", unit_id="U-01", attempt=1, request_id=SESSION_RUN_ID
+        ),
     )
 
 

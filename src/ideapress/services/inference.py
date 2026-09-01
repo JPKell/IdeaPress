@@ -116,16 +116,44 @@ class InferenceGateway:
     _lock: threading.Semaphore = field(init=False, repr=False)
     _resident: str | None = field(default=None, init=False, repr=False)
     _switch_lock: threading.Lock = field(init=False, repr=False)
+    _run_id: str = field(default="", init=False, repr=False)
 
     def __post_init__(self) -> None:
         """Build the semaphore that makes one-at-a-time a fact rather than a default."""
         self._lock = threading.Semaphore(self.execution.max_concurrent_stages)
         self._switch_lock = threading.Lock()
 
+    def begin_run(self, run_id: str) -> None:
+        """Tell the gateway which stage run the requests that follow belong to.
+
+        Args:
+            run_id: The stage run's identifier, or ``""`` to clear it.
+
+        Every request forwarded from here on carries this as `correlation.request_id` unless the
+        caller set one, which does two things. It gives the backend an `X-Request-ID` to propagate
+        — nothing set one before, so the header was always absent — and, for LoadCoach, it is what
+        makes a **retry a retry**: the idempotency key digests the request id, so the same stage
+        submitted again as a new run is new work rather than a replay of the old run's answer.
+        Without it a stage that failed for a transient reason replayed that failure for
+        `queue.idempotency_ttl_hours` (24 by default) and no retry could ever succeed.
+
+        Held on the gateway rather than threaded through five service signatures because
+        `execution.max_concurrent_stages` is capped at 1 (ADR-0038): exactly one stage run is in
+        flight at a time, so "the current run" is well defined here in a way it would not be if
+        the suite ran stages concurrently. If that cap is ever lifted, this must move.
+        """
+        self._run_id = run_id
+
     @property
     def resident_model(self) -> str | None:
         """Which model this gateway last loaded, as far as it knows."""
         return self._resident
+
+    def _with_correlation(self, request: StageRequest) -> StageRequest:
+        """Stamp the current run id onto a request that does not carry one of its own."""
+        if not self._run_id or request.correlation.request_id:
+            return request
+        return replace(request, correlation=replace(request.correlation, request_id=self._run_id))
 
     def model_for(self, stage: StageId) -> str:
         """The model bound to ``stage``, honouring an explicit hint is *not* this function's job.
@@ -205,6 +233,7 @@ class InferenceGateway:
         **This is the only function in IdeaPress that calls a backend's `generate`.** A test walks
         the source and asserts that; adding a second call site is what the M5 lesson forbids.
         """
+        request = self._with_correlation(request)
         with self._lock:
             target = self._prepare(request)
             switch = self.switches[-1] if self.switches else None
@@ -349,6 +378,7 @@ class InferenceGateway:
         would let a second stage start while the first is still producing tokens, which is the
         same failure with extra steps.
         """
+        request = self._with_correlation(request)
         with self._lock:
             target = self._prepare(request)
             if target:
