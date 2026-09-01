@@ -50,7 +50,7 @@ if TYPE_CHECKING:
     from ideapress.services.runtime import Runtime
     from ideapress.services.stages import StageTask
 
-__all__ = ["UnitOutcome", "draft_body", "run_unit"]
+__all__ = ["UnitOutcome", "draft_body", "output_budget_tokens", "run_unit"]
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +60,26 @@ DRAFT_THINKING_FLOOR_TOKENS = 8192
 Measured, not guessed: both of spec §12's default models spent more than 4 096 output tokens
 reasoning before emitting a word on a short task, and returned an empty string when the allowance
 ran out first."""
+
+
+def output_budget_tokens(*, target_words: int | None, structured_output_tokens: int) -> int:
+    """The output budget for a stage that writes unit text — draft, repair, revise.
+
+    Args:
+        target_words: The unit's target length, when the plan states one; 400 is assumed when it
+            does not, which errs long because a truncated draft costs a repair attempt.
+        structured_output_tokens: ``workflow.structured_output_tokens``, the configured
+            reasoning allowance.
+
+    Returns:
+        A thinking floor plus four tokens per target word. The floor is the larger of the
+        measured default (:data:`DRAFT_THINKING_FLOOR_TOKENS`) and the configured allowance —
+        the M7 demonstration paused a unit whose draft exhausted the floor twice, with a message
+        telling the user to raise the stage's output budget while no setting reached this stage.
+        Raising ``workflow.structured_output_tokens`` in ``config.toml`` is now that lever for
+        every text-writing stage too, not only the structured ones (M7 finding 1c).
+    """
+    return max(DRAFT_THINKING_FLOOR_TOKENS, structured_output_tokens) + (target_words or 400) * 4
 
 
 @dataclass(frozen=True, slots=True)
@@ -183,12 +203,10 @@ def run_unit(
                     user=prompt.user,
                     limits=StageLimits(
                         temperature=0.4 if not is_repair else 0.2,
-                        # The floor clears a reasoning model's thinking phase, which is spent from
-                        # the same allowance as the answer: measured at over 4 096 tokens for a
-                        # short structured task on this machine's models. Four tokens per target
-                        # word on top is the answer's own room.
-                        max_output_tokens=DRAFT_THINKING_FLOOR_TOKENS
-                        + (unit.target_words or 400) * 4,
+                        max_output_tokens=output_budget_tokens(
+                            target_words=unit.target_words,
+                            structured_output_tokens=settings.workflow.structured_output_tokens,
+                        ),
                     ),
                     correlation=Correlation(
                         project_id=project_id, unit_id=unit.key, attempt=attempt

@@ -189,7 +189,9 @@ project_review     = "ollama/qwen3.5:9b-q8_0"
              require_clean_validation_to_commit = true
              structured_output_tokens = 8192   # output budget for the structured stages
                                                # (requirements, outline, audits, critique,
-                                               # project review); accepted range 1024-131072
+                                               # project review); raised above 8192 it also
+                                               # lifts the draft/repair/revise thinking floor;
+                                               # accepted range 1024-131072
 [providers]  allow_remote = false
 [logging]    level = "INFO"  include_content = false
 ```
@@ -264,8 +266,11 @@ at all at 4 096 tokens and finished in 278 tokens of answer at 8 192. The struct
 therefore run under `workflow.structured_output_tokens` (default 8192, range 1024–131072), which is
 configuration rather than a constant: a model that thinks longer than the reference machine's
 exhausts the budget with empty output, and the user's lever for that is `config.toml`, not a code
-edit. A unit whose review exhausts the budget twice **pauses with the stage and the budget in the
-reason** while the remaining units continue; it never aborts the stage.
+edit. The text-writing stages (draft, repair, revise) budget a thinking floor plus four tokens per
+target word, and the floor is the larger of the measured 8192 and the same setting — so one knob is
+the lever for every empty-generation pause, whichever stage hits it. A unit that exhausts an output
+budget twice **pauses with the stage and the budget in the reason** while the remaining units
+continue; it never aborts the stage.
 
 ## 16. Cross-platform considerations
 

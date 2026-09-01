@@ -41,8 +41,11 @@ packaging and release standards §3.
 ### Added
 - `workflow.structured_output_tokens` (default 8192, range 1024–131072): the output-token budget
   for the structured stages (requirements, outline, audits, critique, project review), previously
-  a module constant. A model that spends more reasoning tokens than the reference machine's can
-  now be given room in `config.toml` instead of a code edit (M7 finding 1c).
+  a module constant. Raised above the default it also lifts the thinking floor of the
+  text-writing stages (draft, repair, revise) — the M7 demonstration paused a draft whose
+  message said to raise a budget no setting reached. A model that spends more reasoning tokens
+  than the reference machine's can now be given room in `config.toml` instead of a code edit
+  (M7 finding 1c).
 - `GET`/`PUT /settings`, `GET /workflows/{id}`, `POST /projects/{id}/units/{unit_id}/revise`, and
   the `workflow` and `prompts` command groups — the four endpoints and two groups the specification
   lists that the phases had not yet built.

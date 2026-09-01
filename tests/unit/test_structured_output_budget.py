@@ -81,3 +81,16 @@ def test_the_default_is_the_measured_floor() -> None:
         requirements=(),
     )
     assert gateway.requests[0].limits.max_output_tokens == STRUCTURED_OUTPUT_TOKENS == 8192
+
+
+def test_the_text_stage_floor_follows_the_setting_when_raised() -> None:
+    """The live M7 demonstration paused a *draft* whose message said to raise a budget no
+    setting reached. The text-writing stages' thinking floor now follows the same knob."""
+    from ideapress.services.unit_loop import output_budget_tokens
+
+    # At the default, the formula is unchanged from M6: floor 8192 + 4 per target word.
+    assert output_budget_tokens(target_words=80, structured_output_tokens=8192) == 8512
+    assert output_budget_tokens(target_words=None, structured_output_tokens=8192) == 8192 + 1600
+    # Raised, the setting becomes the floor; lowered, the measured floor holds.
+    assert output_budget_tokens(target_words=80, structured_output_tokens=16384) == 16704
+    assert output_budget_tokens(target_words=80, structured_output_tokens=1024) == 8512

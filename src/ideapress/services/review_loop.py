@@ -135,6 +135,9 @@ def run_review_loop(
     Raises:
         StageCancelled: The user cancelled at a model-call boundary.
     """
+    # A module-level import would be circular: unit_loop imports this module for the loop.
+    from ideapress.services.unit_loop import output_budget_tokens
+
     settings = runtime.settings
     database = runtime.storage
     gateway = runtime.runner.gateway
@@ -334,7 +337,10 @@ def run_review_loop(
             content=text,
             findings=round_findings,
             round_number=rounds + 1,
-            max_output_tokens=max(8192, (unit.target_words or 400) * 4 + 8192),
+            max_output_tokens=output_budget_tokens(
+                target_words=unit.target_words,
+                structured_output_tokens=structured_output_tokens,
+            ),
         )
         record_attempt(
             database,

@@ -346,10 +346,11 @@ class WorkflowSettings(BaseModel):
         le=131_072,
         description=(
             "Output-token budget for the structured stages (requirements, outline, audit_fast, "
-            "audit_deep, critique, project_review). Includes the model's reasoning: a thinking "
-            "model spends output tokens before its first word of answer, and 8192 is the "
-            "measured floor for the default models (spec §15). Raise this when a stage pauses "
-            "with CONTEXT_LIMIT_EXCEEDED naming this budget."
+            "audit_deep, critique, project_review), and — when raised above the 8192 default — "
+            "the thinking floor for the text-writing stages (draft, repair, revise) as well. "
+            "Includes the model's reasoning: a thinking model spends output tokens before its "
+            "first word of answer, and 8192 is the measured floor for the default models "
+            "(spec §15). Raise this when a unit pauses with an exhausted output budget."
         ),
     )
 
@@ -728,8 +729,9 @@ max_attempts_per_stage = 3
 audit_escalation_threshold = 0.6
 require_clean_validation_to_commit = true
 # Output-token budget for the structured stages (requirements, outline, audits, critique,
-# project review). A reasoning model spends output tokens thinking before its first word of
-# answer; a stage that pauses with CONTEXT_LIMIT_EXCEEDED naming this budget needs it raised.
+# project review); raised above 8192 it also lifts the thinking floor of the text-writing
+# stages (draft, repair, revise). A reasoning model spends output tokens thinking before its
+# first word of answer; a unit paused for an exhausted output budget needs this raised.
 # Accepted range: 1024-131072.
 structured_output_tokens = 8192
 
