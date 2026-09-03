@@ -7,6 +7,18 @@ packaging and release standards §3.
 
 ## [Unreleased]
 
+### Fixed
+- The release pipeline no longer fails on a missing lockfile. `requirements/release.lock` and its
+  `release.in` were never generated for this repository, while `release.yml`'s TestPyPI job
+  installed from it — so the dry run failed at its first step. The lock is now committed,
+  hash-verified, and resolves identically to the rest of the suite.
+- `release.yml`'s `release` job is restricted to tag pushes (`if: github.event_name == 'push'`).
+  `workflow_dispatch` had been added without that guard, so triggering the TestPyPI dry run by
+  hand would also have run the real-PyPI job.
+- The `release` job now builds through the same hash-pinned chain as the dry run
+  (`pip install --require-hashes -r requirements/release.lock` and `build --no-isolation`)
+  instead of resolving `build` and `twine` fresh, so the two jobs produce the same artifact.
+
 ## [1.0.0] - 2026-09-01
 
 IdeaPress 1.0: the optional LoadCoach backend, a workspace to work in, and the hardening pass.
