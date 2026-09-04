@@ -7,6 +7,14 @@ packaging and release standards §3.
 
 ## [Unreleased]
 
+### Changed
+- **`setspec` widened to `>=0.4,<0.7`** (E5's pin sweep). `mirrorwall 0.2.1` required
+  `setspec<0.5` and every application carried the matching cap; `mirrorwall 0.2.2` lifted it.
+  IdeaPress's `setspec` surface is `setspec.prompts` plus `GeneratorInfo`, neither of which
+  changed, so the floor stays 0.4 and this widens a range without adopting any payload. The full
+  suite was run against the resolved `setspec 0.6.0` (with `baseaicore 0.4.1`, which 0.6.0
+  requires, and `mirrorwall 0.2.2`) and passes unchanged.
+
 ### Fixed
 - The release pipeline no longer fails on a missing lockfile. `requirements/release.lock` and its
   `release.in` were never generated for this repository, while `release.yml`'s TestPyPI job

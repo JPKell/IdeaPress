@@ -22,7 +22,10 @@ classifiers = [
 # sweatmeter is an optional extra ([telemetry]) for status display only, never a hard dependency.
 dependencies = [
     "baseaicore>=0.4,<0.5",
-    "setspec>=0.4,<0.5",
+    # Widened from `<0.5` at E5's sweep, once mirrorwall 0.2.2 lifted the cap that held every
+    # application at setspec 0.4. IdeaPress's setspec surface is `setspec.prompts` plus
+    # `GeneratorInfo`; the floor stays 0.4 because nothing here requires a later payload.
+    "setspec>=0.4,<0.7",
     "modelrack>=0.5,<0.6",
     "weightsdb>=0.2,<0.3",
     "mirrorwall>=0.2,<0.3",
