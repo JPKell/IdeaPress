@@ -71,8 +71,8 @@ def test_every_error_class_declares_a_screaming_snake_code() -> None:
         assert _SCREAMING_SNAKE.match(code), code
 
 
-def test_the_error_vocabulary_is_exactly_the_specs_fifteen() -> None:
-    """Spec §13 lists fifteen codes; a route raising a sixteenth is a contract change."""
+def test_the_error_vocabulary_is_exactly_the_specs_seventeen() -> None:
+    """Spec §13 lists seventeen codes; a route raising an eighteenth is a contract change."""
     from pathlib import Path
 
     spec = (

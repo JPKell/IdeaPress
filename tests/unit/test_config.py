@@ -227,3 +227,89 @@ def test_structured_output_tokens_out_of_range_is_refused(tmp_path: Path, value:
     )
     with pytest.raises(ConfigurationError, match="structured_output_tokens"):
         load_settings(config_path=config)
+
+
+LOADCOACH_MODE = '[inference]\nmode = "loadcoach"\n\n'
+
+
+def test_an_adapter_pin_reaches_the_settings_object(tmp_path: Path) -> None:
+    """ADR-0083: a key present is a pin in effect — there is no second boolean to also set."""
+    config = _write(
+        tmp_path / "ideapress.toml",
+        LOADCOACH_MODE + '[models.stage_adapters]\ndraft = "house-voice"\n',
+    )
+    settings = load_settings(config_path=config).settings
+    assert settings.models.stage_adapters == {"draft": "house-voice"}
+    assert settings.inference.loadcoach.honour_stage_bindings is False
+
+
+def test_an_adapter_pin_on_a_gate_stage_is_refused_naming_it(tmp_path: Path) -> None:
+    """A pin on a stage that reaches no model would pin nothing, silently (ADR-0083 rule 3)."""
+    config = _write(
+        tmp_path / "ideapress.toml", LOADCOACH_MODE + '[models.stage_adapters]\nvalidate = "x"\n'
+    )
+    with pytest.raises(ConfigurationError) as caught:
+        load_settings(config_path=config)
+    assert "validate" in caught.value.message
+    assert "not a model-using stage" in caught.value.message
+
+
+def test_an_adapter_pin_on_an_unknown_stage_is_refused_naming_it(tmp_path: Path) -> None:
+    config = _write(
+        tmp_path / "ideapress.toml", LOADCOACH_MODE + '[models.stage_adapters]\ndaft = "x"\n'
+    )
+    with pytest.raises(ConfigurationError) as caught:
+        load_settings(config_path=config)
+    assert "daft" in caught.value.message
+
+
+def test_an_empty_adapter_name_is_refused(tmp_path: Path) -> None:
+    """An empty value is a configured pin that pins nothing, which is the same silent no-op."""
+    config = _write(
+        tmp_path / "ideapress.toml", LOADCOACH_MODE + '[models.stage_adapters]\ndraft = ""\n'
+    )
+    with pytest.raises(ConfigurationError) as caught:
+        load_settings(config_path=config)
+    assert "draft" in caught.value.message
+
+
+@pytest.mark.parametrize("mode", ["ollama", "openai_compatible"])
+def test_an_adapter_pin_outside_loadcoach_mode_is_refused_naming_the_mode(
+    tmp_path: Path, mode: str
+) -> None:
+    """Adapter roadmap §4.4: the direct and OpenAI-compatible paths stay adapter-free.
+
+    An adapter served through an OpenAI-compatible endpoint would evade identity tracking, so the
+    scope decision is enforced at startup where the mode is known — never ignored per request.
+    """
+    body = f'[inference]\nmode = "{mode}"\n\n'
+    if mode == "openai_compatible":
+        body += '[inference.openai_compatible]\nbase_url = "http://127.0.0.1:8080/v1"\n\n'
+    config = _write(tmp_path / "ideapress.toml", body + '[models.stage_adapters]\ndraft = "hv"\n')
+    with pytest.raises(ConfigurationError) as caught:
+        load_settings(config_path=config)
+    assert mode in caught.value.message
+    assert "draft" in caught.value.message
+
+
+def test_the_data_classification_defaults_to_the_lowest_level() -> None:
+    """Unset means `public`, so `max(caller, adapter)` is the adapter's own value (ADR-0065)."""
+    assert load_settings().settings.inference.data_classification == "public"
+
+
+def test_a_declared_data_classification_loads(tmp_path: Path) -> None:
+    config = _write(
+        tmp_path / "ideapress.toml", '[inference]\ndata_classification = "confidential"\n'
+    )
+    assert (
+        load_settings(config_path=config).settings.inference.data_classification == "confidential"
+    )
+
+
+def test_an_unknown_data_classification_is_refused_at_startup(tmp_path: Path) -> None:
+    """A misspelling that travelled as "declared nothing" would be an unseen under-declaration."""
+    config = _write(tmp_path / "ideapress.toml", '[inference]\ndata_classification = "secret"\n')
+    with pytest.raises(ConfigurationError) as caught:
+        load_settings(config_path=config)
+    assert "secret" in caught.value.message
+    assert "public, internal, confidential" in caught.value.message

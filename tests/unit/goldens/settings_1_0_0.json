@@ -1,0 +1,79 @@
+{
+  "execution": {
+    "max_concurrent_stages": 1,
+    "unload_before_model_switch": true
+  },
+  "inference": {
+    "fallback_mode": "",
+    "loadcoach": {
+      "api_key_env": "",
+      "base_url": "http://127.0.0.1:8766",
+      "honour_stage_bindings": false,
+      "job_stages": [
+        "draft",
+        "revise",
+        "repair",
+        "project_review"
+      ],
+      "timeout_seconds": 600
+    },
+    "mode": "ollama",
+    "ollama": {
+      "base_url": "http://127.0.0.1:11434",
+      "timeout_seconds": 300
+    },
+    "openai_compatible": {
+      "api_key_env": "",
+      "base_url": "",
+      "model": "",
+      "timeout_seconds": 300
+    },
+    "pin_backend": false
+  },
+  "logging": {
+    "format": "text",
+    "include_content": false,
+    "level": "INFO"
+  },
+  "models": {
+    "stages": {
+      "audit_deep": "ollama/qwen3.5:9b-q8_0",
+      "audit_fast": "ollama/qwen3.5:9b-q8_0",
+      "critique": "ollama/qwen3.5:9b-q8_0",
+      "draft": "ollama/gemma4:12b",
+      "fact_check": "ollama/qwen3.5:9b-q8_0",
+      "outline": "ollama/qwen3.5:9b-q8_0",
+      "project_review": "ollama/qwen3.5:9b-q8_0",
+      "repair": "ollama/qwen3.5:9b-q8_0",
+      "requirements": "ollama/qwen3.5:9b-q8_0",
+      "research_synthesis": "ollama/qwen3.5:9b-q8_0",
+      "revise": "ollama/qwen3.5:9b-q8_0"
+    }
+  },
+  "providers": {
+    "allow_remote": false
+  },
+  "server": {
+    "allow_lan_exposure": false,
+    "allowed_hosts": [],
+    "host": "127.0.0.1",
+    "max_body_bytes": 8388608,
+    "port": 8767
+  },
+  "storage": {
+    "auto_migrate": true,
+    "database_url": "sqlite:////golden/data/ideapress.sqlite3",
+    "project_dir": "/golden/data/projects",
+    "statement_timeout_ms": 30000
+  },
+  "workflow": {
+    "allow_audit_gated_requirements": true,
+    "audit_escalation_threshold": 0.6,
+    "context_budget_tokens": 8000,
+    "diminishing_returns_threshold": 0.05,
+    "max_attempts_per_stage": 3,
+    "max_revision_rounds": 3,
+    "require_clean_validation_to_commit": true,
+    "structured_output_tokens": 8192
+  }
+}

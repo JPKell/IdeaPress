@@ -51,7 +51,7 @@ __all__ = ["create_app", "register_exception_handlers"]
 logger = logging.getLogger(__name__)
 
 _STATUS_BY_CODE: Final[dict[str, int]] = {
-    # Spec §13's fifteen, plus the shared ones from baseaicore.
+    # Spec §13's seventeen, plus the shared ones from baseaicore.
     "BACKEND_UNAVAILABLE": status.HTTP_503_SERVICE_UNAVAILABLE,
     "BACKEND_VERSION_MISMATCH": status.HTTP_502_BAD_GATEWAY,
     "MODEL_NOT_CONFIGURED": status.HTTP_422_UNPROCESSABLE_CONTENT,
@@ -71,6 +71,11 @@ _STATUS_BY_CODE: Final[dict[str, int]] = {
     # Not 500: the machine is busy, not broken. 503 is the status a caller retries.
     "INSUFFICIENT_VRAM": status.HTTP_503_SERVICE_UNAVAILABLE,
     "SCHEMA_VERSION_UNSUPPORTED": status.HTTP_422_UNPROCESSABLE_CONTENT,
+    # A pin that cannot be honoured is the caller's configuration, not an outage and not a
+    # transient: 422 says "your request, as posed, was not done", which is exactly true and is
+    # what stops a client retrying a refusal that is permanent for the request as written.
+    "ADAPTER_NOT_FOUND": status.HTTP_422_UNPROCESSABLE_CONTENT,
+    "ADAPTER_PROFILE_MISMATCH": status.HTTP_422_UNPROCESSABLE_CONTENT,
     "VALIDATION_ERROR": status.HTTP_400_BAD_REQUEST,
     "CONFIGURATION_ERROR": status.HTTP_500_INTERNAL_SERVER_ERROR,
     "INSECURE_BINDING": status.HTTP_500_INTERNAL_SERVER_ERROR,

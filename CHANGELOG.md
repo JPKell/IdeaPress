@@ -7,6 +7,27 @@ packaging and release standards §3.
 
 ## [Unreleased]
 
+### Added
+- **A stage may pin a LoRA adapter** (ADR-0083). `[models.stage_adapters]`, beside
+  `[models.stages]` and sparse: a stage with no key has no pin, and a key present is a pin in
+  effect. There is no second boolean, and it does **not** ride
+  `[inference.loadcoach] honour_stage_bindings`, whose documented meaning is "give up routing" —
+  an adapter pin does not surrender routing, so riding that flag would make the configuration lie.
+  A pin naming a gate stage or an unknown stage is refused at startup by name, as
+  `job_stages` already is; any pin at all is refused when `[inference] mode` is not `loadcoach`,
+  because the direct and OpenAI-compatible paths stay adapter-free and an adapter through an
+  OpenAI-compatible endpoint would evade identity tracking.
+- **`[inference] data_classification`** — one value for every request this installation makes,
+  because the true statement is about the installation and not about a stage. It travels to
+  LoadCoach, which records `max(caller, adapter)` (ADR-0065 rule 2). The default is the lowest
+  level, so the join equals the adapter's own classification and a `1.0` configuration behaves
+  exactly as it did. A value outside the vocabulary is refused at startup rather than dropped at
+  the wire: a misspelling that travelled as "declared nothing" would be an under-declaration
+  nobody sees.
+- **`ADAPTER_NOT_FOUND` and `ADAPTER_PROFILE_MISMATCH`** join the error vocabulary. Both **fail
+  the stage** — a pin that cannot be honoured is never quietly served by the bare base
+  (ADR-0064 rule 4) — and both are permanent for the request as written, so neither is retried.
+
 ### Changed
 - **`setspec` widened to `>=0.4,<0.7`** (E5's pin sweep). `mirrorwall 0.2.1` required
   `setspec<0.5` and every application carried the matching cap; `mirrorwall 0.2.2` lifted it.

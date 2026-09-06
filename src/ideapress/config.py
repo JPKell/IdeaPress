@@ -245,6 +245,15 @@ class InferenceSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     mode: InferenceMode = Field(default="ollama")
+    data_classification: str = Field(
+        default="public",
+        description=(
+            "The data classification of the work this installation sends to a model. One value "
+            "for every request, because the true statement is about the installation and not "
+            "about a stage. Sent to LoadCoach, which records max(caller, adapter) (ADR-0065 "
+            "rule 2). Unset is the lowest level, which joins to the adapter's own value."
+        ),
+    )
     fallback_mode: str = Field(
         default="", description="Optional; empty means no fallback. Ignored when pin_backend."
     )
@@ -254,6 +263,35 @@ class InferenceSettings(BaseModel):
     ollama: OllamaSettings = Field(default_factory=OllamaSettings)
     loadcoach: LoadCoachSettings = Field(default_factory=LoadCoachSettings)
     openai_compatible: OpenAICompatibleSettings = Field(default_factory=OpenAICompatibleSettings)
+
+    @field_validator("data_classification")
+    @classmethod
+    def _known_classification(cls, value: str) -> str:
+        """Refuse a classification outside `baseaicore`'s ordered vocabulary.
+
+        Args:
+            value: The configured classification.
+
+        Returns:
+            ``value`` when it names a :class:`baseaicore.DataClassification` level.
+
+        Raises:
+            ValueError: The value names no level. Refused at startup rather than dropped at the
+                wire, because a misspelled classification that travels as "declared nothing" is an
+                under-declaration nobody sees — the one direction the join can only get wrong.
+        """
+        from baseaicore import DataClassification
+
+        try:
+            DataClassification(value)
+        except ValueError:
+            levels = ", ".join(level.value for level in DataClassification)
+            message = (
+                f"inference.data_classification is {value!r}, which is not a data "
+                f"classification. Choose from: {levels}."
+            )
+            raise ValueError(message) from None
+        return value
 
     @field_validator("fallback_mode")
     @classmethod
@@ -303,11 +341,62 @@ class StageBindings(BaseModel):
 
 
 class ModelsSettings(BaseModel):
-    """The `[models]` section, whose only member at 1.0 is `[models.stages]`."""
+    """The `[models]` section: `[models.stages]` and, since 1.1, `[models.stage_adapters]`."""
 
     model_config = ConfigDict(extra="forbid")
 
     stages: StageBindings = Field(default_factory=StageBindings)
+    stage_adapters: dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "Per-stage LoRA adapter pins, sent to LoadCoach as its `adapter` override. Sparse: a "
+            "stage with no key has no pin, and a key present is a pin in effect — there is no "
+            "second boolean, and it does not ride `honour_stage_bindings` (ADR-0083). Values are "
+            "LoadCoach's manifest names; IdeaPress holds no adapter registry."
+        ),
+    )
+
+    @field_validator("stage_adapters")
+    @classmethod
+    def _pins_name_model_stages(cls, value: dict[str, str]) -> dict[str, str]:
+        """Refuse a pin on a stage that cannot carry one, and a pin with no adapter name.
+
+        Args:
+            value: The configured stage-to-adapter mapping.
+
+        Returns:
+            ``value`` when every key is a model-using stage in workflows §2 and every value is a
+            non-empty adapter name.
+
+        Raises:
+            ValueError: A key names no model-using stage — a gate stage, or a misspelling — or a
+                value is empty. Either would be a configured pin that pins nothing: the same
+                silent no-op `[inference.loadcoach] job_stages` refuses, and here it would also
+                mean a stage answered by the bare base while its configuration named an adapter
+                (ADR-0083 rule 3).
+
+        A name this LoadCoach does not have is **not** refused here: the registry is LoadCoach's,
+        it is reachable only at run time, and caching it would be a second registry that drifts.
+        That refusal is ``ADAPTER_NOT_FOUND``, which lists what does exist.
+        """
+        unknown = sorted(set(value) - MODEL_STAGES)
+        if unknown:
+            named = ", ".join(unknown)
+            choices = ", ".join(sorted(MODEL_STAGES))
+            message = (
+                f"models.stage_adapters names {named}, which is not a model-using stage. "
+                f"Choose from: {choices}."
+            )
+            raise ValueError(message)
+        empty = sorted(stage for stage, adapter in value.items() if not adapter.strip())
+        if empty:
+            named = ", ".join(empty)
+            message = (
+                f"models.stage_adapters sets an empty adapter name for {named}. Name an adapter "
+                "LoadCoach has registered, or remove the key."
+            )
+            raise ValueError(message)
+        return value
 
 
 class ExecutionSettings(BaseModel):
@@ -448,6 +537,30 @@ class Settings(BaseModel):
     workflow: WorkflowSettings = Field(default_factory=WorkflowSettings)
     providers: ProvidersSettings = Field(default_factory=ProvidersSettings)
     logging: LoggingSettings = Field(default_factory=LoggingSettings)
+
+    @model_validator(mode="after")
+    def _pins_need_the_routing_backend(self) -> Settings:
+        """Refuse any adapter pin when the backend is not LoadCoach.
+
+        Returns:
+            ``self`` when no pin is configured, or when `[inference] mode` is ``loadcoach``.
+
+        Raises:
+            ValueError: A `[models.stage_adapters]` key is set in a mode that cannot serve an
+                adapter. The direct and OpenAI-compatible paths stay adapter-free by recorded
+                scope decision (adapter roadmap §4.4), because an adapter served through an
+                OpenAI-compatible endpoint would evade identity tracking entirely. Refused at
+                startup, where the mode is known, rather than silently ignored per request.
+        """
+        if not self.models.stage_adapters or self.inference.mode == "loadcoach":
+            return self
+        named = ", ".join(sorted(self.models.stage_adapters))
+        message = (
+            f"models.stage_adapters pins an adapter for {named}, but inference.mode is "
+            f"{self.inference.mode!r}. Only the loadcoach backend can serve an adapter; the "
+            "direct and OpenAI-compatible paths are adapter-free (adapter roadmap §4.4)."
+        )
+        raise ValueError(message)
 
 
 @dataclass(frozen=True, slots=True)
@@ -747,6 +860,11 @@ auto_migrate = true
 mode = "ollama"             # ollama | loadcoach | openai_compatible
 fallback_mode = ""          # optional; empty means no fallback
 pin_backend = false         # true = never fall back, fail the stage instead
+# The classification of the work this installation sends to a model: public | internal |
+# confidential. One value for every request — the true statement is about the installation, not
+# about a stage. LoadCoach records max(caller, adapter) (ADR-0065 rule 2); the default is the
+# lowest level, which joins to the adapter's own value.
+data_classification = "public"
 
 [inference.ollama]
 base_url = "http://127.0.0.1:11434"
@@ -773,6 +891,15 @@ fact_check         = "ollama/qwen3.5:9b-q8_0"
 critique           = "ollama/qwen3.5:9b-q8_0"
 revise             = "ollama/qwen3.5:9b-q8_0"
 project_review     = "ollama/qwen3.5:9b-q8_0"
+
+# Per-stage LoRA adapter pins, sent to LoadCoach as its `adapter` override. Sparse: a stage with
+# no key has no pin, and a key present is a pin in effect — there is no second boolean (ADR-0083).
+# Only in `loadcoach` mode; a pin in any other mode is refused at startup. Values are LoadCoach's
+# manifest names. A pin that cannot be honoured fails its stage; it is never served by the bare
+# base.
+# [models.stage_adapters]
+# draft  = "house-voice"
+# revise = "terse-editor"
 
 [workflow]
 max_revision_rounds = 3

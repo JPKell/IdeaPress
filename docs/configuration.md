@@ -55,6 +55,7 @@ Which backend runs stages, and what happens when it is not there.
 | Key | Type | Default | Environment variable | Notes |
 | --- | --- | --- | --- | --- |
 | `mode` | one of `ollama` | `loadcoach` | `openai_compatible` | `"ollama"` | `IDEAPRESS_INFERENCE__MODE` |  |
+| `data_classification` | str | `"public"` | `IDEAPRESS_INFERENCE__DATA_CLASSIFICATION` | The data classification of the work this installation sends to a model. One value for every request, because the true statement is about the installation and not about a stage. Sent to LoadCoach, which records max(caller, adapter) (ADR-0065 rule 2). Unset is the lowest level, which joins to the adapter's own value. |
 | `fallback_mode` | str | *(empty)* | `IDEAPRESS_INFERENCE__FALLBACK_MODE` | Optional; empty means no fallback. Ignored when pin_backend. |
 | `pin_backend` | bool | `false` | `IDEAPRESS_INFERENCE__PIN_BACKEND` | True = never fall back; fail the stage instead. |
 
@@ -89,6 +90,14 @@ Any OpenAI-compatible endpoint. Empty base_url means "not configured", not "loca
 | `api_key_env` | str | *(empty)* | `IDEAPRESS_INFERENCE__OPENAI_COMPATIBLE__API_KEY_ENV` |  |
 | `timeout_seconds` | int | `300` | `IDEAPRESS_INFERENCE__OPENAI_COMPATIBLE__TIMEOUT_SECONDS` |  |
 | `model` | str | *(empty)* | `IDEAPRESS_INFERENCE__OPENAI_COMPATIBLE__MODEL` | The model name this endpoint serves. OpenAI-compatible servers expose one namespace with no provider prefix, so the `[models.stages]` bindings do not apply to it. |
+
+## `[models]`
+
+The `[models]` section: `[models.stages]` and, since 1.1, `[models.stage_adapters]`.
+
+| Key | Type | Default | Environment variable | Notes |
+| --- | --- | --- | --- | --- |
+| `stage_adapters` | dict[str, str] | *(section)* | `IDEAPRESS_MODELS__STAGE_ADAPTERS` | Per-stage LoRA adapter pins, sent to LoadCoach as its `adapter` override. Sparse: a stage with no key has no pin, and a key present is a pin in effect — there is no second boolean, and it does not ride `honour_stage_bindings` (ADR-0083). Values are LoadCoach's manifest names; IdeaPress holds no adapter registry. |
 
 ## `[models.stages]`
 

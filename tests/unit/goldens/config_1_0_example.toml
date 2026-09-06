@@ -1,0 +1,69 @@
+# IdeaPress configuration.
+# Every key below is optional; a fresh install with no file at all is fully functional and starts
+# with no backend reachable.
+# Precedence: defaults -> this file -> IDEAPRESS_* environment variables -> CLI flags.
+
+[server]
+host = "127.0.0.1"
+port = 8767
+allow_lan_exposure = false
+allowed_hosts = []          # required when host is not loopback (ADR-0026)
+
+[storage]
+# database_url and project_dir default under the XDG data directory.
+auto_migrate = true
+
+[inference]
+mode = "ollama"             # ollama | loadcoach | openai_compatible
+fallback_mode = ""          # optional; empty means no fallback
+pin_backend = false         # true = never fall back, fail the stage instead
+
+[inference.ollama]
+base_url = "http://127.0.0.1:11434"
+timeout_seconds = 300
+
+[execution]
+# One generation in flight, and one model resident, at a time (ADR-0038). A value above 1 is
+# refused at startup: IdeaPress has no queue and two models do not fit on a single-GPU machine.
+max_concurrent_stages = 1
+unload_before_model_switch = true
+
+# Standalone stage -> model bindings. One key per model-using stage in workflows §2, spelled
+# exactly as the stage is; a binding for a stage that does not exist, or a model-using stage with
+# no binding, fails startup validation naming the stage.
+[models.stages]
+requirements       = "ollama/qwen3.5:9b-q8_0"
+research_synthesis = "ollama/qwen3.5:9b-q8_0"
+outline            = "ollama/qwen3.5:9b-q8_0"
+draft              = "ollama/gemma4:12b"
+repair             = "ollama/qwen3.5:9b-q8_0"
+audit_fast         = "ollama/qwen3.5:9b-q8_0"
+audit_deep         = "ollama/qwen3.5:9b-q8_0"
+fact_check         = "ollama/qwen3.5:9b-q8_0"
+critique           = "ollama/qwen3.5:9b-q8_0"
+revise             = "ollama/qwen3.5:9b-q8_0"
+project_review     = "ollama/qwen3.5:9b-q8_0"
+
+[workflow]
+max_revision_rounds = 3
+diminishing_returns_threshold = 0.05
+max_attempts_per_stage = 3
+audit_escalation_threshold = 0.6
+require_clean_validation_to_commit = true
+# Whether an audit's explicit attestation may satisfy a blocking requirement that has no
+# deterministic check (ADR-0039). Silence never satisfies one either way; false forces a wholly
+# mechanical gate, pausing such units instead.
+allow_audit_gated_requirements = true
+# Output-token budget for the structured stages (requirements, outline, audits, critique,
+# project review); raised above 8192 it also lifts the thinking floor of the text-writing
+# stages (draft, repair, revise). A reasoning model spends output tokens thinking before its
+# first word of answer; a unit paused for an exhausted output budget needs this raised.
+# Accepted range: 1024-131072.
+structured_output_tokens = 8192
+
+[providers]
+allow_remote = false        # a remote backend sends your drafts off this machine
+
+[logging]
+level = "INFO"
+include_content = false     # your prompts and drafts are never logged by default

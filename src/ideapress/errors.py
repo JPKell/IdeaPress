@@ -14,6 +14,8 @@ from baseaicore import ConfigurationError, NotFoundError, SuiteError, Validation
 
 __all__ = [
     "ERROR_CODES",
+    "AdapterNotFound",
+    "AdapterProfileMismatch",
     "BackendUnavailable",
     "BackendVersionMismatch",
     "ContentRejected",
@@ -163,6 +165,33 @@ class SchemaVersionUnsupported(SuiteError):
     code: ClassVar[str] = "SCHEMA_VERSION_UNSUPPORTED"
 
 
+class AdapterNotFound(SuiteError):
+    """A `[models.stage_adapters]` pin named an adapter the routing backend does not have.
+
+    The stage **fails**; it is never served by the bare base (ADR-0064 rule 4). An operator who
+    pinned a house-voice adapter and received the base's prose has been told something false about
+    what wrote their document, which is the one thing this application's provenance story cannot
+    allow.
+
+    Carries ``adapter`` and, when the backend listed them, ``available`` — so the message says what
+    to write instead. **Permanent for the request as written**: the pin has to change, or the
+    adapter has to be registered, so it is never retried.
+    """
+
+    code: ClassVar[str] = "ADAPTER_NOT_FOUND"
+
+
+class AdapterProfileMismatch(SuiteError):
+    """A pinned adapter could not be honoured under the request's routing profile.
+
+    An incompatible base digest, an unmeasured adapter under the evidence gate, or a classification
+    conflict — the routing backend's reason travels in ``details``. Fails the stage for the same
+    reason :class:`AdapterNotFound` does, and is permanent for the same reason.
+    """
+
+    code: ClassVar[str] = "ADAPTER_PROFILE_MISMATCH"
+
+
 ERROR_CODES: Final[frozenset[str]] = frozenset(
     {
         BackendUnavailable.code,
@@ -181,6 +210,8 @@ ERROR_CODES: Final[frozenset[str]] = frozenset(
         ExportFailed.code,
         InsufficientVram.code,
         SchemaVersionUnsupported.code,
+        AdapterNotFound.code,
+        AdapterProfileMismatch.code,
     }
 )
 """Spec §13's fifteen codes. The application-level codes below come from `baseaicore` and are
