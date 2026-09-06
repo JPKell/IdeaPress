@@ -112,7 +112,14 @@ def _loadcoach(config: Path, *args: str, check: bool = True) -> subprocess.Compl
     )
 
 
-def _config(path: Path, *, adapters_dir: Path | None, remote: bool, port: int) -> Path:
+def _config(
+    path: Path,
+    *,
+    adapters_dir: Path | None,
+    remote: bool,
+    port: int,
+    task_profiles: Path | None = None,
+) -> Path:
     """Write a LoadCoach configuration for one registration, local or declared remote.
 
     **One registration, never two.** A `models` row is keyed on the model's identity — provider
@@ -127,6 +134,7 @@ def _config(path: Path, *, adapters_dir: Path | None, remote: bool, port: int) -
     """
     root = path.parent
     name = "hosted" if remote else "local"
+    profiles_key = "" if task_profiles is None else f'task_profiles_path = "{task_profiles}"'
     registry = "" if adapters_dir is None else f'\n[adapters]\ndirectory = "{adapters_dir}"\n'
     path.write_text(
         f"""
@@ -156,6 +164,7 @@ context_size = 32768
 
 [routing]
 require_adapter_evidence = false
+{profiles_key}
 
 [logging]
 level = "INFO"
@@ -216,25 +225,27 @@ def _prepare(root: Path) -> list[str]:
     return [keyword for _, keyword, _ in PINS]
 
 
-def _allow_remote_on(database: Path, profile_id: str) -> None:
-    """Let one stored task profile route to a remote registration.
-
-    The shipped profiles IdeaPress's stage map names are all local-only, and the two that permit
-    egress demand 128k of context, which a 1.5 B base cannot serve — so I19's setting cannot be
-    reached through a stock installation at all. This is the operator action that creates it: one
-    stored profile, edited in place in the operator's own database, after the server has imported
-    the shipped file. Recorded in the handoff as a fixture, not as product behaviour.
-    """
-    with sqlite3.connect(database) as connection:
-        (raw,) = connection.execute(
-            "SELECT constraints_json FROM task_profiles WHERE profile_id = ?", (profile_id,)
-        ).fetchone()
-        constraints = json.loads(raw)
-        constraints["allow_remote_providers"] = True
-        connection.execute(
-            "UPDATE task_profiles SET constraints_json = ? WHERE profile_id = ?",
-            (json.dumps(constraints), profile_id),
-        )
+#: `general.reasoning` — the profile IdeaPress's `critique` stage routes to — rewritten to permit a
+#: remote registration, which is I19's setting. Every shipped profile IdeaPress's stage map names
+#: is local-only, and the two that permit egress demand 128k of context, so this deployment writes
+#: its own file. That is what `[routing] task_profiles_path` is for; before LoadCoach 1.1 shipped
+#: the key, the only ways to express it were to edit an installed package or a stored row.
+REMOTE_OK_PROFILE = """
+[task_profiles."general.reasoning"]
+version = "1.0.0"
+description = "This deployment's reasoning profile, which permits egress (I19's setting)."
+[task_profiles."general.reasoning".weights]
+instruction_following = 1.0
+[task_profiles."general.reasoning".constraints]
+min_context_tokens = 2048
+allow_remote_providers = true
+[task_profiles."general.reasoning".execution]
+temperature = 0.0
+max_output_tokens = 48
+response_format = "text"
+max_attempts = 1
+fallback_depth = 0
+"""
 
 
 @contextmanager
@@ -295,7 +306,6 @@ def serving(tmp_path: Path) -> Iterator[tuple[Path, list[str]]]:
 
     names = _prepare(tmp_path)
     with _served(tmp_path, name="local", port=PORT):
-        _allow_remote_on(tmp_path / "local.sqlite3", "general.reasoning")
         yield tmp_path, names
 
 
@@ -525,9 +535,16 @@ def test_a_remote_registration_leaves_a_denial_with_both_halves_populated(tmp_pa
 
     port = PORT + 1
     names = _prepare(tmp_path)
-    _config(tmp_path / "hosted.toml", adapters_dir=tmp_path / "adapters", remote=True, port=port)
+    profiles = tmp_path / "task_profiles.toml"
+    profiles.write_text(REMOTE_OK_PROFILE, encoding="utf-8")
+    _config(
+        tmp_path / "hosted.toml",
+        adapters_dir=tmp_path / "adapters",
+        remote=True,
+        port=port,
+        task_profiles=profiles,
+    )
     with _served(tmp_path, name="hosted", port=port):
-        _allow_remote_on(tmp_path / "hosted.sqlite3", "general.reasoning")
         _database, gateway = _ideapress(tmp_path, names, port=port)
 
         with pytest.raises(SuiteError) as caught:
