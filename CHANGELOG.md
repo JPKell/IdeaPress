@@ -7,6 +7,24 @@ packaging and release standards §3.
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-09-05
+
+IdeaPress 1.1: **LA2** — a stage may pin a LoRA adapter, the pin travels to LoadCoach as its
+`adapter` override, a pin that cannot be honoured fails its stage instead of being served by the
+bare base, and every attempt names the subject that answered it. Phase 10 of the
+[development plan](docs/apps/ideapress/development-plan.md).
+
+**The exit was demonstrated, not argued.** A real installation ran three model-using stages, each
+pinning a different adapter, over HTTP to a real `loadcoach serve` over a real `llama-server`: one
+server process answered all three and LoadCoach's residency ledger holds one row, because an
+adapter switch on a resident base writes none. The three answers to one prompt are visibly a
+pirate, a terse editor and a verbose one, which is the canary that the adapters applied, and
+`SELECT stage, adapter_name, subject_canonical_id FROM attempts` separates the three stages from
+the database alone.
+
+**Requires `loadcoach 1.1.0`** for a pinned stage or a declared classification above the default.
+An installation with neither is 1.0 traffic and keeps working against a LoadCoach 1.0.
+
 ### Added
 - **A stage may pin a LoRA adapter** (ADR-0083). `[models.stage_adapters]`, beside
   `[models.stages]` and sparse: a stage with no key has no pin, and a key present is a pin in
@@ -29,6 +47,14 @@ packaging and release standards §3.
   (ADR-0064 rule 4) — and both are permanent for the request as written, so neither is retried.
 
 ### Changed
+- **The persisted attempt gains an adapter axis** (ADR-0058, ADR-0080). Migration `0006` adds
+  `adapter_name`, `adapter_digest` and `subject_canonical_id` to `attempts`, beside the four model
+  columns. Each is written from what the backend said **answered** the request, never from the pin
+  that asked for it — a pin can be refused between the two. Rows written before 1.1 are base
+  subjects and keep `NULL` in all three: "no adapter answered" and "an adapter whose name we do not
+  know" are different facts, and a back-fill would collapse them.
+- **`baseaicore` floor raised to `>=0.4.1`.** `DataClassification`, which the new configuration key
+  is validated against, arrived there.
 - **`setspec` widened to `>=0.4,<0.7`** (E5's pin sweep). `mirrorwall 0.2.1` required
   `setspec<0.5` and every application carried the matching cap; `mirrorwall 0.2.2` lifted it.
   IdeaPress's `setspec` surface is `setspec.prompts` plus `GeneratorInfo`, neither of which
