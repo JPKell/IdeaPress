@@ -126,10 +126,24 @@ Owns `ideapress.sqlite3`: projects, briefs, plans, units, requirements, stage_ru
 validations, audits, revisions, drafts, exports, backend_config, settings. Owns its project artifact
 directory. Reads nothing belonging to another application.
 
+The adapter columns on `attempts` — `adapter_name`, `adapter_digest`, `subject_canonical_id` — are
+**IdeaPress's own data**, written from what LoadCoach's response said answered the request. They are
+a copy of a fact, not a view onto LoadCoach's `adapters` table, and IdeaPress has no adapters table
+of its own: it does not own the adapter registry and must not cache it
+([ADR-0083](../../adr/0083-an-adapter-pin-is-configured-on-by-being-configured.md)).
+
 ## 11. Public contracts
 
+> **Two senses of "adapter", said once.** In IdeaPress's own prose an *adapter* has always been an
+> implementation of the `InferenceBackend` port — "the LoadCoach adapter", "the Ollama adapter".
+> Since 1.1 the word also carries the LoRA sense, because that is what LoadCoach's wire and this
+> application's configuration call it, and inventing a synonym at the boundary would be worse than
+> the ambiguity. Where the two could be read together, this document and
+> [Workflows](workflows.md) say **backend** for the port sense and **adapter** for the LoRA sense.
+> The port's Python symbols are unchanged.
+
 1. **Backend contract.** The `InferenceBackend` port is IdeaPress-internal but stable: switching
-   adapters changes configuration only, never workflow code.
+   backends changes configuration only, never workflow code.
 2. **Stage contract.** Every stage takes a typed input and returns a typed output plus a validation
    result; no stage returns raw model text to another stage without validation.
 3. **Provenance contract.** Every committed unit records backend, model identity, prompt IDs and
@@ -151,6 +165,8 @@ directory. Reads nothing belonging to another application.
 [inference]  mode = "ollama"            # ollama | loadcoach | openai_compatible
              fallback_mode = ""         # optional; empty means no fallback
              pin_backend = false        # true = never fall back, fail instead
+             data_classification = "public"   # public | internal | confidential; one value for
+                                       # every request this installation makes (ADR-0065 rule 2)
 
 [inference.ollama]           base_url = "http://127.0.0.1:11434"  timeout_seconds = 300
 [inference.loadcoach]        base_url = "http://127.0.0.1:8766"  api_key_env = ""  timeout_seconds = 600
@@ -174,11 +190,42 @@ critique           = "ollama/qwen3.5:9b-q8_0"
 revise             = "ollama/qwen3.5:9b-q8_0"
 project_review     = "ollama/qwen3.5:9b-q8_0"
 
+# Per-stage LoRA adapter pins, sent to LoadCoach as its `adapter` override. Sparse: a stage with no
+# key has no pin. A key present is a pin in effect — there is no second boolean, and it does not
+# ride `honour_stage_bindings`, whose meaning is "give up routing", which an adapter pin does not
+# (ADR-0083). Only in `loadcoach` mode.
+[models.stage_adapters]
+draft    = "house-voice"
+revise   = "terse-editor"
+
 # One key per model-using stage in [Workflows §2](workflows.md), spelled exactly as the stage is.
 # A binding for a stage that does not exist, or a model-using stage with no binding, fails startup
 # validation naming the stage — the audit found the previous list used `edit` and `audit`, neither of
 # which is a stage identifier.
 #
+`[models.stage_adapters]` keys are spelled exactly as [Workflows §2](workflows.md) spells the
+stage, and its values are **LoadCoach's manifest names** — IdeaPress resolves nothing and holds no
+registry. Startup refuses a key naming a gate stage or an unknown stage, in the same shape
+`[inference.loadcoach] job_stages` refuses one, and refuses **any** key when `[inference] mode` is
+not `loadcoach`: the direct and OpenAI-compatible paths are adapter-free by recorded scope decision
+([adapter roadmap §4.4](../../roadmap/adapter-roadmap.md)), because an adapter served through an
+OpenAI-compatible endpoint would evade identity tracking. A name this LoadCoach does not have is
+**not** a startup error — it is `ADAPTER_NOT_FOUND` at run time, listing what does exist, because
+the list is LoadCoach's and caching it here would be a second registry that drifts.
+
+Setting a stage in **both** tables with `honour_stage_bindings` on names exactly one subject: the
+model pin narrows the field to one base and the adapter pin selects among that base's subjects. That
+is the one combination in which an adapter pin surrenders routing, and it does so because the model
+pin already did ([ADR-0083](../../adr/0083-an-adapter-pin-is-configured-on-by-being-configured.md)).
+
+`[inference] data_classification` is a statement about the **installation**, not about a stage:
+one value to keep correct and one place to audit. It travels on every LoadCoach request, and
+LoadCoach records `max(caller, adapter)` on the attempt and in any classification rejection
+([ADR-0065](../../adr/0065-an-adapter-is-classified-and-local-only.md) rule 2). Unset means
+`public`, the lowest level, so the join equals the adapter's own classification and a `1.0`
+configuration behaves exactly as it did. Under-declaration is possible and accepted: the adapter
+half still fails closed against a remote registration, which is the invariant that matters.
+
 # `[execution]` is [ADR-0038](../../adr/0038-one-model-at-a-time-per-gpu.md). One model runs at a
 # time, never two: `max_concurrent_stages` above 1 is refused at startup with the reason rather than
 # clamped, because IdeaPress has no queue and a second concurrent generation means two models
@@ -214,7 +261,7 @@ BACKEND_VERSION_MISMATCH   REQUIREMENTS_UNMET         UNIT_NOT_FOUND
 MODEL_NOT_CONFIGURED       STAGE_PRECONDITION_FAILED  STAGE_ALREADY_RUNNING
 PROVIDER_TIMEOUT           REVISION_LIMIT_REACHED     EXPORT_FAILED
 CONTEXT_LIMIT_EXCEEDED     CONTENT_REJECTED           SCHEMA_VERSION_UNSUPPORTED
-INSUFFICIENT_VRAM
+INSUFFICIENT_VRAM          ADAPTER_NOT_FOUND          ADAPTER_PROFILE_MISMATCH
 ```
 
 Behavioural rules:
@@ -226,6 +273,15 @@ Behavioural rules:
 * `CONTENT_REJECTED` (a model refusing the task) is a distinct outcome from a failure, and is
   surfaced with the model's stated reason.
 * Backend unavailable: fall back if configured and not pinned; otherwise fail the stage clearly.
+* `ADAPTER_NOT_FOUND` and `ADAPTER_PROFILE_MISMATCH` are the two refusals of a
+  `[models.stage_adapters]` pin, raised from LoadCoach's own `ADAPTER_NOT_FOUND` and
+  `PROFILE_MISMATCH`. **Both fail the stage; neither degrades to the bare base**
+  ([ADR-0064](../../adr/0064-adapters-are-selected-through-the-capability-vocabulary.md) rule 4). An
+  operator who pinned a house-voice adapter and got the base's prose back has been lied to about
+  what produced their document, and that is the one thing this application's provenance story
+  cannot allow. Both are **permanent for the request as written**, so neither is retried: the pin
+  has to change, or the adapter has to be registered. `ADAPTER_NOT_FOUND` carries the names
+  LoadCoach does have, so the message says what to write instead.
 * `INSUFFICIENT_VRAM` is the wait-or-refuse outcome of
   [ADR-0038](../../adr/0038-one-model-at-a-time-per-gpu.md): the preflight found less free VRAM than
   the configured model needs with room for its context. It carries **both figures** — required and
@@ -316,6 +372,20 @@ most likely component to be used on Windows or macOS, which is why it takes no h
 * Prompt versions recorded per attempt; changing a prompt does not alter existing units.
 * Export format changes are versioned; re-export of an old project is byte-stable for its recorded
   version.
+* **What 1.1 adds, and what it does not break.** `[models.stage_adapters]` and
+  `[inference] data_classification` are both additions with defaults — an empty table and the lowest
+  classification — so a shipped `1.0` configuration file loads to a byte-identical settings object
+  and produces byte-identical requests but for the classification field, which joins to the same
+  effective value it had when it was absent. No existing key changes meaning, no default moves, and
+  the three columns migration `0006` adds to `attempts` are nullable with no back-fill: rows written
+  before it are base subjects and read as such.
+* **A 1.1 field is only sent to a LoadCoach that has it.** `overrides.adapter` and
+  `data_classification` are 1.1 fields on a body that forbids unknown ones. Against a LoadCoach
+  older than 1.1, IdeaPress **refuses** any request that would need one — a pinned stage, or a
+  declared classification above the default — with `BACKEND_VERSION_MISMATCH` naming both versions,
+  rather than sending it to be 422'd or, worse, dropping it and under-declaring silently. An
+  installation with no pins and the default classification is 1.0 traffic and keeps working
+  unchanged.
 
 ## 20. Acceptance criteria
 

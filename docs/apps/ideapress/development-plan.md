@@ -434,3 +434,112 @@ from the generated configuration reference; an archive import path that writes b
 **Deferred to post-1.0:** more content types and export formats, failure memory, concept competition,
 research backends, per-project prompt overrides, publishing integrations, reliability-informed stage
 hints.
+
+---
+
+## Phase 10 — Per-stage adapter pins and the classification a caller declares · **LA2**
+
+**Goal:** IdeaPress 1.1 — a stage may pin a LoRA adapter, the pin travels to LoadCoach as its
+`adapter` override, a pin that cannot be honoured fails its stage instead of being served by the
+bare base, every attempt names the subject that answered it, and the installation declares the data
+classification that joins the adapter's.
+
+**Prerequisites:** P9 (`ideapress 1.0.0` published); `loadcoach 1.1.0` (LoadCoach Phase 10 —
+`overrides.adapter`, `ADAPTER_NOT_FOUND`, `model.subject_canonical_id` on the response, a
+configurable `kind = "llamacpp"`); `baseaicore >= 0.4.1` (`AdapterIdentity`, `DataClassification`).
+The [adapter roadmap](../../roadmap/adapter-roadmap.md) §4.4 is this phase's scope statement and
+[ADR-0083](../../adr/0083-an-adapter-pin-is-configured-on-by-being-configured.md) its configuration
+decision. LoadCoach's own 1.1 gains one field for this phase — a caller's `data_classification` —
+which is the caller half of
+[ADR-0065](../../adr/0065-an-adapter-is-classified-and-local-only.md) rule 2.
+
+**Work**
+* **The pin, in its own table
+  ([ADR-0083](../../adr/0083-an-adapter-pin-is-configured-on-by-being-configured.md)).**
+  `[models.stage_adapters]`, sparse, beside `[models.stages]`. A key present is a pin in effect;
+  there is no gating boolean, and it does **not** ride `honour_stage_bindings`, whose documented
+  meaning is "give up routing" — an adapter pin does not. Startup refuses a key naming a gate stage
+  or an unknown stage, in the shape `job_stages` already refuses one, and refuses **any** key when
+  `[inference] mode` is not `loadcoach` (adapter roadmap §4.4: the direct and OpenAI-compatible
+  paths stay adapter-free, because an adapter through an OpenAI-compatible endpoint would evade
+  identity tracking).
+* **One application-level data classification.** `[inference] data_classification`, one value for
+  every request this installation makes, defaulting to the lowest `baseaicore.DataClassification`
+  level. It travels on the `/generate` and `/jobs` body; LoadCoach computes
+  `max(caller, adapter)` and records it on the attempt and in any classification rejection. Unset
+  is byte-identical to `1.0`'s behaviour, because the join with the lowest class is the adapter's
+  own value.
+* **The passthrough, in the one adapter that knows LoadCoach's vocabulary.** The pin resolves in
+  the inference gateway exactly as `[models.stages]` does — one resolver, one place a binding can be
+  wrong — and reaches `LoadCoachBackend` as `StageRequest.adapter_hint`. The other two backends
+  never see one, because a pin cannot be configured in their modes.
+* **A refused pin fails its stage, with the refusal surfaced
+  ([ADR-0064](../../adr/0064-adapters-are-selected-through-the-capability-vocabulary.md) rule 4).**
+  `ADAPTER_NOT_FOUND` and `PROFILE_MISMATCH` are permanent for the request as written, so neither is
+  retried and neither degrades to the base. Both get rows in [spec §13](spec.md)'s error table.
+* **Provenance ([ADR-0080](../../adr/0080-a-persisted-decision-names-the-subject-by-reference-and-by-string.md)).**
+  Migration `0006` adds the adapter axis to `attempts` beside the four model columns:
+  `adapter_name`, `adapter_digest` and `subject_canonical_id`. Every attempt records the subject
+  **that answered it**, read from LoadCoach's response, never inferred from the configuration — what
+  was asked for and what answered are different facts, and a pin can be refused between them.
+  IdeaPress grows **no** adapters table: it does not own the registry.
+* **Release.** `ideapress 1.1.0`.
+
+**Files/subsystems**
+```text
+src/ideapress/config.py                                   [models.stage_adapters], [inference] data_classification
+src/ideapress/domain/inference.py                         StageRequest.adapter_hint, StageResult.adapter
+src/ideapress/services/inference.py                       one resolver for the pin, as for the binding
+src/ideapress/services/backends.py                        the classification reaches the LoadCoach adapter
+src/ideapress/infrastructure/backends/loadcoach.py        the override, the classification, the refusals
+src/ideapress/services/stages.py                          the subject onto the attempt
+src/ideapress/infrastructure/db/models.py                 three columns on `attempts`
+src/ideapress/infrastructure/db/migrations/versions/0006_attempt_adapter_subject.py
+tests/live/test_la2_three_stage_project.py                the demonstration
+```
+
+**Tests**
+* A shipped `1.0` configuration file loads to a byte-identical settings object — the compatibility
+  golden, asserted, not argued.
+* Each startup refusal by its message: a pin on a gate stage, a pin on an unknown stage, a pin in
+  `ollama` mode, a pin in `openai_compatible` mode.
+* A pinned stage's request body carries `overrides.adapter`; an unpinned one is byte-identical to
+  `1.0`'s but for `data_classification`; both carry the declared classification.
+* `ADAPTER_NOT_FOUND` and `PROFILE_MISMATCH` each fail their stage with the refusal recorded, and
+  neither produces text.
+* A pinned attempt records its adapter name, digest and subject; an unpinned one records `NULL`,
+  not an empty string; rows written before the migration keep their values and read as base
+  subjects.
+* **Live (`-m live`):** the three-stage demonstration below.
+
+**Acceptance criteria**
+1. A real project runs three model-using stages, each pinning a **different** adapter on **one**
+   base, against a real LoadCoach and a real `llama-server`, and produces three visibly different
+   pieces of text.
+2. **Exactly one base load** across the whole project, asserted from the server's pid and the load
+   timings — not from the absence of a complaint (adapter roadmap §7, I16).
+3. `SELECT stage, adapter_name, subject_canonical_id FROM attempts` distinguishes the three stages
+   after the fact, from the database alone.
+4. One recorded classification denial in LoadCoach with **both** halves of the join populated:
+   `caller_classification` is IdeaPress's declared value, not `null` (I19,
+   [ADR-0079](../../adr/0079-an-adapter-classification-refusal-is-a-routing-rejection.md)).
+5. `ideapress config check` on a configuration with a pin on `validate` refuses at startup naming
+   the stage; the same file with `mode = "ollama"` refuses naming the mode.
+6. A `1.0` configuration file, unedited, runs a project that is byte-identical to what `1.0.0`
+   produced.
+
+**Known risks:** the word "adapter" already means the backend port in IdeaPress's own prose, so a
+sentence about "the LoadCoach adapter" and one about "an adapter pin" are about different things.
+Mitigated by [spec §11](spec.md)'s naming note and by using "backend" for the port sense wherever
+the two could be read together. Second risk: a shipped task profile that allows remote demands
+≥ 128k context, which a 1.5 B base cannot serve, so the live journey must write its own
+`task_profiles.toml` rather than use the shipped one.
+**Likely failure modes:** a pin silently dropped because the classification or the override was
+built in the wrong branch of `_body_for`; an attempt recording the *configured* adapter rather than
+the one that answered, which is exactly the lie the phase exists to prevent; a migration that
+back-fills `adapter_name = ""` instead of `NULL` and makes "no adapter" indistinguishable from a
+nameless one.
+**Gold standards:** every IdeaPress gold standard, unchanged. The provenance standard gains the
+adapter axis: a committed unit's attempts name the subject that produced the text.
+**Deferred:** routed (unpinned) adapter selection, which needs LA3's evidence; per-project pin
+overrides; any adapter on the direct or OpenAI-compatible paths.
