@@ -283,6 +283,13 @@ class Attempt(Base):
     model_provider_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
     model_digest: Mapped[str | None] = mapped_column(String(71), nullable=True)
     model_canonical_id: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    # The adapter axis, beside the four model columns (ADR-0058, ADR-0080). Written from what the
+    # backend said *answered*, never from the pin that asked: a pin can be refused between the two.
+    # `NULL` in all three means no adapter answered, which is a different fact from an adapter
+    # whose name is unknown — hence nullable rather than defaulted to "".
+    adapter_name: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    adapter_digest: Mapped[str | None] = mapped_column(String(71), nullable=True)
+    subject_canonical_id: Mapped[str | None] = mapped_column(String(400), nullable=True)
     prompt_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
     prompt_version: Mapped[str | None] = mapped_column(String(20), nullable=True)
     prompt_sha256: Mapped[str | None] = mapped_column(String(71), nullable=True)

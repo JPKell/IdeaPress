@@ -103,3 +103,57 @@ def test_downgrade_removes_every_table_on_postgresql(postgres_database: Database
     migration_runner(postgres_database.engine).downgrade("base")
     remaining = set(inspect(postgres_database.engine).get_table_names())
     assert not (remaining & EXPECTED_TABLES)
+
+
+def test_0006_leaves_existing_attempts_as_base_subjects(sqlite_database: Database) -> None:
+    """Rows written before 1.1 were served by bare weights, and stay that way.
+
+    There was no way to ask for an adapter before this release and no LoadCoach that could serve
+    one, so `NULL` in all three columns is the true statement. `NULL` rather than `''` because "no
+    adapter answered" and "an adapter whose name we do not know" are different facts, and a
+    back-fill would collapse them.
+    """
+    from sqlalchemy import text
+
+    runner = migration_runner(sqlite_database.engine)
+    runner.upgrade("0005")
+    with sqlite_database.engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO projects (id, title, slug, content_type, content_type_version,"
+                " workflow_id, workflow_version, status, brief_text, author_material_json,"
+                " config_json, created_at, updated_at)"
+                " VALUES ('01PROJECT', 'T', 't', 'article', '1.0', 'default', '1.0', 'active',"
+                " 'b', '[]', '{}', '2026-09-01T00:00:00', '2026-09-01T00:00:00')"
+            )
+        )
+        connection.execute(
+            text(
+                "INSERT INTO stage_runs (id, project_id, stage, state, units_total,"
+                " units_completed, units_paused, started_at, options_json, backend, backend_mode)"
+                " VALUES ('01RUN', '01PROJECT', 'draft', 'completed', 1, 1, 0,"
+                " '2026-09-01T00:00:00', '{}', 'ollama', 'ollama')"
+            )
+        )
+        connection.execute(
+            text(
+                "INSERT INTO attempts (id, stage_run_id, stage, attempt, round, backend,"
+                " backend_mode, outcome, model_canonical_id, degradations_json, created_at)"
+                " VALUES ('01ATTEMPT', '01RUN', 'draft', 1, 0, 'ollama', 'ollama', 'completed',"
+                " 'ollama/gemma4:12b@sha256:abcd', '[]', '2026-09-01T00:00:00')"
+            )
+        )
+
+    runner.upgrade("head")
+
+    with sqlite_database.engine.connect() as connection:
+        row = connection.execute(
+            text(
+                "SELECT model_canonical_id, adapter_name, adapter_digest, subject_canonical_id"
+                " FROM attempts WHERE id = '01ATTEMPT'"
+            )
+        ).one()
+    assert row.model_canonical_id == "ollama/gemma4:12b@sha256:abcd"
+    assert row.adapter_name is None
+    assert row.adapter_digest is None
+    assert row.subject_canonical_id is None

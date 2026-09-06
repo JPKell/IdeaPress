@@ -171,6 +171,14 @@ def record_attempt(
             row.model_provider_name = result.model.provider_model_name if result.model else None
             row.model_digest = result.model.artifact_digest if result.model else None
             row.model_canonical_id = result.model.canonical_id if result.model else None
+            # The subject that ANSWERED, from the backend's response — never `request.adapter_hint`,
+            # which is what was asked for. A pin can be refused between the two, and a provenance
+            # record naming the request would state something nobody verified (workflows §8).
+            row.adapter_name = result.adapter.name if result.adapter else None
+            row.adapter_digest = result.adapter.artifact_digest if result.adapter else None
+            row.subject_canonical_id = (
+                result.adapter.subject_canonical_id if result.adapter else None
+            )
             row.input_tokens = result.usage.input_tokens
             row.output_tokens = result.usage.output_tokens
             row.thinking_tokens = result.usage.thinking_tokens
