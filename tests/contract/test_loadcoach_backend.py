@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING, Any
 import httpx
 import pytest
 from tests.contract.loadcoach_mock import (
+    LOADCOACH_VERSION,
     MockLoadCoach,
     SchemaViolation,
     assert_snapshot_matches_distribution,
@@ -60,6 +61,7 @@ def _request(
     response_format: ResponseFormat | None = None,
     limits: StageLimits | None = None,
     model_hint: str | None = None,
+    adapter_hint: str | None = None,
 ) -> StageRequest:
     return StageRequest(
         stage=stage,  # type: ignore[arg-type]  # StageId is a Literal; tests parametrise over it
@@ -68,6 +70,7 @@ def _request(
         response_format=response_format,
         limits=limits or StageLimits(max_output_tokens=8192, temperature=0.2),
         model_hint=model_hint,
+        adapter_hint=adapter_hint,
         correlation=Correlation(project_id="01PROJECT", unit_id="U-01", attempt=1),
     )
 
@@ -375,7 +378,7 @@ def test_the_version_call_is_cached_across_generations(
 
 
 def test_the_running_services_own_version_shape_negotiates() -> None:
-    """The shape LoadCoach 1.0.0 actually answers with: `api.supported = ["v1"]`.
+    """The shape a running LoadCoach actually answers with: `api.supported = ["v1"]`.
 
     Regression guard for M8-04 — the adapter read a flat `api_versions` key that the real service
     does not have, and every offline test passed because the mock had the same misconception.
@@ -384,7 +387,7 @@ def test_the_running_services_own_version_shape_negotiates() -> None:
     client = mock.client()
     backend = LoadCoachBackend(LoadCoachSettings(), client=client)
     assert backend.health().status == "ok"
-    assert backend.health().version == "1.0.0"
+    assert backend.health().version == LOADCOACH_VERSION
     client.close()
 
 
@@ -416,7 +419,7 @@ def test_a_mismatch_is_degraded_health_not_an_outage() -> None:
 def test_health_reports_the_running_version(backend: LoadCoachBackend) -> None:
     health = backend.health()
     assert health.status == "ok"
-    assert health.version == "1.0.0"
+    assert health.version == LOADCOACH_VERSION
     assert health.is_remote is False
 
 

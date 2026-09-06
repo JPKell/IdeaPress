@@ -142,13 +142,20 @@ def test_a_version_mismatch_names_both_versions_and_does_not_downgrade() -> None
 # ------------------------------------------------------------------ fallback
 
 
-def _gateway(backend: Any, *, fallback: Any = None, pinned: bool = False) -> InferenceGateway:
+def _gateway(
+    backend: Any,
+    *,
+    fallback: Any = None,
+    pinned: bool = False,
+    stage_adapters: dict[str, str] | None = None,
+) -> InferenceGateway:
     return InferenceGateway(
         backend=backend,
         bindings=StageBindings(critique="ollama/qwen3.5:9b-q8_0"),
         execution=ExecutionSettings(),
         fallback=fallback,
         pinned=pinned,
+        stage_adapters=stage_adapters or {},
     )
 
 
@@ -626,3 +633,39 @@ def test_a_failure_in_one_run_does_not_poison_the_next() -> None:
         r.body.get("idempotency_key") for r in mock.requests if r.path.endswith("/generate")
     ]
     assert submitted[0] != submitted[1], f"the retry reused the failed run's key: {submitted}"
+
+
+def test_a_pinned_stage_does_not_fall_back(unreachable: LoadCoachBackend) -> None:
+    """No other backend can serve an adapter, so a fallback here is the bare base by another name.
+
+    ADR-0083 refuses a pin outside `loadcoach` mode at startup, which means every fallback is a
+    backend that cannot honour one — and it would answer without saying so, recording a successful
+    attempt against a stage whose configuration named an adapter (ADR-0064 rule 4).
+    """
+    gateway = _gateway(unreachable, fallback=FakeBackend(), stage_adapters={"critique": "hv"})
+    with pytest.raises(BackendUnavailable):
+        gateway.run(_request())
+
+
+def test_an_unpinned_stage_still_falls_back_when_another_stage_is_pinned(
+    unreachable: LoadCoachBackend,
+) -> None:
+    """The refusal is per stage, not per installation: only the pinned stage loses its fallback."""
+    gateway = _gateway(unreachable, fallback=FakeBackend(), stage_adapters={"draft": "hv"})
+    assert gateway.run(_request()).text
+
+
+def test_the_gateway_resolves_the_pin_for_the_stage_it_is_configured_on() -> None:
+    """One resolver, as for the model binding — the backend never reads the configuration."""
+    backend = FakeBackend()
+    seen: list[str | None] = []
+    original = backend.generate
+
+    def watched(request: StageRequest) -> Any:
+        seen.append(request.adapter_hint)
+        return original(request)
+
+    backend.generate = watched  # type: ignore[method-assign]  # observes what the backend got
+    gateway = _gateway(backend, stage_adapters={"critique": "house-voice"})
+    gateway.run(_request())
+    assert seen == ["house-voice"]

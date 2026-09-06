@@ -51,7 +51,10 @@ def build_backend(settings: Settings, *, mode: str | None = None) -> InferenceBa
     if selected == "loadcoach":
         from ideapress.infrastructure.backends.loadcoach import LoadCoachBackend
 
-        return LoadCoachBackend(settings.inference.loadcoach)
+        return LoadCoachBackend(
+            settings.inference.loadcoach,
+            data_classification=settings.inference.data_classification,
+        )
     message = f"{selected!r} is not an inference mode this build ships."
     raise ConfigurationError(message, details={"field": "inference.mode", "mode": selected})
 

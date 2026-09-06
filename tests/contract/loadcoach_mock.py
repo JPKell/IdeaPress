@@ -44,7 +44,10 @@ __all__ = [
 
 SNAPSHOT_PATH = Path(__file__).parent / "loadcoach_openapi_v1.json"
 
-LOADCOACH_VERSION = "1.0.0"
+LOADCOACH_VERSION = "1.1.0"
+"""The release IdeaPress 1.1 targets: the one with `overrides.adapter` and `data_classification`.
+
+A test that needs the older wire — the version guard's — passes `version="1.0.0"` explicitly."""
 DEFAULT_MODEL_CANONICAL_ID = "ollama/qwen3.5:9b-q8_0@sha256:1f3a9c4e2b70"
 
 
@@ -270,6 +273,7 @@ class MockLoadCoach:
         routing_flags: Sequence[str] = (),
         degradations: Sequence[Any] = (),
         queue_wait_ms: float = 0.0,
+        adapters: Sequence[str] = (),
     ) -> None:
         """Configure a LoadCoach to answer with ``answers``, in order, repeating the last.
 
@@ -283,6 +287,10 @@ class MockLoadCoach:
             routing_flags: Flags on the routing decision, for the degradation tests.
             degradations: LoadCoach's own reported degradations.
             queue_wait_ms: Reported queue wait, for the queue-visibility test.
+            adapters: The adapter manifest names this LoadCoach has registered. A pin naming one
+                is answered by that subject; a pin naming anything else is `ADAPTER_NOT_FOUND`,
+                the 404 that lists what does exist — never a quiet bare-base answer, which is the
+                behaviour LoadCoach 1.1 guarantees and IdeaPress relies on (ADR-0064 rule 4).
         """
         from ideapress.infrastructure.backends.loadcoach import LOADCOACH_TASK_MAP
 
@@ -301,6 +309,7 @@ class MockLoadCoach:
         self._routing_flags = list(routing_flags)
         self._degradations = list(degradations)
         self._queue_wait_ms = queue_wait_ms
+        self._adapters = list(adapters)
         self._job_sequence = 0
         self.replayed_keys: list[str] = []
         self._fail_next: tuple[str, str, str] | None = None
@@ -363,13 +372,13 @@ class MockLoadCoach:
             return self._json({"items": [{"task": "content.review", "samples": 1}]})
         if request.method == "POST" and path == "/api/v1/generate":
             self._validate_body(body, "GenerateBody")
-            return self._json(self._completion(body))
+            return self._adapter_error(body) or self._json(self._completion(body))
         if request.method == "POST" and path == "/api/v1/generate/stream":
             self._validate_body(body, "GenerateBody")
-            return self._stream(body)
+            return self._adapter_error(body) or self._stream(body)
         if request.method == "POST" and path == "/api/v1/jobs":
             self._validate_body(body, "JobBody")
-            return self._submit_job(body)
+            return self._adapter_error(body) or self._submit_job(body)
         if request.method == "GET" and path.startswith("/api/v1/jobs/"):
             return self._job_state(path)
         if request.method == "POST" and path.endswith("/feedback"):
@@ -407,6 +416,48 @@ class MockLoadCoach:
         """
         self._fail_next = (code, message or f"{code} from the mock.", state)
 
+    def _adapter_error(self, body: Mapping[str, Any]) -> httpx.Response | None:
+        """Refuse a pin naming an adapter this LoadCoach does not have (LoadCoach 1.1, gate E).
+
+        Args:
+            body: The submitted `/generate` or `/jobs` body.
+
+        Returns:
+            A `404 ADAPTER_NOT_FOUND` listing the adapters that do exist, or ``None`` when the
+            request carries no pin or names one that is registered. **Never** a successful bare
+            answer: a pin that cannot be honoured is refused by name (ADR-0064 rule 4), and a mock
+            that quietly served the base would agree with exactly the defect this feature exists
+            to prevent.
+        """
+        overrides = body.get("overrides")
+        pin = overrides.get("adapter") if isinstance(overrides, dict) else None
+        if not pin or pin in self._adapters:
+            return None
+        return self._json(
+            {
+                "error": {
+                    "code": "ADAPTER_NOT_FOUND",
+                    "message": f"No adapter named {pin!r} is registered.",
+                    "details": {"adapter": pin, "available": list(self._adapters)},
+                }
+            },
+            status=404,
+        )
+
+    def _adapter_block(self, body: Mapping[str, Any]) -> dict[str, Any] | None:
+        """The `model.adapter` object for a pinned request, or ``None`` for a bare one."""
+        overrides = body.get("overrides")
+        pin = overrides.get("adapter") if isinstance(overrides, dict) else None
+        if not pin:
+            return None
+        return {
+            "name": pin,
+            "adapter_ref": f"01J9KADAPTER{self._adapters.index(pin)}",
+            "artifact_digest": "sha256:" + f"{self._adapters.index(pin):02x}" * 32,
+            "data_classification": "confidential",
+            "effective_data_classification": "confidential",
+        }
+
     def _completion(self, body: Mapping[str, Any]) -> dict[str, Any]:
         """The documented `/generate` response for one submitted body (api.md §4)."""
         key = body.get("idempotency_key")
@@ -419,6 +470,7 @@ class MockLoadCoach:
             code, message, state = self._fail_next
             self._fail_next = None
             return self._failure(job_id, code=code, message=message, state=state)
+        adapter = self._adapter_block(body)
         payload: dict[str, Any] = {
             "job_id": job_id,
             "status": "completed",
@@ -426,6 +478,14 @@ class MockLoadCoach:
             "reasoning": {"available": False, "summary": None, "source": None},
             "model": {
                 "canonical_id": self._model_canonical_id,
+                # ADR-0058 §3: with no adapter this is byte-for-byte `canonical_id`.
+                "subject_canonical_id": (
+                    self._model_canonical_id
+                    if adapter is None
+                    else f"{self._model_canonical_id}+{adapter['name']}@"
+                    f"{str(adapter['artifact_digest'])[:19]}"
+                ),
+                "adapter": adapter,
                 "model_ref": "01J9KMODEL",
                 "runtime_profile_hash": "8f2c",
                 "served_context": 32768,

@@ -80,6 +80,7 @@ class Runtime:
                 backend=self._backend,
                 bindings=settings.models.stages,
                 execution=settings.execution,
+                stage_adapters=settings.models.stage_adapters,
                 fallback=fallback,
                 pinned=settings.inference.pin_backend,
             )

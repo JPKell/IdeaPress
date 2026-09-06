@@ -38,6 +38,7 @@ import httpx
 
 from ideapress.__about__ import __version__
 from ideapress.domain.inference import (
+    AdapterSubject,
     BackendCapabilities,
     BackendHealth,
     BackendModel,
@@ -49,6 +50,8 @@ from ideapress.domain.inference import (
 )
 from ideapress.domain.stages import MODEL_STAGES
 from ideapress.errors import (
+    AdapterNotFound,
+    AdapterProfileMismatch,
     BackendUnavailable,
     BackendVersionMismatch,
     ContentRejected,
@@ -108,6 +111,26 @@ one of these is authoritative about whether anything was generated — whichever
 """
 
 _TERMINAL_SUCCESS: Final[str] = "completed"
+
+_DEFAULT_CLASSIFICATION: Final[str] = "public"
+"""The lowest level, whose join with an adapter's classification is the adapter's own value.
+
+Sending it is byte-identical in *effect* to sending nothing, which is why an installation that
+declared nothing can still talk to a LoadCoach 1.0."""
+
+_ADAPTER_WIRE_VERSION: Final[tuple[int, int]] = (1, 1)
+"""The LoadCoach release that has `overrides.adapter` and `data_classification`.
+
+Both bodies are `extra="forbid"`, so a 1.1 field sent to a 1.0 server is a 422 rather than
+something ignored — and quietly *dropping* it instead would serve a pinned stage from the bare
+base, or under-declare a classification. Neither is acceptable, so a request that needs a 1.1
+field against an older server is refused by name."""
+
+_ADAPTER_REFUSAL_CODES: Final[frozenset[str]] = frozenset({"ADAPTER_NOT_FOUND"})
+"""LoadCoach's refusal of a pin naming an adapter it does not have. A 404 listing what exists."""
+
+_ADAPTER_PROFILE_CODES: Final[frozenset[str]] = frozenset({"PROFILE_MISMATCH"})
+"""LoadCoach's refusal of a pin that no candidate could honour under this request's profile."""
 
 _CONTEXT_CODES: Final[frozenset[str]] = frozenset({"CONTEXT_LIMIT_EXCEEDED"})
 """The one code that is about the *request* being too large rather than LoadCoach being unable to
@@ -277,16 +300,22 @@ class LoadCoachBackend:
         self,
         settings: LoadCoachSettings,
         *,
+        data_classification: str = _DEFAULT_CLASSIFICATION,
         client: httpx.Client | None = None,
     ) -> None:
         """Bind to a configured LoadCoach.
 
         Args:
             settings: The `[inference.loadcoach]` section.
+            data_classification: `[inference] data_classification` — one value for every request
+                this installation makes, which LoadCoach joins with any serving adapter's by
+                ``max()`` (ADR-0065 rule 2). The default is the lowest level, whose join is the
+                adapter's own value.
             client: An already-built HTTP client, injected by tests. When absent one is built from
                 ``settings``; the base URL and timeout are the configured ones.
         """
         self._settings = settings
+        self._data_classification = data_classification
         self._base_url = settings.base_url.rstrip("/")
         token = os.environ.get(settings.api_key_env, "") if settings.api_key_env else ""
         self._token = token or None
@@ -364,6 +393,11 @@ class LoadCoachBackend:
         Raises:
             BackendUnavailable: A 5xx, or a body that is not a JSON object.
             ContextLimitExceeded: LoadCoach reported the request too large for any candidate.
+            AdapterNotFound: A pin named an adapter LoadCoach does not have. **Not** recoverable
+                and **not** a fallback: a pin that cannot be honoured is refused by name rather
+                than served by the bare base (ADR-0064 rule 4).
+            AdapterProfileMismatch: A pin could not be honoured under this request's profile. The
+                same, for the same reason.
             ContentRejected: Any other 4xx, carrying LoadCoach's own error code and message so the
                 user reads what LoadCoach said rather than a paraphrase of it.
         """
@@ -382,6 +416,10 @@ class LoadCoachBackend:
             message = f"LoadCoach refused the request ({code}): {detail}"
             if code in _CONTEXT_CODES:
                 raise ContextLimitExceeded(message, details=details)
+            if code in _ADAPTER_REFUSAL_CODES:
+                raise AdapterNotFound(message, details=self._adapter_details(details, response))
+            if code in _ADAPTER_PROFILE_CODES:
+                raise AdapterProfileMismatch(message, details=details)
             if code in _CAPACITY_CODES:
                 raise BackendUnavailable(message, details=details)
             raise ContentRejected(message, details=details)
@@ -394,6 +432,26 @@ class LoadCoachBackend:
             message = f"LoadCoach returned {type(body).__name__}, not an object, on {path}."
             raise BackendUnavailable(message, details=details)
         return body
+
+    @staticmethod
+    def _adapter_details(details: dict[str, Any], response: httpx.Response) -> dict[str, Any]:
+        """Carry LoadCoach's list of adapters it *does* have onto the error, when it sent one.
+
+        ``ADAPTER_NOT_FOUND`` is a 404 that lists what exists, and that list is the whole remedy —
+        an operator reading "no such adapter" without it has to go and ask LoadCoach separately.
+        """
+        try:
+            body = response.json()
+        except ValueError:
+            return details
+        if not isinstance(body, dict):
+            return details
+        error = body.get("error")
+        payload = error.get("details") if isinstance(error, dict) else None
+        available = payload.get("available") if isinstance(payload, dict) else None
+        if isinstance(available, list):
+            details["available"] = [str(item) for item in available]
+        return details
 
     @staticmethod
     def _error_of(response: httpx.Response) -> tuple[str, str]:
@@ -722,9 +780,78 @@ class LoadCoachBackend:
                     "answer was requested as JSON and validated by IdeaPress (ADR-0041)"
                 )
 
+        overrides: dict[str, Any] = {}
         if self._settings.honour_stage_bindings and request.model_hint:
-            body["overrides"] = {"model": request.model_hint}
+            overrides["model"] = request.model_hint
+        if request.adapter_hint:
+            self._refuse_an_older_wire(
+                f"pins the adapter {request.adapter_hint!r} for its {request.stage} stage"
+            )
+            # No flag gates this: configuring a pin is configuring it on (ADR-0083). An adapter
+            # pin does not surrender routing — the compatible bases are still scored and the pin
+            # selects among their adapter subjects — which is why it does not ride
+            # `honour_stage_bindings`, whose meaning is that routing *is* surrendered.
+            overrides["adapter"] = request.adapter_hint
+        if overrides:
+            body["overrides"] = overrides
+        if self._data_classification != _DEFAULT_CLASSIFICATION:
+            self._refuse_an_older_wire(
+                f"declares the data classification {self._data_classification!r}"
+            )
+        if self._supports_the_adapter_wire():
+            body["data_classification"] = self._data_classification
         return body, tuple(degradations)
+
+    def _supports_the_adapter_wire(self) -> bool:
+        """Whether the negotiated LoadCoach has 1.1's `adapter` and `data_classification`.
+
+        Returns:
+            ``True`` when ``GET /version`` reported an application version of at least 1.1. An
+            unparsable or absent version reads as **not** supported, because sending a field a
+            server forbids is a 422 for the whole request.
+
+        Read from the cached negotiation body, so this costs no request of its own; every caller
+        has already been through :meth:`version`.
+        """
+        raw = self._application_version(self._version or {})
+        parts = raw.split(".")[:2]
+        try:
+            numbers = tuple(int(part) for part in parts)
+        except ValueError:
+            return False
+        return len(numbers) == 2 and numbers >= _ADAPTER_WIRE_VERSION
+
+    def _refuse_an_older_wire(self, what: str) -> None:
+        """Refuse a request needing a 1.1 field when the negotiated LoadCoach is older.
+
+        Args:
+            what: What this request does that needs the field, for the message.
+
+        Raises:
+            BackendVersionMismatch: The server is older than 1.1. Dropping the field instead would
+                serve a pinned stage from the bare base (ADR-0064 rule 4) or send work under a
+                classification nobody declared — the two failures the fields exist to prevent, and
+                both silent.
+        """
+        if self._supports_the_adapter_wire():
+            return
+        theirs = self._application_version(self._version or {}) or "an unreported version"
+        message = (
+            f"This stage {what}, which needs LoadCoach 1.1; the LoadCoach at {self._base_url} "
+            f"reports {theirs}. IdeaPress will not drop the field to make the request fit: a "
+            "dropped pin is answered by the bare model, and a dropped classification is work sent "
+            "under a classification nobody declared."
+        )
+        raise BackendVersionMismatch(
+            message,
+            details={
+                "backend": self.name,
+                "base_url": self._base_url,
+                "loadcoach_version": theirs,
+                "required_loadcoach_version": "1.1",
+                "ideapress_version": __version__,
+            },
+        )
 
     def generate(self, request: StageRequest) -> StageResult:
         """Run one bounded model task to completion.
@@ -820,6 +947,10 @@ class LoadCoachBackend:
 
         Raises:
             ContextLimitExceeded: The request was too large for any candidate model.
+            AdapterNotFound: A pin named an adapter LoadCoach does not have.
+            AdapterProfileMismatch: A pin could not be honoured under this request's profile.
+                Neither is recoverable, deliberately: the recoverable route engages the fallback,
+                and every fallback answers with the bare base.
             BackendUnavailable: Any other terminal non-completion, including an unrecognised
                 code. Recoverable on purpose: it engages the fallback and leaves the project
                 resumable.
@@ -840,6 +971,13 @@ class LoadCoachBackend:
         }
         if code in _CONTEXT_CODES:
             raise ContextLimitExceeded(message, details=details)
+        # A refused pin arrives here when the stage went through the queue, which is where
+        # IdeaPress sends its long stages. It must not take the recoverable route below: that
+        # engages the fallback, and every fallback serves the bare base.
+        if code in _ADAPTER_REFUSAL_CODES:
+            raise AdapterNotFound(message, details=details)
+        if code in _ADAPTER_PROFILE_CODES:
+            raise AdapterProfileMismatch(message, details=details)
         # Unrecognised codes take the recoverable route deliberately: guessing that a code this
         # adapter has never seen means "your content was rejected" is how a retryable outage
         # becomes a dead unit.
@@ -886,6 +1024,8 @@ class LoadCoachBackend:
         usage = payload.get("usage") if isinstance(payload.get("usage"), dict) else {}
         timing = payload.get("timing") if isinstance(payload.get("timing"), dict) else {}
 
+        adapter = _adapter_of(model_body or {})
+        self._refuse_an_unhonoured_adapter_pin(request=request, adapter=adapter)
         collected = [*degradations, *_reported_degradations(payload)]
         collected.extend(_routing_degradations(routing))
         collected.extend(
@@ -918,9 +1058,52 @@ class LoadCoachBackend:
             ),
             backend=self.name,
             routing=routing,
+            adapter=adapter,
             degradations=tuple(collected),
             finish_reason=str(payload.get("finish_reason") or "stop"),
             refusal_reason=_detect_refusal(text),
+        )
+
+    def _refuse_an_unhonoured_adapter_pin(
+        self, *, request: StageRequest, adapter: AdapterSubject | None
+    ) -> None:
+        """Refuse an answer that a pinned stage did not get from its adapter.
+
+        Args:
+            request: The request, for its pin.
+            adapter: The adapter the response says answered, or ``None``.
+
+        Raises:
+            AdapterProfileMismatch: The stage pinned an adapter and the answer came from a
+                different one, or from none.
+
+        LoadCoach refuses an unhonourable pin itself, so in a correct exchange this never fires.
+        It exists because the failure it guards is the one this whole feature is for and the only
+        one that is *silent*: an operator who pinned a house voice and received the base's prose
+        has been told something false about what wrote their document, and the text has already
+        been generated by the time anyone could notice. Checked at the one place both the
+        synchronous and the queued paths pass through.
+        """
+        if not request.adapter_hint:
+            return
+        if adapter is not None and adapter.name == request.adapter_hint:
+            return
+        answered = "no adapter at all" if adapter is None else repr(adapter.name)
+        message = (
+            f"This stage pinned the adapter {request.adapter_hint!r} and LoadCoach answered with "
+            f"{answered}. The answer is refused rather than recorded: a pin that cannot be "
+            "honoured is refused by name, never silently served by the bare model "
+            "(ADR-0064 rule 4)."
+        )
+        raise AdapterProfileMismatch(
+            message,
+            details={
+                "backend": self.name,
+                "base_url": self._base_url,
+                "stage": request.stage,
+                "requested_adapter": request.adapter_hint,
+                "answered_adapter": None if adapter is None else adapter.name,
+            },
         )
 
     def _pin_degradation(
@@ -1132,6 +1315,33 @@ def _identity_of(model_body: Mapping[str, Any]) -> ModelIdentity | None:
         kind, name = "loadcoach", reference
     return ModelIdentity(
         provider_kind=kind, provider_model_name=name, artifact_digest=digest or None
+    )
+
+
+def _adapter_of(model_body: Mapping[str, Any]) -> AdapterSubject | None:
+    """Read the adapter that **answered** out of a `/generate` or job response's ``model`` block.
+
+    Args:
+        model_body: The response's ``model`` object.
+
+    Returns:
+        The subject LoadCoach says served the request, or ``None`` when none did — which is what a
+        bare-base answer, and every LoadCoach 1.0, reports. Never derived from the request's pin:
+        what was asked for and what answered are different facts and a pin can be refused between
+        them (workflows §8).
+    """
+    adapter = model_body.get("adapter")
+    if not isinstance(adapter, dict):
+        return None
+    name = str(adapter.get("name") or "")
+    if not name:
+        return None
+    digest = adapter.get("artifact_digest")
+    subject = model_body.get("subject_canonical_id")
+    return AdapterSubject(
+        name=name,
+        artifact_digest=str(digest) if digest else None,
+        subject_canonical_id=str(subject) if subject else None,
     )
 
 

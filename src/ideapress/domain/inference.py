@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from ideapress.domain.stages import StageId
 
 __all__ = [
+    "AdapterSubject",
     "BackendCapabilities",
     "BackendHealth",
     "BackendModel",
@@ -160,6 +161,29 @@ class Correlation:
 
 
 @dataclass(frozen=True, slots=True)
+class AdapterSubject:
+    """The LoRA adapter that **answered** one attempt, as the backend reported it.
+
+    Never the adapter that was *asked for*: a pin can be refused between the request and the
+    answer, and a provenance record that names what was requested says something nobody verified
+    (workflows §8). A result with no adapter carries ``None`` here rather than a subject with empty
+    fields, so "no adapter answered" and "an adapter whose name we do not know" stay different
+    facts.
+
+    Attributes:
+        name: The adapter's manifest name, as the routing backend knows it.
+        artifact_digest: The served artifact's ``sha256:`` digest — the adapter's identity
+            (`baseaicore.AdapterIdentity`).
+        subject_canonical_id: ``provider/name@sha256:…+adapter@sha256:…``, written by the backend
+            and stored, never parsed (ADR-0024 §4, ADR-0080).
+    """
+
+    name: str
+    artifact_digest: str | None = None
+    subject_canonical_id: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class StageRequest:
     """One bounded model task.
 
@@ -174,6 +198,13 @@ class StageRequest:
     response_format: ResponseFormat | None = None
     limits: StageLimits = field(default_factory=StageLimits)
     model_hint: str | None = None
+    adapter_hint: str | None = None
+    """The `[models.stage_adapters]` pin for this stage, or ``None``.
+
+    Resolved by the inference gateway, exactly as ``model_hint`` is, so there is one place a
+    binding can be wrong. Only the LoadCoach backend can act on it — a pin is refused at startup
+    in every other mode (ADR-0083) — and a pin that cannot be honoured **fails the stage** rather
+    than being served by the bare base (ADR-0064 rule 4)."""
     correlation: Correlation = field(default_factory=lambda: Correlation(project_id=""))
     prompt_id: str | None = None
     prompt_version: str | None = None
@@ -196,6 +227,9 @@ class StageResult:
     timing: Timing = field(default_factory=Timing)
     backend: str = ""
     routing: Mapping[str, Any] | None = None
+    adapter: AdapterSubject | None = None
+    """The adapter that answered, or ``None`` when none did. Read from the backend's response,
+    never inferred from the request's pin."""
     degradations: tuple[str, ...] = ()
     finish_reason: str = "stop"
     refusal_reason: str | None = None

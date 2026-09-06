@@ -36,7 +36,7 @@ from ideapress.errors import (
 from ideapress.observability.logging import correlation
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Sequence
+    from collections.abc import Iterator, Mapping, Sequence
 
     from ideapress.config import ExecutionSettings, StageBindings
     from ideapress.domain.inference import InferenceBackend, StageEvent
@@ -93,7 +93,7 @@ class InferenceGateway:
     """The single choke point every stage reaches a model through.
 
     Attributes:
-        backend: The adapter in use.
+        backend: The backend in use.
         bindings: The `[models.stages]` section, for resolving a stage to a model.
         execution: The `[execution]` policy — concurrency and unload-on-switch.
         switches: Every model switch this process performed, newest last. Read by the
@@ -103,6 +103,12 @@ class InferenceGateway:
     backend: InferenceBackend
     bindings: StageBindings
     execution: ExecutionSettings
+    stage_adapters: Mapping[str, str] = field(default_factory=dict)
+    """The `[models.stage_adapters]` section — the per-stage LoRA pins (ADR-0083).
+
+    Resolved here, beside the model binding, so there is one place a stage's configuration becomes
+    a request. A pin can only be configured in `loadcoach` mode (refused at startup otherwise), so
+    a backend that cannot honour one never receives one."""
     fallback: InferenceBackend | None = None
     """The adapter to use when :attr:`backend` does not answer, or ``None`` for no fallback.
 
@@ -234,6 +240,11 @@ class InferenceGateway:
         the source and asserts that; adding a second call site is what the M5 lesson forbids.
         """
         request = self._with_correlation(request)
+        pin = self.stage_adapters.get(request.stage)
+        if pin and not request.adapter_hint:
+            # Resolved here for the same reason the model binding is: one place a stage's
+            # configuration becomes a request. A caller that set its own pin keeps it.
+            request = replace(request, adapter_hint=pin)
         with self._lock:
             target = self._prepare(request)
             switch = self.switches[-1] if self.switches else None
@@ -270,9 +281,10 @@ class InferenceGateway:
             come from the backend the configuration names.
 
         Raises:
-            BackendUnavailable: There is no fallback, or the user pinned the backend. The stage
-                fails and the project is untouched and resumable (workflows §6.2); it is never a
-                startup failure, and committed units are never rolled back (spec §20 AC5, AC7).
+            BackendUnavailable: There is no fallback, the user pinned the backend, or this stage
+                pins an adapter. The stage fails and the project is untouched and resumable
+                (workflows §6.2); it is never a startup failure, and committed units are never
+                rolled back (spec §20 AC5, AC7).
             ProviderTimeout: The same, when the primary timed out.
 
         The fallback is applied **here**, at the one choke point, and never inside an adapter: an
@@ -280,6 +292,13 @@ class InferenceGateway:
         attempt's `backend` field would no longer say where the text came from.
         """
         if self.fallback is None or self.pinned:
+            raise exc
+        if request.adapter_hint:
+            # No other backend can serve an adapter — a pin is refused at startup in every mode
+            # but `loadcoach` (ADR-0083) — so falling back here would answer a pinned stage with
+            # the bare base under another backend's name. That is the degradation ADR-0064 rule 4
+            # forbids, arrived at by a different road, and it would be recorded as a successful
+            # attempt.
             raise exc
         logger.warning(
             "inference.backend_fallback",
@@ -379,6 +398,11 @@ class InferenceGateway:
         same failure with extra steps.
         """
         request = self._with_correlation(request)
+        pin = self.stage_adapters.get(request.stage)
+        if pin and not request.adapter_hint:
+            # Resolved here for the same reason the model binding is: one place a stage's
+            # configuration becomes a request. A caller that set its own pin keeps it.
+            request = replace(request, adapter_hint=pin)
         with self._lock:
             target = self._prepare(request)
             if target:
