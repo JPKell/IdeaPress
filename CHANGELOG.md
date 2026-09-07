@@ -7,6 +7,8 @@ packaging and release standards §3.
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-09-07
+
 ### Added
 
 - A committed OpenAPI snapshot at `docs/openapi.json`, compared byte for byte against the served
