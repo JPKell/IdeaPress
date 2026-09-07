@@ -7,6 +7,13 @@ packaging and release standards §3.
 
 ## [Unreleased]
 
+### Added
+
+- A committed OpenAPI snapshot at `docs/openapi.json`, compared byte for byte against the served
+  document by `tests/contract/test_openapi_snapshot.py` (ADR-0108, row K2). Regenerate with
+  `python -c 'from tests.contract.test_openapi_snapshot import write; write()'` after any route
+  change.
+
 ## [1.2.0] - 2026-09-07
 
 IdeaPress 1.2: **M13's three adoption phases** — IP-A1 LoadLedger and IP-A2 Commissioner (row J1)
