@@ -286,6 +286,11 @@ Reduction order when the budget is exceeded: research notes → distant unit sum
 summaries. Requirements and the unit specification are **never** dropped; if they alone exceed the
 budget, the stage fails with numbers rather than silently truncating the contract.
 
+Since J2 ([ADR-0104](../../adr/0104-an-adopted-reductions-seam-and-error-vocabulary-survive-it.md)),
+this order is enforced by `cutctx`'s `DropOldestPolicy` behind `domain.context_assembly`'s unchanged
+`assemble_context()` seam, rather than by a hand-rolled fill loop; the order above, and everything
+else on this page, is unchanged by the adoption.
+
 ---
 
 ## 8. Commit and provenance
