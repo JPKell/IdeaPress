@@ -32,6 +32,10 @@ dependencies = [
     "modelrack>=0.5,<0.6",
     "weightsdb>=0.2,<0.3",
     "mirrorwall>=0.2,<0.3",
+    # J2 (2026-09-07): stage context assembly's reduction runs through CutCtx's DropOldestPolicy,
+    # behind the unchanged assemble_context() seam (ADR-0104). No pin move: cutctx 0.1.0 requires
+    # baseaicore>=0.4.1,<0.5, already this application's floor.
+    "cutctx>=0.1,<0.2",
     "fastapi>=0.115,<1",
     "uvicorn[standard]>=0.30,<1",
     "pydantic>=2.9,<3",

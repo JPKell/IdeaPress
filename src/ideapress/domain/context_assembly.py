@@ -13,10 +13,20 @@ the whole risk:
 The reduction order is **data**, not a sequence of ``if`` statements, so it can be read, tested and
 compared against the document: research notes → distant unit summaries → adjacent unit summaries.
 
+Since J2 (ADR-0104), the *fill decision* — which of the budgeted sections survive — is CutCtx's
+``DropOldestPolicy``, not a hand-rolled loop. Workflows §7's order becomes the turn order a
+``DropOldestPolicy`` reads as "oldest first": the least valuable section is built as the oldest
+turn, the unit specification and requirements are pinned, and the budget's
+``protected_recent_turns`` is fixed at ``0`` so ``pinned`` alone carries the whole untouchable set.
+What stays local is the *rendering* — how a section becomes text — and the *presentation order* —
+how the surviving sections and the dropped names are formatted back into workflows §7's shape, once
+CutCtx has decided which sections survive.
+
 Token counting is an **estimate**, and the module says so rather than implying a tokenizer it does
-not have. The default is characters ÷ 4, the conventional English approximation; a caller with a
-real tokenizer injects one. The estimate is deliberately used for the *budget* only — never to
-report usage, which comes from the backend and is measured.
+not have. The default is characters ÷ 4, the conventional English approximation, delegated to
+CutCtx's own ``CharRatioEstimator`` so the suite has one such formula rather than two that happen to
+agree; a caller with a real tokenizer injects one. The estimate is deliberately used for the
+*budget* only — never to report usage, which comes from the backend and is measured.
 """
 
 from __future__ import annotations
@@ -24,10 +34,24 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final, Literal
 
+from cutctx import (
+    Action,
+    BudgetUnsatisfiable,
+    CharRatioEstimator,
+    CompactionBudget,
+    CompactionExecutor,
+    DropOldestPolicy,
+    Role,
+    Transcript,
+    TranscriptTurn,
+)
+
 from ideapress.errors import ContextLimitExceeded
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
+
+    from cutctx import CompactionReport
 
     from ideapress.domain.plan import PlanUnit
     from ideapress.domain.requirements import Requirement
@@ -52,9 +76,13 @@ REDUCTION_ORDER: Final[tuple[str, ...]] = (
 
 Least valuable first. Research notes go before unit summaries because a note the unit never
 references is the cheapest thing in the window; distant units go before adjacent ones because the
-sections either side of this one are the ones whose prose it must not contradict."""
+sections either side of this one are the ones whose prose it must not contradict. Since J2, this is
+also the turn-ordering key: a section's position in this tuple decides how old CutCtx's
+``DropOldestPolicy`` sees it, so the reduction order is enforced by *position* rather than by a
+loop that re-derives it."""
 
 _CHARS_PER_TOKEN: Final = 4.0
+_ESTIMATOR: Final = CharRatioEstimator(_CHARS_PER_TOKEN)
 
 
 def estimate_tokens(text: str) -> int:
@@ -68,10 +96,14 @@ def estimate_tokens(text: str) -> int:
         is used to decide what fits in a budget and never to report usage: usage comes from the
         backend, measured, and conflating the two would put a guess into a provenance record.
 
+        A thin alias over :class:`cutctx.CharRatioEstimator`, which computes exactly this formula
+        (spec §7; confirmed by ``test_estimate_tokens_agrees_with_cutctx`` in
+        ``tests/unit/test_context_budget.py``) — one estimator, not two that happen to agree.
+
         Deterministic and locale-independent, so two runs on two machines assemble the same
         context — which the backend-parity and export-stability claims both rest on.
     """
-    return -(-len(text) // int(_CHARS_PER_TOKEN))
+    return _ESTIMATOR.estimate_tokens(text)
 
 
 @dataclass(frozen=True, slots=True)
@@ -112,11 +144,15 @@ class AssembledContext:
         sections: What survived, in assembly order.
         dropped: The names of sections removed to fit, in the order they were removed.
         budget_tokens: The budget it was assembled against.
+        report: The CutCtx ``context.compacted`` event body, when anything was dropped to fit;
+            ``None`` when nothing was. A caller emits it on the existing event sink — ``domain/``
+            performs no I/O (D4, ADR-0104).
     """
 
     sections: tuple[ContextSection, ...]
     dropped: tuple[str, ...] = ()
     budget_tokens: int = 0
+    report: CompactionReport | None = None
 
     @property
     def tokens(self) -> int:
@@ -136,8 +172,19 @@ class AssembledContext:
 
 
 def _rank_of(name: str) -> int:
-    """Where a droppable section sits in the reduction order; unknown names go first."""
+    """Where a droppable section sits in the reduction order; unknown names go first.
+
+    Turn construction's ordering key, and the key the surviving and dropped sections are re-sorted
+    by afterwards — not a decision (CutCtx's ``DropOldestPolicy`` makes the keep/drop call); a
+    presentation key, used before the chain runs to place a section in the transcript, and after it
+    runs to put workflows §7's order back onto whatever the chain kept.
+    """
     return REDUCTION_ORDER.index(name) if name in REDUCTION_ORDER else -1
+
+
+def _priority_key(section: ContextSection) -> tuple[int, int]:
+    """Most valuable last to drop: highest name-rank, then highest rank, first."""
+    return (_rank_of(section.name), section.rank)
 
 
 def assemble_context(
@@ -177,7 +224,9 @@ def assemble_context(
         ContextLimitExceeded: The undroppable sections alone exceed the budget. Carries
             ``required_tokens`` and ``budget_tokens`` **both**, always — workflows §7 says the
             stage fails "with numbers", and a message without them is the silent truncation it
-            forbids, with extra steps.
+            forbids, with extra steps. Raised here by translating CutCtx's
+            :class:`~cutctx.BudgetUnsatisfiable` at this boundary (D6, ADR-0104): the package's
+            error never leaks past ``domain/``.
     """
     always: list[ContextSection] = [
         ContextSection(
@@ -212,8 +261,45 @@ def assemble_context(
             )
         )
 
-    mandatory_tokens = sum(estimator(section.render()) for section in always)
-    if mandatory_tokens > budget_tokens:
+    budgeted = _budgeted_sections(
+        unit=unit,
+        neighbouring_units=neighbouring_units or {},
+        unit_ordinals=unit_ordinals or {},
+        research_notes=research_notes,
+    )
+    # Most valuable first — the presentation order workflows §7 expects on screen, and the order
+    # `DropOldestPolicy`'s "oldest first" must run in **reverse**: the least valuable section is
+    # the oldest turn, so build the transcript from the tail of this list forward.
+    ordered_budgeted = sorted(budgeted, key=_priority_key, reverse=True)
+
+    mandatory_turns = tuple(
+        TranscriptTurn(
+            turn_id=f"mandatory:{index}",
+            role=Role.USER,
+            content=section.render(),
+            token_estimate=estimator(section.render()),
+            pinned=True,
+        )
+        for index, section in enumerate(always)
+    )
+    budgeted_ids = [f"budgeted:{index}" for index in range(len(ordered_budgeted))]
+    budgeted_turns = tuple(
+        TranscriptTurn(
+            turn_id=turn_id,
+            role=Role.USER,
+            content=section.render(),
+            token_estimate=estimator(section.render()),
+            pinned=False,
+        )
+        for turn_id, section in reversed(list(zip(budgeted_ids, ordered_budgeted, strict=True)))
+    )
+    transcript = Transcript(turns=mandatory_turns + budgeted_turns)
+    budget = CompactionBudget(max_tokens=budget_tokens, protected_recent_turns=0)
+
+    try:
+        plan = DropOldestPolicy().decide(transcript, budget)
+    except BudgetUnsatisfiable as exc:
+        mandatory_tokens = exc.details["untouchable_tokens"]
         message = (
             f"The context this unit cannot do without needs {mandatory_tokens} tokens and the "
             f"budget is {budget_tokens}. Requirements and the unit specification are never "
@@ -229,43 +315,32 @@ def assemble_context(
                 "requirement_count": len(requirements),
                 "undroppable_sections": [section.name for section in always],
             },
-        )
+        ) from exc
 
-    budgeted = _budgeted_sections(
-        unit=unit,
-        neighbouring_units=neighbouring_units or {},
-        unit_ordinals=unit_ordinals or {},
-        research_notes=research_notes,
-    )
+    kept_ids = {action.turn_id for action in plan.actions if action.action is Action.KEEP}
+    section_by_id = dict(zip(budgeted_ids, ordered_budgeted, strict=True))
+    # `ordered_budgeted`'s order is preserved by filtering rather than re-sorting, which is what
+    # keeps a tied pair's relative order identical to the pre-CutCtx algorithm's (both stable
+    # sorts, same input order) instead of merely as-if-equivalent.
+    kept_in_fill_order = [section_by_id[tid] for tid in budgeted_ids if tid in kept_ids]
+    dropped_in_fill_order = [section_by_id[tid] for tid in budgeted_ids if tid not in kept_ids]
 
-    remaining = budget_tokens - mandatory_tokens
-    kept: list[ContextSection] = []
-    dropped: list[str] = []
-    # Most valuable first: `adjacent_units`, then `distant_units`, then `research_notes`, and
-    # within one name the higher `rank` first. That is REDUCTION_ORDER read backwards, which is
-    # what "dropped in this order" means when you are filling rather than emptying.
-    ordered = sorted(budgeted, key=lambda s: (_rank_of(s.name), s.rank), reverse=True)
-    # **Strictly ordered, not greedy.** Once something does not fit, everything less valuable is
-    # dropped too, even if it happened to be small enough. A greedy fill would keep an unreferenced
-    # research note because it was short while dropping the referenced one because it was long —
-    # utilising the budget better and violating the ranking the document states. Workflows §7
-    # describes an order of preference, not a packing problem, and a reduction whose outcome
-    # depends on the relative sizes of what it is reducing is one nobody can predict or test.
-    exhausted = False
-    for section in ordered:
-        cost = estimator(section.render())
-        if exhausted or cost > remaining:
-            exhausted = True
-            dropped.append(section.name)
-            continue
-        remaining -= cost
-        kept.append(section)
+    # `DropOldestPolicy` keeps a suffix of "oldest first" — i.e. a prefix of `ordered_budgeted`
+    # (most-valuable-first) — so `kept_in_fill_order` is already in that prefix's order; a stable
+    # sort on the name alone regroups it ascending (research, then distant, then adjacent) without
+    # disturbing the descending-rank order already established within one name.
+    kept_final = sorted(kept_in_fill_order, key=lambda section: _rank_of(section.name))
+    dropped_names = tuple(section.name for section in reversed(dropped_in_fill_order))
 
-    kept.sort(key=lambda s: (_rank_of(s.name), -s.rank))
+    report: CompactionReport | None = None
+    if dropped_names:
+        report = CompactionExecutor().apply(transcript, plan).report
+
     return AssembledContext(
-        sections=(*always, *kept),
-        dropped=tuple(reversed(dropped)),
+        sections=(*always, *kept_final),
+        dropped=dropped_names,
         budget_tokens=budget_tokens,
+        report=report,
     )
 
 

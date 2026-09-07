@@ -7,6 +7,13 @@ packaging and release standards §3.
 
 ## [Unreleased]
 
+Stage context assembly's reduction (workflows §7) now runs through `cutctx`'s `DropOldestPolicy`,
+behind the unchanged `assemble_context()` seam: same sections, same order, same dropped order, the
+same `ContextLimitExceeded` carrying both numbers (ADR-0104, row J2). A dropped assembly emits the
+suite's `context.compacted` report once per attempt. `project_review`'s unbudgeted whole-document
+prompt is unchanged and out of scope — it performs no reduction to convert (see
+[J2's handoff](docs/history/J2_HANDOFF.md)).
+
 ## [1.1.0] - 2026-09-05
 
 IdeaPress 1.1: **LA2** — a stage may pin a LoRA adapter, the pin travels to LoadCoach as its
