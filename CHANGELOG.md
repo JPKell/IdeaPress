@@ -7,6 +7,13 @@ packaging and release standards §3.
 
 ## [Unreleased]
 
+### Changed
+
+- `modelrack` range widened from `>=0.5,<0.6` to `>=0.7,<0.8` so the four applications can be
+  installed into one environment again (packaging standards §4): `freeweight 1.1.0` and
+  `loadcoach 1.1.3` floor it at 0.7, and `pip install freeweight loadcoach ideapress promptcadence`
+  refused to resolve with 1.3.0. IdeaPress's providers are unchanged in shape across the range.
+
 ### Added
 
 - `tests/unit/test_every_command_has_help.py`, walking `typer.main.get_command(app)`
