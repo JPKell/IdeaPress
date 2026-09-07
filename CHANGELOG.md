@@ -7,8 +7,10 @@ packaging and release standards §3.
 
 ## [Unreleased]
 
-Row J1 (IP-A1 LoadLedger, IP-A2 Commissioner). Ships nothing on its own — no version bump, no tag,
-no publish (IdeaPress is already `1.1.0`); row J2 cuts `1.2.0` carrying this work and IP-A3 CutCtx.
+## [1.2.0] - 2026-09-07
+
+IdeaPress 1.2: **M13's three adoption phases** — IP-A1 LoadLedger and IP-A2 Commissioner (row J1)
+and IP-A3 CutCtx (row J2). Every harness-arc package now has a second real consumer.
 
 ### Added
 - **Per-unit and per-project cost on the workspace page**, from `loadledger 0.2.0` mounted into
@@ -41,6 +43,12 @@ no publish (IdeaPress is already `1.1.0`); row J2 cuts `1.2.0` carrying this wor
 - `services/workspace.py`'s ad-hoc `"egress"` expression and `_is_remote` helper are deleted; the
   workspace badge and the per-attempt egress fact in a unit's provenance table both read
   `Database.egress` instead.
+- **Stage context assembly runs through `cutctx`.** Stage context assembly's reduction (workflows §7) now runs through `cutctx`'s `DropOldestPolicy`,
+  behind the unchanged `assemble_context()` seam: same sections, same order, same dropped order, the
+  same `ContextLimitExceeded` carrying both numbers (ADR-0104, row J2). A dropped assembly emits the
+  suite's `context.compacted` report once per attempt. `project_review`'s unbudgeted whole-document
+  prompt is unchanged and out of scope — it performs no reduction to convert (see the row's handoff,
+  `docs/history/J2_HANDOFF.md`).
 
 ## [1.1.0] - 2026-09-05
 

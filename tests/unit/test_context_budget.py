@@ -9,6 +9,7 @@ numbers** rather than truncate the contract.
 from __future__ import annotations
 
 import pytest
+from cutctx import CharRatioEstimator
 
 from ideapress.domain.context_assembly import (
     REDUCTION_ORDER,
@@ -251,6 +252,17 @@ def test_the_estimate_is_deterministic_and_locale_independent() -> None:
     assert estimate_tokens("héllo wörld") == estimate_tokens("héllo wörld")
 
 
+def test_estimate_tokens_agrees_with_cutctx() -> None:
+    """Ground truth 5 of the J2 kickoff: the two formulas agree for every integer length, so the
+    CutCtx adoption changes no budget arithmetic. ``estimate_tokens`` is now a thin alias over
+    :class:`cutctx.CharRatioEstimator`, but this is asserted rather than assumed from that fact —
+    the alias is an implementation detail this test does not rely on."""
+    ratio_estimator = CharRatioEstimator(4.0)
+    samples = ["", "a", "ab", "abc", "abcd", "abcde", "x" * 97, "x" * 100, "héllo wörld 日本語"]
+    for text in samples:
+        assert estimate_tokens(text) == ratio_estimator.estimate_tokens(text)
+
+
 def test_a_custom_estimator_is_honoured() -> None:
     """A caller with a real tokenizer supplies one; the budget arithmetic uses it throughout."""
     with pytest.raises(ContextLimitExceeded):
@@ -272,3 +284,34 @@ def test_the_assembled_context_renders_every_section_in_order() -> None:
     rendered = assembled.render()
     assert rendered.index("The unit you are writing") < rendered.index("Requirements this unit")
     assert rendered.index("Requirements this unit") < rendered.index("Research note")
+
+
+def test_no_report_when_nothing_is_dropped() -> None:
+    """D4 (ADR-0104): the report exists only for an assembly that dropped something."""
+    assembled = assemble_context(
+        unit=UNIT, requirements=[_requirement()], budget_tokens=100_000, research_notes=NOTES
+    )
+    assert assembled.dropped == ()
+    assert assembled.report is None
+
+
+def test_a_dropped_assembly_carries_the_context_compacted_report() -> None:
+    """D4 (ADR-0104): a dropped assembly's report is exactly CutCtx's `context.compacted` body,
+    and it accounts for every section this module itself dropped or kept."""
+    assembled = assemble_context(
+        unit=UNIT,
+        requirements=[_requirement()],
+        budget_tokens=350,
+        neighbouring_units=NEIGHBOURS,
+        unit_ordinals=ORDINALS,
+        research_notes=NOTES,
+    )
+    assert assembled.dropped
+    report = assembled.report
+    assert report is not None
+    body = report.to_dict()
+    assert body["budget_unmet"] is False
+    assert body["tokens_after_estimate"] <= 350
+    assert len(body["dropped_turn_ids"]) == len(assembled.dropped)
+    assert len(body["kept_turn_ids"]) == len(assembled.sections)
+    assert body["turns_before"] == len(body["kept_turn_ids"]) + len(body["dropped_turn_ids"])

@@ -448,6 +448,12 @@ def run_review_loop(
             budget_tokens=settings.workflow.context_budget_tokens,
             previous_findings="\n".join(f"- {f.problem_text}" for f in round_findings),
         )
+        if context.report is not None:
+            emit(
+                "context.compacted",
+                f"{unit.key}: revise round {rounds + 1} dropped {', '.join(context.dropped)}",
+                context.report.to_dict(),
+            )
         revision = run_revision(
             gateway,
             project_id=project_id,

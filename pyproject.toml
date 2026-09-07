@@ -39,6 +39,10 @@ dependencies = [
     # unconditionally in infrastructure/db/models.py, so the extra is never optional in practice.
     "loadledger[sql]>=0.2,<0.3",
     "commissioner[sql]>=0.1.1,<0.2",
+    # J2 (2026-09-07): stage context assembly's reduction runs through CutCtx's DropOldestPolicy,
+    # behind the unchanged assemble_context() seam (ADR-0104). No pin move: cutctx 0.1.0 requires
+    # baseaicore>=0.4.1,<0.5, already this application's floor.
+    "cutctx>=0.1,<0.2",
     "fastapi>=0.115,<1",
     "uvicorn[standard]>=0.30,<1",
     "pydantic>=2.9,<3",
@@ -114,6 +118,9 @@ ignore = ["D100", "D104"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101", "D1"]
+# Golden fixtures: literal `render()` bytes and dict fixtures captured verbatim from a run, not
+# prose a person wraps. E501 on a captured string is a defect in the rule, not the fixture.
+"tests/unit/test_context_assembly_golden.py" = ["E501"]
 # Alembic-generated: upgrade()/downgrade() carry no behaviour beyond the revision's own
 # docstring, and their bodies are op.* DDL calls Alembic itself generated.
 "src/ideapress/infrastructure/db/migrations/versions/*.py" = ["D1"]

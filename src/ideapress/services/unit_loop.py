@@ -190,6 +190,12 @@ def run_unit(
             else render("stages.draft.write", {"context": context.render()})
         )
         stage: StageId = "repair" if is_repair else "draft"
+        if context.report is not None:
+            emit(
+                "context.compacted",
+                f"{unit.key}: {stage} attempt {attempt} dropped {', '.join(context.dropped)}",
+                context.report.to_dict(),
+            )
         emit(
             "attempt.started",
             f"{unit.key}: {stage} attempt {attempt} of {limit}",
