@@ -9,6 +9,9 @@ packaging and release standards §3.
 
 ### Added
 
+- `tests/security/test_checklist.py`, in the shape of LoadCoach's, asserting
+  `docs/security.md`'s checklist against the code (M9 audit Group 5, item Q4).
+
 - `tests/unit/test_troubleshooting_covers_doctor.py`, ported from FreeWeight, holding
   `docs/troubleshooting.md` to naming every check `doctor` runs (M9 audit Group 5, item D6).
 
