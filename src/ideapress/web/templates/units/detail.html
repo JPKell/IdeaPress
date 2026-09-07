@@ -109,7 +109,7 @@
       <tr><td>{{ attempt.stage }}</td><td>{{ attempt.attempt }}</td><td>{{ attempt.outcome }}</td>
           <td>{{ attempt.backend }}</td><td>{{ attempt.model_canonical_id or "—" }}</td>
           <td>{{ attempt.prompt_id }} {{ attempt.prompt_version }}</td>
-          <td>{{ attempt.input_tokens }}/{{ attempt.output_tokens }}</td>
+          <td>{{ attempt.input_tokens if attempt.input_tokens is not none else "—" }}/{{ attempt.output_tokens if attempt.output_tokens is not none else "—" }}</td>
           <td>{{ attempt.degradations | join("; ") or "—" }}</td></tr>
     {% endfor %}
     </tbody>

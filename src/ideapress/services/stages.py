@@ -197,6 +197,8 @@ def record_attempt(
             row.input_tokens = result.usage.input_tokens
             row.output_tokens = result.usage.output_tokens
             row.thinking_tokens = result.usage.thinking_tokens
+            row.cache_write_tokens = result.usage.cache_write_tokens
+            row.cache_read_tokens = result.usage.cache_read_tokens
             row.provider_ms = result.timing.duration_ms
             row.ttft_ms = result.timing.ttft_ms
             row.response_hash = f"sha256:{sha256_of(result.text)}"

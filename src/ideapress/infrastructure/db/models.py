@@ -305,6 +305,10 @@ class Attempt(Base):
     input_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
     output_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
     thinking_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # ADR-0070 rule 4's spelling, added at row K4 (migration 0009). NULL means the backend
+    # reported no such class — never zero, which would be a fabricated total (ADR-0016).
+    cache_write_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    cache_read_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
     provider_ms: Mapped[float | None] = mapped_column(Float, nullable=True)
     overhead_ms: Mapped[float | None] = mapped_column(Float, nullable=True)
     ttft_ms: Mapped[float | None] = mapped_column(Float, nullable=True)

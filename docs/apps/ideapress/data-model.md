@@ -94,7 +94,13 @@ model_provider_kind · model_provider_name · model_digest NULL · model_canonic
 prompt_id · prompt_version · prompt_sha256 · rendered_prompt_sha256
 prompt_text TEXT NULL · response_text TEXT NULL         -- only when content storage is enabled
 response_hash · structured_output_json NULL
-input_tokens · output_tokens · thinking_tokens NULL
+input_tokens NULL · output_tokens NULL · thinking_tokens NULL  -- NULL = the backend
+                                                    -- reported no count at all; never 0
+cache_write_tokens NULL · cache_read_tokens NULL    -- ADR-0070 rule 4's four disjoint
+                                                    -- classes. NULL = the backend
+                                                    -- reported no such class; 0 = its
+                                                    -- protocol bills none (rule 1), and
+                                                    -- only 0 may be totalled (ADR-0016)
 provider_ms · overhead_ms · ttft_ms
 outcome TEXT           -- completed|validation_failed|provider_error|timeout|cancelled|content_rejected
 rejection_reason TEXT NULL                              -- the model's own words, when it refused

@@ -72,16 +72,62 @@ class TokenUsage:
 
     Cost in money is never stored: prices change on the provider's schedule, so the suite persists
     usage plus a pricing hash and re-derives money at read time (ADR-0030).
+
+    **The four billable classes are disjoint** (ADR-0030, ADR-0070): ``input_tokens`` counts only
+    tokens billed at the input rate, *excluding* any billed at a cache rate. Reconciling a
+    provider's overlapping figures into these four is the backend adapter's job, never this type's.
+
+    ``None`` on **any** of the four means **the backend did not report it** — never "zero", on
+    any class. IdeaPress does not carry the ``UNSUPPORTED`` sentinel itself (spec §3 forbids it
+    any measurement role), so the adapters translate an unreported class to ``None`` and
+    :meth:`ideapress.services.budget.BudgetService.price` translates it back to ``UNSUPPORTED``,
+    leaving the class out of the estimate rather than counting it as zero (ADR-0016). A class the
+    wire protocol *cannot bill* is reported as ``0`` by the adapter that knows so — that is
+    ADR-0070 rule 1, and it is what lets a priced attempt total instead of being an eternal floor.
+
+    Input and output are nullable for the same reason the cache classes are, and it is not
+    hypothetical: LoadCoach renders every unavailable count as the string ``"unsupported"`` on its
+    wire (ADR-0016 rule 4, all five classes since loadcoach 1.1.3 / ADR-0112). Reading that as
+    ``0`` would put a fabricated zero into a provenance record and price a real call at nothing.
+
+    Attributes:
+        input_tokens: Tokens billed at the input rate, excluding cached ones; ``None`` if
+            unreported.
+        output_tokens: Tokens generated, including reasoning tokens; ``None`` if unreported.
+        thinking_tokens: Reasoning tokens, reported separately for display; already inside
+            ``output_tokens`` for billing, so never added to a total.
+        cache_write_tokens: Tokens billed at the cache-creation rate, or ``None`` if unreported.
+        cache_read_tokens: Tokens billed at the cache-hit rate, or ``None`` if unreported.
     """
 
-    input_tokens: int = 0
-    output_tokens: int = 0
+    input_tokens: int | None = None
+    output_tokens: int | None = None
     thinking_tokens: int | None = None
+    cache_write_tokens: int | None = None
+    cache_read_tokens: int | None = None
 
     @property
-    def total_tokens(self) -> int:
-        """Input plus output. Thinking tokens are reported separately, never folded in."""
-        return self.input_tokens + self.output_tokens
+    def total_tokens(self) -> int | None:
+        """Every billable class the backend reported, or ``None`` when it reported none.
+
+        The four classes are disjoint, so each one the backend *did* report belongs in the total;
+        one it did not is excluded rather than counted as zero, which makes the figure a lower
+        bound rather than a fabricated total. ``None`` when nothing at all was reported, because
+        "no counts" and "zero tokens" are different facts (ADR-0016). Thinking tokens are never
+        folded in — they are already inside ``output_tokens`` (ADR-0030) and adding them would
+        bill them twice.
+        """
+        reported = [
+            count
+            for count in (
+                self.input_tokens,
+                self.output_tokens,
+                self.cache_write_tokens,
+                self.cache_read_tokens,
+            )
+            if count is not None
+        ]
+        return sum(reported) if reported else None
 
 
 @dataclass(frozen=True, slots=True)

@@ -134,7 +134,11 @@ def test_a_debit_of_unpriced_usage_accumulates_tokens_and_touches_no_money(
 def test_a_debit_of_priced_usage_derives_money_and_stores_a_pricing_hash(
     database: Database,
 ) -> None:
-    """A debit is a floor by construction here (see the note above), and money still accrues."""
+    """A backend that reported no cache class leaves a floor, and money still accrues.
+
+    Row K4 gave the domain type the two cache classes; leaving them unset is still what a backend
+    that reported nothing produces, and it is still a floor. The next test is the other half.
+    """
     from baseaicore import Money
 
     pricing = ModelPricing(
@@ -154,7 +158,7 @@ def test_a_debit_of_priced_usage_derives_money_and_stores_a_pricing_hash(
         at=AT,
     )
     assert priced.cost is not None
-    assert not priced.cost.is_complete  # the two cache classes are never reported (ADR-0069)
+    assert not priced.cost.is_complete  # neither cache class was reported (ADR-0069)
     with database.write() as session:
         entry = service.debit(
             session,
@@ -173,6 +177,159 @@ def test_a_debit_of_priced_usage_derives_money_and_stores_a_pricing_hash(
     assert cost["money_is_floor"] is True
     assert cost["unpriced_debit_count"] == 1
     assert cost["untotalled_debit_count"] == 1
+
+
+def test_a_debit_with_every_class_reported_and_priced_totals_rather_than_flooring(
+    database: Database,
+) -> None:
+    """Row K4's point: a bare figure, not "at least", once nothing is missing.
+
+    ADR-0070 rule 1 says a protocol that bills no cache tier reports ``0`` — a real zero, not the
+    fabricated one ADR-0016 forbids — so a fully priced attempt against such a backend has nothing
+    left unreported and nothing left unpriced. Before this row IdeaPress's domain type carried no
+    cache fields at all, so this figure said "at least" forever, for a reason that had nothing to
+    do with the call (J1 handoff §8).
+    """
+    from baseaicore import Money
+
+    pricing = ModelPricing(
+        identity=_PRICED_MODEL,
+        rates=TokenRates(
+            currency="USD",
+            input_per_million_tokens=Money.from_decimal("USD", "1.00"),
+            output_per_million_tokens=Money.from_decimal("USD", "2.00"),
+            cache_write_per_million_tokens=Money.from_decimal("USD", "1.25"),
+            cache_read_per_million_tokens=Money.from_decimal("USD", "0.10"),
+        ),
+        source=PricingSource.USER_OVERRIDE,
+        observed_at=AT,
+    )
+    service = _priced_service(database, (pricing,))
+    priced = service.price(
+        canonical_id="ollama/gemma4:12b",
+        usage=DomainTokenUsage(
+            input_tokens=1_000_000,
+            output_tokens=1_000_000,
+            cache_write_tokens=0,
+            cache_read_tokens=0,
+        ),
+        at=AT,
+    )
+    assert priced.cost is not None
+    assert priced.cost.is_complete
+    assert priced.unpriced_reason == ""
+    with database.write() as session:
+        entry = service.debit(
+            session,
+            project_id="p1",
+            run_id="unit1",
+            source_ref="attempt1",
+            stage="draft",
+            backend="ollama",
+            priced=priced,
+            at=AT,
+        )
+    assert entry.unpriced is False
+    cost = service.project_cost(project_id="p1")
+    assert cost["money_spent_display"] == "3 USD"
+    assert cost["tokens_spent_display"] == "2000000"
+    assert cost["money_is_floor"] is False
+    assert cost["unpriced_debit_count"] == 0
+    assert cost["untotalled_debit_count"] == 0
+    assert cost["unmetered_debit_count"] == 0
+
+
+def test_an_unreported_cache_class_still_floors_a_fully_rated_price(database: Database) -> None:
+    """The rule is per class, not per price list: one `None` is enough to keep the floor."""
+    from baseaicore import Money
+
+    pricing = ModelPricing(
+        identity=_PRICED_MODEL,
+        rates=TokenRates(
+            currency="USD",
+            input_per_million_tokens=Money.from_decimal("USD", "1.00"),
+            output_per_million_tokens=Money.from_decimal("USD", "2.00"),
+            cache_write_per_million_tokens=Money.from_decimal("USD", "1.25"),
+            cache_read_per_million_tokens=Money.from_decimal("USD", "0.10"),
+        ),
+        source=PricingSource.USER_OVERRIDE,
+        observed_at=AT,
+    )
+    service = _priced_service(database, (pricing,))
+    priced = service.price(
+        canonical_id="ollama/gemma4:12b",
+        usage=DomainTokenUsage(
+            input_tokens=1_000_000, output_tokens=1_000_000, cache_write_tokens=0
+        ),
+        at=AT,
+    )
+    assert priced.cost is not None
+    assert not priced.cost.is_complete
+    with database.write() as session:
+        service.debit(
+            session,
+            project_id="p1",
+            run_id="unit1",
+            source_ref="attempt1",
+            stage="draft",
+            backend="ollama",
+            priced=priced,
+            at=AT,
+        )
+    assert service.project_cost(project_id="p1")["money_spent_display"] == "at least 3 USD"
+
+
+def test_an_unreported_input_count_is_never_priced_as_zero(database: Database) -> None:
+    """Row K4: LoadCoach sends `"unsupported"` for a count it does not have (ADR-0016 rule 4).
+
+    That arrives here as `None`, becomes `UNSUPPORTED`, and is excluded — so the estimate does not
+    total and the figure is a floor. The coercion this replaced read it as `0`, which priced a
+    real call's whole input side at nothing and reported the result as a measured total.
+    """
+    from baseaicore import Money
+
+    pricing = ModelPricing(
+        identity=_PRICED_MODEL,
+        rates=TokenRates(
+            currency="USD",
+            input_per_million_tokens=Money.from_decimal("USD", "1.00"),
+            output_per_million_tokens=Money.from_decimal("USD", "2.00"),
+            cache_write_per_million_tokens=Money.from_decimal("USD", "1.25"),
+            cache_read_per_million_tokens=Money.from_decimal("USD", "0.10"),
+        ),
+        source=PricingSource.USER_OVERRIDE,
+        observed_at=AT,
+    )
+    service = _priced_service(database, (pricing,))
+    priced = service.price(
+        canonical_id="ollama/gemma4:12b",
+        usage=DomainTokenUsage(
+            input_tokens=None,
+            output_tokens=1_000_000,
+            cache_write_tokens=0,
+            cache_read_tokens=0,
+        ),
+        at=AT,
+    )
+    assert priced.cost is not None
+    assert not priced.cost.is_complete
+    assert priced.unpriced_reason
+    with database.write() as session:
+        service.debit(
+            session,
+            project_id="p1",
+            run_id="unit1",
+            source_ref="attempt1",
+            stage="draft",
+            backend="ollama",
+            priced=priced,
+            at=AT,
+        )
+    cost = service.project_cost(project_id="p1")
+    # The output side alone, announced as a floor — not "3 USD", and never "0 USD".
+    assert cost["money_spent_display"] == "at least 2 USD"
+    assert cost["tokens_spent_display"] == "at least 1000000"
+    assert cost["unmetered_debit_count"] == 1
 
 
 def test_a_partial_estimate_omits_an_unpriced_component_and_still_floors(

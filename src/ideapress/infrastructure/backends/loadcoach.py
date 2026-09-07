@@ -269,9 +269,23 @@ def _detect_refusal(text: str) -> str | None:
     return text.strip() if any(marker in lowered for marker in _REFUSAL_MARKERS) else None
 
 
-def _as_int(value: object) -> int:
-    """A token count, with anything unreported or non-numeric read as 0."""
-    return int(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else 0
+def _as_optional_int(value: object) -> int | None:
+    """A token count LoadCoach may not have, keeping "not reported" distinct from zero.
+
+    ADR-0070 rule 7 puts all four billable classes on LoadCoach's wire, and rule 1 decides what a
+    number there means: a class the provider's protocol cannot bill arrives as ``0``, which is a
+    real zero and totals; a class it could have billed and did not report arrives as the string
+    ``"unsupported"`` (ADR-0016 rule 4), which becomes ``None`` here and stays out of every total.
+    An older LoadCoach that sends no such key at all is the same fact and gets the same answer.
+
+    **Every count goes through this, input and output included** (row K4). Since loadcoach 1.1.3
+    (ADR-0112) those two are spelled ``"unsupported"`` as well, and the coercion this replaced
+    read that as ``0`` — a fabricated zero in a provenance record, and a real call priced at
+    nothing. There is no token count on this wire for which zero is a safe default.
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return int(value)
 
 
 def _as_optional_float(value: object) -> float | None:
@@ -1043,13 +1057,11 @@ class LoadCoachBackend:
             structured=structured,
             model=_identity_of(model_body or {}),
             usage=TokenUsage(
-                input_tokens=_as_int((usage or {}).get("input_tokens")),
-                output_tokens=_as_int((usage or {}).get("output_tokens")),
-                thinking_tokens=(
-                    _as_int((usage or {}).get("thinking_tokens"))
-                    if isinstance((usage or {}).get("thinking_tokens"), (int, float))
-                    else None
-                ),
+                input_tokens=_as_optional_int((usage or {}).get("input_tokens")),
+                output_tokens=_as_optional_int((usage or {}).get("output_tokens")),
+                thinking_tokens=_as_optional_int((usage or {}).get("thinking_tokens")),
+                cache_write_tokens=_as_optional_int((usage or {}).get("cache_write_tokens")),
+                cache_read_tokens=_as_optional_int((usage or {}).get("cache_read_tokens")),
             ),
             timing=Timing(
                 duration_ms=_as_optional_float((timing or {}).get("total_ms")),

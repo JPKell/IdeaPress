@@ -26,6 +26,46 @@ packaging and release standards §3.
   pre-change capture, `tests/unit/test_context_budget.py`). A dropped review emits
   `context.compacted` once, on the same event sink `unit_loop`/`review_loop` already use.
 
+- **`attempts.cache_write_tokens` and `attempts.cache_read_tokens`** (migration `0009`), and the
+  two matching fields on `ideapress.domain.inference.TokenUsage` — ADR-0070 rule 4's spelling, and
+  the classes LoadCoach has carried on its wire since rule 7 (row K4). Both backend adapters now
+  fill them: a `0` from a protocol that bills no cache tier is a real zero and totals (rule 1),
+  while a class the backend could have reported and did not stays `None` and keeps its floor.
+  Existing rows stay `NULL` — a build that never asked observed nothing, and a back-fill of `0`
+  would be the fabricated zero ADR-0016 forbids.
+
+### Fixed
+
+- **A token count LoadCoach could not take is no longer recorded as zero.** All four billable
+  classes on `ideapress.domain.inference.TokenUsage` are now `int | None`, `None` meaning the
+  backend reported no count. `infrastructure/backends/loadcoach.py` read `"unsupported"` and a
+  missing key as `0` for input and output — harmless while LoadCoach sent `null` there, and a
+  fabricated zero from loadcoach 1.1.3 onward, which renders every unavailable count as
+  `"unsupported"` (ADR-0016 rule 4, ADR-0112). The ModelRack adapter's `_count` helper, which
+  turned `UNSUPPORTED` into `0` "for arithmetic only", is gone for the same reason. An unreported
+  class now becomes `UNSUPPORTED` at the BaseAiCore boundary, so the estimate does not total and
+  the figure is announced as a floor (ADR-0069) instead of pricing a real call's input side at
+  nothing. The unit detail page and `ideapress unit show` render an unreported count as an em
+  dash, and the backend conformance suite states the rule for tokens as it already did for
+  timings.
+
+### Changed
+
+- **`services/pricing.py` is now a thin edge over `loadledger.pricing`** (row K4, ADR-0110). The
+  ~250-line reader row J1 transcribed from `promptcadence.services.pricing` moved into
+  `loadledger 0.3.0`, the suite's one ADR-0072 reader, because `pricing_hash` is only a join
+  between a stored usage and a price if one reader produces both applications' records. What stays
+  here is where the path comes from (`[pricing] file`) and reporting a broken one as this
+  application's own `ConfigurationError`. Every J1 pricing test passes unchanged, and the package
+  carries a golden case asserting the moved reader reproduces the exact hashes this application's
+  own loader produced beforehand. The dependency floor rises to `loadledger[sql]>=0.3,<0.4`.
+- **A fully reported, fully priced attempt now renders a bare total** rather than "at least".
+  Until row K4 this application's domain type carried no cache classes at all, so LoadLedger
+  counted every debit as unmetered and every figure was a floor forever — for a reason that had
+  nothing to do with the call (`docs/history/J1_HANDOFF.md` §8). A floor now means something was
+  genuinely unreported, which makes `[budget] partial_pricing = "strict"` usable against a backend
+  that reports all four classes.
+
 ## [1.2.0] - 2026-09-07
 
 IdeaPress 1.2: **M13's three adoption phases** — IP-A1 LoadLedger and IP-A2 Commissioner (row J1)

@@ -17,10 +17,10 @@ ever closes. Naming neither half of a ceiling means it does not exist, and the l
 accumulates and still renders (row J1 exit 1) — an unset ceiling is not a ceiling of zero.
 
 **Debits store usage and a pricing hash, never money** (ADR-0030 rule 1). :meth:`BudgetService.
-debit` rebuilds :class:`baseaicore.TokenUsage` from the two classes IdeaPress's own domain type
-carries (``input_tokens``, ``output_tokens``); the two cache classes are simply not a fact this
-application's backends report, so they stay ``UNSUPPORTED`` and are excluded from any total rather
-than counted as zero (ADR-0016) — never a fabricated ``$0.00``.
+price` rebuilds :class:`baseaicore.TokenUsage` from all four classes
+:class:`ideapress.domain.inference.TokenUsage` now carries (row K4). A cache class the backend left
+unreported arrives as ``None`` and becomes ``UNSUPPORTED``, excluded from any total rather than
+counted as zero (ADR-0016) — never a fabricated ``$0.00``.
 
 **Honesty is the whole feature** (ADR-0030, ADR-0069). A local model's cost is ``UNSUPPORTED``:
 :meth:`BudgetService.price` returns ``cost=None`` and every surface renders :data:`NOT_PRICED`, an
@@ -29,15 +29,15 @@ em dash, with the reason beside it — never ``0``. A price list that could not 
 priced accumulate, the components that were not are excluded, and every rendered figure says "at
 least" (ADR-0069's ``PartialPricing.FLOOR``, the default; ``STRICT`` is configurable).
 
-**Every priced debit is a floor, always, today** — worth stating plainly rather than leaving a
-reader to discover it from a rendered "at least". Because the two cache classes are never even
-*reported* by ``ideapress.domain.inference.TokenUsage`` (it carries no such fields), every debit
-leaves them ``UNSUPPORTED`` at the usage level, which ADR-0069's ``unmetered_debit_count`` counts
-independently of pricing — so **token** figures are floors too, on every debit, priced or not. This
-is not a defect of this module: it is exactly the reality ADR-0069 was written to name for every
-real ModelRack adapter. ``partial_pricing = "strict"`` is configurable but would trip on the very
-first priced debit for the same reason; the kickoff's ``floor`` default is the only usable one
-until a ModelRack adapter reports cache counts.
+**A debit is a floor only when something really was unreported** (row K4). Until this row,
+``ideapress.domain.inference.TokenUsage`` carried no cache fields at all, so every debit left both
+cache classes ``UNSUPPORTED``, ADR-0069's ``unmetered_debit_count`` was never zero, and every
+figure said "at least" forever — priced or not, and for a reason that had nothing to do with the
+call. The domain type now carries all four classes and the adapters fill them: a protocol that
+bills no cache tier reports ``0``, which is honest and totals (ADR-0070 rule 1), and a class that
+genuinely went unreported stays ``None`` and keeps its floor. ``partial_pricing = "strict"`` is
+therefore usable against a backend that reports all four; the ``floor`` default stays the right
+choice where one does not.
 """
 
 from __future__ import annotations
@@ -61,7 +61,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
     from datetime import datetime
 
-    from baseaicore import CostEstimate
+    from baseaicore import CostEstimate, TokenCount
     from baseaicore import TokenUsage as BaseTokenUsage
     from loadledger import LedgerEntry, WindowBalance
 
@@ -113,8 +113,10 @@ class PricedUsage:
     """One attempt's usage and what it was estimated to cost, ready to become a debit.
 
     Attributes:
-        usage: The two token classes IdeaPress's backends report, as ``baseaicore.TokenUsage``
-            (the two cache classes stay ``UNSUPPORTED`` — this application does not observe them).
+        usage: What the backend reported, as ``baseaicore.TokenUsage``. A cache class the
+            backend did not report stays ``UNSUPPORTED`` and is excluded from any total; one it
+            reported as ``0`` (its protocol bills no such class — ADR-0070 rule 1) is a real
+            zero, and a debit whose four classes are all reported totals rather than floors.
         cost: The estimate, or ``None`` when no pricing was applied at all — the local case, and
             the case of a catalogue that does not cover the model that answered.
         unpriced_reason: Why ``cost`` is ``None``, or why the estimate did not total. Empty when
@@ -258,7 +260,9 @@ class BudgetService:
         Args:
             canonical_id: The model that answered, or ``None`` when the backend did not disclose
                 one.
-            usage: The two token classes IdeaPress's domain reports.
+            usage: The token classes IdeaPress's domain reports. A cache class left ``None``
+                by the backend becomes ``UNSUPPORTED``, so it is excluded from the estimate rather
+                than counted as zero (ADR-0016).
             at: When the attempt happened — not when this runs, so re-costing history later
                 reproduces the same figure (ADR-0030).
 
@@ -268,8 +272,15 @@ class BudgetService:
         """
         from baseaicore import TokenUsage as BaseTokenUsage
 
+        # `None` on any class is "the backend reported no such count", which is `UNSUPPORTED` —
+        # never 0, on any of the four. A backend whose protocol cannot bill a class reports that
+        # class as a real 0 itself (ADR-0070 rule 1), and that is what lets an estimate total; a
+        # class nobody reported is excluded, and the debit is a floor (ADR-0069).
         base_usage = BaseTokenUsage(
-            input_tokens=usage.input_tokens, output_tokens=usage.output_tokens
+            input_tokens=_reported(usage.input_tokens),
+            output_tokens=_reported(usage.output_tokens),
+            cache_write_tokens=_reported(usage.cache_write_tokens),
+            cache_read_tokens=_reported(usage.cache_read_tokens),
         )
         if canonical_id is None:
             return PricedUsage(
@@ -467,6 +478,19 @@ def balance_view(balance: WindowBalance) -> dict[str, Any]:
         "untotalled_debit_count": balance.untotalled_debit_count,
         "unmetered_debit_count": balance.unmetered_debit_count,
     }
+
+
+def _reported(count: int | None) -> TokenCount:
+    """Translate IdeaPress's "not reported" into BaseAiCore's, at the one boundary that needs it.
+
+    IdeaPress's domain carries no sentinel (spec §3), so an unreported count is ``None`` there and
+    :data:`baseaicore.UNSUPPORTED` here. Never ``0``: a class nothing reported is excluded from
+    every total and makes the debit a floor (ADR-0016, ADR-0069), where a zero would silently
+    claim the call was billed nothing for it.
+    """
+    from baseaicore import UNSUPPORTED
+
+    return UNSUPPORTED if count is None else count
 
 
 def _money(amount: MoneyAmount | None) -> Money | None:

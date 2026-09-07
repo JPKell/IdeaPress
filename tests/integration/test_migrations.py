@@ -226,3 +226,58 @@ def test_0006_leaves_existing_attempts_as_base_subjects(sqlite_database: Databas
     assert row.adapter_name is None
     assert row.adapter_digest is None
     assert row.subject_canonical_id is None
+
+
+def test_0009_leaves_existing_attempts_unreported_rather_than_zero(
+    sqlite_database: Database,
+) -> None:
+    """Row K4: an attempt written before the cache columns existed knows nothing about them.
+
+    `NULL`, never `0`. A build that never asked its backend for a cache figure observed nothing,
+    and a back-fill of `0` would claim those calls were billed no cache tokens — the fabricated
+    zero ADR-0016 forbids, and one that would silently turn old floors into totals nobody measured.
+    """
+    from sqlalchemy import text
+
+    runner = migration_runner(sqlite_database.engine)
+    runner.upgrade("0008")
+    with sqlite_database.engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO projects (id, title, slug, content_type, content_type_version,"
+                " workflow_id, workflow_version, status, brief_text, author_material_json,"
+                " config_json, created_at, updated_at)"
+                " VALUES ('01PROJECT', 'T', 't', 'article', '1.0', 'default', '1.0', 'active',"
+                " 'b', '[]', '{}', '2026-09-01T00:00:00', '2026-09-01T00:00:00')"
+            )
+        )
+        connection.execute(
+            text(
+                "INSERT INTO stage_runs (id, project_id, stage, state, units_total,"
+                " units_completed, units_paused, started_at, options_json, backend, backend_mode)"
+                " VALUES ('01RUN', '01PROJECT', 'draft', 'completed', 1, 1, 0,"
+                " '2026-09-01T00:00:00', '{}', 'ollama', 'ollama')"
+            )
+        )
+        connection.execute(
+            text(
+                "INSERT INTO attempts (id, stage_run_id, stage, attempt, round, backend,"
+                " backend_mode, outcome, input_tokens, output_tokens, degradations_json,"
+                " created_at)"
+                " VALUES ('01ATTEMPT', '01RUN', 'draft', 1, 0, 'ollama', 'ollama', 'completed',"
+                " 812, 1104, '[]', '2026-09-01T00:00:00')"
+            )
+        )
+
+    runner.upgrade("head")
+
+    with sqlite_database.engine.connect() as connection:
+        row = connection.execute(
+            text(
+                "SELECT input_tokens, cache_write_tokens, cache_read_tokens"
+                " FROM attempts WHERE id = '01ATTEMPT'"
+            )
+        ).one()
+    assert row.input_tokens == 812
+    assert row.cache_write_tokens is None
+    assert row.cache_read_tokens is None

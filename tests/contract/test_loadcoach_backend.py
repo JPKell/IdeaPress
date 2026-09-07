@@ -445,11 +445,18 @@ def test_routing_metadata_lands_on_the_result(backend: LoadCoachBackend) -> None
 def test_usage_and_timings_are_carried_and_unsupported_is_not_zero(
     backend: LoadCoachBackend,
 ) -> None:
-    """ADR-0016: LoadCoach sends `"unsupported"` for a measurement it could not take."""
+    """ADR-0016: LoadCoach sends `"unsupported"` for a measurement it could not take.
+
+    And ADR-0070 rule 1 the other way round: a `0` on the wire is a real count from a protocol
+    that bills no such class, so it survives as `0` and lets the attempt total (row K4). Reading
+    the two the same way would either fabricate a zero or floor every figure forever.
+    """
     result = backend.generate(_request())
     assert result.usage.input_tokens == 812
     assert result.usage.output_tokens == 1104
     assert result.usage.thinking_tokens is None
+    assert result.usage.cache_write_tokens == 0
+    assert result.usage.cache_read_tokens == 0
     assert result.timing.duration_ms == 18422.0
 
 

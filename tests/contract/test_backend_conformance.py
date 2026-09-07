@@ -129,8 +129,11 @@ def test_generate_returns_a_complete_result(backend: InferenceBackend) -> None:
     assert isinstance(result, StageResult)
     assert result.text
     assert result.backend == backend.name
-    assert result.usage.input_tokens >= 0
-    assert result.usage.output_tokens >= 0
+    for count in (result.usage.input_tokens, result.usage.output_tokens):
+        # `None` since row K4, never 0, for a backend that reports no counts — the same rule the
+        # timings test below states, applied to tokens. A capability-poor backend saying "I do not
+        # count tokens" must not be recorded as having used none (ADR-0016).
+        assert count is None or count >= 0
 
 
 def test_timings_are_none_rather_than_zero_when_unreported(backend: InferenceBackend) -> None:

@@ -78,6 +78,7 @@ def test_a_hello_stage_produces_real_text_through_ollama(ollama: InferenceBacken
     assert result.model is not None
     assert result.model.provider_kind == "ollama"
     assert result.model.artifact_digest, "Ollama discloses a digest; provenance records it"
+    assert result.usage.output_tokens is not None, "a live Ollama reports its counts"
     assert result.usage.output_tokens > 0
     assert result.timing.duration_ms is not None
     assert not result.truncated, "the budget cut the answer off; raise it rather than accept it"
