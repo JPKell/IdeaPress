@@ -14,6 +14,24 @@ database is at head, whether your prompts match their manifest, whether every mo
 a binding, and whether your backend answers. An unreachable backend is a **warning**, not a
 failure: the application is designed to be useful without one.
 
+### What `doctor` checks
+
+Each row below is one printed line — `[ ok|warn|fail] <name>: <detail>` — in the order `doctor`
+prints it:
+
+| Name | What it checks |
+|---|---|
+| `configuration` | The config file loads and validates |
+| `data directory` | The data directory exists and is writable |
+| `database` | The database opens and is at head |
+| `backend` | The configured inference backend answers (warning only, never a failure) |
+| `prompts` | The prompt pack is present, parses, and matches its manifest |
+| `stage model bindings` | Every model-using stage has a `[models.stages]` binding, unless `inference.mode = "loadcoach"` |
+| `output budget` | `workflow.structured_output_tokens` is at or above the measured 8192 floor |
+| `bind` | The server bind (loopback, or a non-loopback bind with `allowed_hosts` acknowledged) |
+| `telemetry` | Whether `ideapress[telemetry]` is installed, which gates the VRAM preflight |
+| `loadcoach task profiles` | Every stage's task profile exists on the running LoadCoach (`inference.mode = "loadcoach"` only) |
+
 ## A unit paused and I do not know why
 
 The reason is on the unit's page in the workspace, with the remedy beside it. The most common one:
