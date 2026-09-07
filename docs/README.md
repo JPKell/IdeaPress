@@ -9,7 +9,7 @@
 - [Content types](content-types.md) — what one supplies, and how to add another
 - [Troubleshooting](troubleshooting.md) — every documented failure and its remedy
 - [Operations](operations.md) — where things live, backups, PostgreSQL, logs, performance budgets
-- [Upgrading](upgrading.md) — the compatibility guarantees, and 0.1.x → 1.0.0
+- [Upgrading](upgrading.md) — the compatibility guarantees, and 0.1.x → 1.2.0
 - [Security](security.md) — the bind, untrusted model output, your content, archives
 
 ## The design
