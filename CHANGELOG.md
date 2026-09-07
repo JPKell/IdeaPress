@@ -35,6 +35,13 @@ packaging and release standards §3.
   `--archived`) across `project`, `plan`, `stage`, `unit`, `workflow`, `prompts`, `backend`,
   `db` and `config` — so `--help` at any depth of the command tree is now complete.
 
+### Removed
+
+- `pydantic-settings` from `dependencies` — declared but never imported (ADR-0114); each
+  application performs its own layered configuration merge. `requirements/ci.lock`
+  recompiled with pip-tools 7.6.1 on Python 3.13 (M9 audit Group 5, the pydantic-settings
+  finding from row L2).
+
 ## [1.3.0] - 2026-09-07
 
 ### Added
