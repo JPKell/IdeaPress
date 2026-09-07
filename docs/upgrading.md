@@ -78,6 +78,28 @@ One behaviour to know about if you run a remote backend (`loadcoach` or `openai_
   backend is a durable `denied` row (fail closed, never assumed public), and the workspace badge
   reads that record rather than recomputing the flag.
 
+## 1.2.0 → 1.3.0
+
+Migration `0009` adds `attempts.cache_write_tokens` and `attempts.cache_read_tokens`. Existing
+rows stay `NULL` — a build that never asked observed nothing, never a fabricated zero.
+
+What is new: a committed OpenAPI snapshot (`docs/openapi.json`), and a budget on the
+`project_review` prompt (`workflow.project_review_context_budget_tokens`, default 24000) so a
+project with many committed units no longer sends every one of them unbounded — units drop from
+the end of reading order first, keeping the earliest (where terms and facts are established)
+intact for as long as the budget allows.
+
+Two behaviours to know about:
+
+* **A token count LoadCoach could not report is no longer recorded as zero.** All four billable
+  classes on `TokenUsage` are now `int | None`; an unreported class renders as an em dash instead
+  of a fabricated `0`, and a fully reported, fully priced attempt now renders a bare total instead
+  of "at least" — the floor qualifier before this release was an artifact of this application
+  carrying no cache classes at all, not a fact about any call.
+* **The dependency floor rises to `loadledger[sql] >= 0.3, < 0.4`.** `services/pricing.py` is now
+  a thin edge over `loadledger.pricing`; `[pricing] file` and the configuration error it raises on
+  a broken path are unchanged, and every existing pricing test passes unchanged.
+
 ## Checking the version
 
 ```bash
