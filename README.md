@@ -28,6 +28,27 @@ ideapress health --json     # same health data the API reports, from the CLI
 ideapress --help
 ```
 
+## Compatibility
+
+Declared version ranges from `pyproject.toml` — kept from drifting by
+`tests/unit/test_readme_compatibility.py`, which parses the file and fails if this table disagrees:
+
+| Package | Range |
+|---|---|
+| `baseaicore` | `>=0.4.1,<0.5` |
+| `setspec` | `>=0.5,<0.7` |
+| `modelrack` | `>=0.5,<0.6` |
+| `weightsdb` | `>=0.2,<0.3` |
+| `mirrorwall` | `>=0.2,<0.3` |
+| `loadledger` | `>=0.3,<0.4` |
+| `commissioner` | `>=0.1.1,<0.2` |
+| `cutctx` | `>=0.1,<0.2` |
+| `sweatmeter` | `>=0.4,<0.5` |
+
+`loadledger` and `commissioner` are installed with their `[sql]` extra (not optional in practice:
+both mount unconditionally in `infrastructure/db/models.py`). `sweatmeter` is the optional
+`[telemetry]` extra, for status display only — never a hard dependency.
+
 ## Documentation
 
 Project documentation lives under [`docs/`](docs/README.md). Start with [`docs/README.md`](docs/README.md).
