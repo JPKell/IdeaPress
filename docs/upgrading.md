@@ -56,7 +56,7 @@ Two behaviours to know about if you are coming from 0.1.x:
   `ideapress backend list` and never applied. If you had set it expecting nothing to happen, you
   will now get a fallback — and a `backend_fallback` degradation on the attempt saying so.
 
-## 1.1.0 → 1.2.0 (unreleased, row J1)
+## 1.1.0 → 1.2.0
 
 No migration data changes — two new tables are added (`ledger_*`, `egress_decisions`, migrations
 `0007`/`0008`), all empty until IdeaPress's first attempt after the upgrade.
