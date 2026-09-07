@@ -31,7 +31,11 @@ def _definition() -> dict[str, Any]:
 
 
 @app.command(name="list")
-def list_workflows(json_output: Annotated[bool, typer.Option("--json")] = False) -> None:
+def list_workflows(
+    json_output: Annotated[
+        bool, typer.Option("--json", help="Print JSON instead of text.")
+    ] = False,
+) -> None:
     """List the workflows this build ships. Mode: local."""
     definitions = [_definition()]
     if json_output:
@@ -45,8 +49,10 @@ def list_workflows(json_output: Annotated[bool, typer.Option("--json")] = False)
 
 @app.command(name="show")
 def show(
-    workflow_id: Annotated[str, typer.Argument()] = "standard",
-    json_output: Annotated[bool, typer.Option("--json")] = False,
+    workflow_id: Annotated[str, typer.Argument(help="The workflow id.")] = "standard",
+    json_output: Annotated[
+        bool, typer.Option("--json", help="Print JSON instead of text.")
+    ] = False,
 ) -> None:
     """Show a workflow's stage order and the gate on each. Mode: local.
 

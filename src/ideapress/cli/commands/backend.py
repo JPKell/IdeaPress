@@ -14,7 +14,9 @@ app = typer.Typer(no_args_is_help=True, help="Inspect, test and switch inference
 
 @app.command(name="list")
 def list_backends(
-    json_output: Annotated[bool, typer.Option("--json")] = False,
+    json_output: Annotated[
+        bool, typer.Option("--json", help="Print JSON instead of text.")
+    ] = False,
 ) -> None:
     """List the configured backends, with reachability and egress. Mode: local."""
     from ideapress.config import load_settings
@@ -40,7 +42,9 @@ def list_backends(
 @app.command(name="test")
 def test(
     mode: Annotated[str | None, typer.Option("--mode", help="Which backend to test.")] = None,
-    json_output: Annotated[bool, typer.Option("--json")] = False,
+    json_output: Annotated[
+        bool, typer.Option("--json", help="Print JSON instead of text.")
+    ] = False,
 ) -> None:
     """Round-trip a backend and report latency and its model list. Mode: local.
 

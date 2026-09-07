@@ -55,7 +55,7 @@ def _wait(runtime: Runtime, task_id: str) -> str:
 
 @app.command(name="build")
 def build(
-    project_id: Annotated[str, typer.Argument()],
+    project_id: Annotated[str, typer.Argument(help="The project's id.")],
 ) -> None:
     """Compile requirements and build the unit plan. Mode: local.
 
@@ -76,8 +76,10 @@ def build(
 
 @app.command(name="show")
 def show(
-    project_id: Annotated[str, typer.Argument()],
-    json_output: Annotated[bool, typer.Option("--json")] = False,
+    project_id: Annotated[str, typer.Argument(help="The project's id.")],
+    json_output: Annotated[
+        bool, typer.Option("--json", help="Print JSON instead of text.")
+    ] = False,
 ) -> None:
     """Show the compiled requirements and the unit plan. Mode: local.
 

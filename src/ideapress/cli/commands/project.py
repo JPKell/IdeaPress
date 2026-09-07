@@ -59,8 +59,13 @@ def create(
     brief_file: Annotated[
         str | None, typer.Option("--brief-file", help="Read the brief from a file.")
     ] = None,
-    content_type: Annotated[str, typer.Option("--content-type")] = "article",
-    json_output: Annotated[bool, typer.Option("--json")] = False,
+    content_type: Annotated[
+        str,
+        typer.Option("--content-type", help="The content type to draft (e.g. article, report)."),
+    ] = "article",
+    json_output: Annotated[
+        bool, typer.Option("--json", help="Print JSON instead of text.")
+    ] = False,
 ) -> None:
     """Create a project. Mode: local."""
     from pathlib import Path
@@ -76,8 +81,12 @@ def create(
 
 @app.command(name="list")
 def list_projects(
-    include_archived: Annotated[bool, typer.Option("--archived")] = False,
-    json_output: Annotated[bool, typer.Option("--json")] = False,
+    include_archived: Annotated[
+        bool, typer.Option("--archived", help="Include archived projects.")
+    ] = False,
+    json_output: Annotated[
+        bool, typer.Option("--json", help="Print JSON instead of text.")
+    ] = False,
 ) -> None:
     """List projects, most recently updated first. Mode: local."""
     for service in _services():
@@ -94,8 +103,10 @@ def list_projects(
 
 @app.command(name="show")
 def show(
-    project_id: Annotated[str, typer.Argument()],
-    json_output: Annotated[bool, typer.Option("--json")] = False,
+    project_id: Annotated[str, typer.Argument(help="The project's id.")],
+    json_output: Annotated[
+        bool, typer.Option("--json", help="Print JSON instead of text.")
+    ] = False,
 ) -> None:
     """Show one project. Mode: local."""
     from ideapress.errors import ProjectNotFound
@@ -122,7 +133,7 @@ def show(
 
 
 @app.command(name="archive")
-def archive(project_id: Annotated[str, typer.Argument()]) -> None:
+def archive(project_id: Annotated[str, typer.Argument(help="The project's id.")]) -> None:
     """Archive a project: hidden from the list, nothing removed, reversible. Mode: local."""
     from ideapress.errors import ProjectNotFound
 
@@ -137,7 +148,7 @@ def archive(project_id: Annotated[str, typer.Argument()]) -> None:
 
 @app.command(name="delete")
 def delete(
-    project_id: Annotated[str, typer.Argument()],
+    project_id: Annotated[str, typer.Argument(help="The project's id.")],
     yes: Annotated[bool, typer.Option("--yes", help="Skip the confirmation prompt.")] = False,
 ) -> None:
     """Delete a project, its rows and its artifact directory. Mode: local.

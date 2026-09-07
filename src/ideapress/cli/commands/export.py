@@ -13,7 +13,7 @@ app = typer.Typer(no_args_is_help=True, help="Export a committed project.")
 
 @app.command(name="run")
 def run(
-    project_id: Annotated[str, typer.Argument()],
+    project_id: Annotated[str, typer.Argument(help="The project's id.")],
     fmt: Annotated[str, typer.Option("--format", help="markdown | html | json")] = "markdown",
     stdout: Annotated[
         bool, typer.Option("--stdout", help="Write to stdout instead of the project directory.")

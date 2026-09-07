@@ -14,8 +14,10 @@ app = typer.Typer(no_args_is_help=True, help="Inspect units, their coverage and 
 
 @app.command(name="list")
 def list_units(
-    project_id: Annotated[str, typer.Argument()],
-    json_output: Annotated[bool, typer.Option("--json")] = False,
+    project_id: Annotated[str, typer.Argument(help="The project's id.")],
+    json_output: Annotated[
+        bool, typer.Option("--json", help="Print JSON instead of text.")
+    ] = False,
 ) -> None:
     """List a project's units with state and coverage. Mode: local."""
     from ideapress.cli.commands.plan import runtime_for
@@ -38,9 +40,11 @@ def list_units(
 
 @app.command(name="show")
 def show(
-    project_id: Annotated[str, typer.Argument()],
-    unit_key: Annotated[str, typer.Argument()],
-    json_output: Annotated[bool, typer.Option("--json")] = False,
+    project_id: Annotated[str, typer.Argument(help="The project's id.")],
+    unit_key: Annotated[str, typer.Argument(help="The unit's key (its slug within the project).")],
+    json_output: Annotated[
+        bool, typer.Option("--json", help="Print JSON instead of text.")
+    ] = False,
     provenance: Annotated[
         bool, typer.Option("--provenance", help="Print the full provenance record.")
     ] = False,
@@ -101,9 +105,11 @@ def show(
 
 @app.command(name="history")
 def history(
-    project_id: Annotated[str, typer.Argument()],
-    unit_key: Annotated[str, typer.Argument()],
-    json_output: Annotated[bool, typer.Option("--json")] = False,
+    project_id: Annotated[str, typer.Argument(help="The project's id.")],
+    unit_key: Annotated[str, typer.Argument(help="The unit's key (its slug within the project).")],
+    json_output: Annotated[
+        bool, typer.Option("--json", help="Print JSON instead of text.")
+    ] = False,
 ) -> None:
     """Show every version of a unit with its coverage. Mode: local."""
     from ideapress.cli.commands.plan import runtime_for
@@ -128,8 +134,8 @@ def history(
 
 @app.command(name="revise")
 def revise(
-    project_id: Annotated[str, typer.Argument()],
-    unit_key: Annotated[str, typer.Argument()],
+    project_id: Annotated[str, typer.Argument(help="The project's id.")],
+    unit_key: Annotated[str, typer.Argument(help="The unit's key (its slug within the project).")],
     instructions: Annotated[
         str, typer.Option("--instructions", help="What to change, in your own words.")
     ] = "",

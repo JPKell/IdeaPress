@@ -9,6 +9,9 @@ packaging and release standards §3.
 
 ### Added
 
+- `tests/unit/test_every_command_has_help.py`, walking `typer.main.get_command(app)`
+  recursively so every command and option must carry help text (M9 audit Group 5, item D4).
+
 - `tests/security/test_checklist.py`, in the shape of LoadCoach's, asserting
   `docs/security.md`'s checklist against the code (M9 audit Group 5, item Q4).
 
@@ -23,6 +26,14 @@ packaging and release standards §3.
 - A `## Compatibility` table in `README.md` listing every declared suite package range
   from `pyproject.toml`, and `tests/unit/test_readme_compatibility.py` asserting the two
   cannot drift (M9 audit Group 5, item R3).
+
+### Fixed
+
+- **Every CLI argument and option now carries help text.** `test_every_command_has_help.py`
+  found ~40 undocumented ones — every positional argument (`project_id`, `unit_key`, `task_id`,
+  `workflow_id`, `prompt_id`) and several flags (`--json`, `--config`, `--content-type`,
+  `--archived`) across `project`, `plan`, `stage`, `unit`, `workflow`, `prompts`, `backend`,
+  `db` and `config` — so `--help` at any depth of the command tree is now complete.
 
 ## [1.3.0] - 2026-09-07
 

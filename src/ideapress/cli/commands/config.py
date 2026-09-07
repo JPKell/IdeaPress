@@ -32,7 +32,9 @@ def _flatten(payload: dict[str, Any], prefix: str = "") -> list[tuple[str, Any]]
 @app.command(name="show")
 def show(
     json_output: Annotated[bool, typer.Option("--json", help="Emit JSON.")] = False,
-    config: Annotated[str | None, typer.Option("--config")] = None,
+    config: Annotated[
+        str | None, typer.Option("--config", help="Path to a config.toml file.")
+    ] = None,
 ) -> None:
     """Print the effective configuration and where each value came from. Mode: local.
 
@@ -70,7 +72,9 @@ def show(
 
 @app.command(name="validate")
 def validate(
-    config: Annotated[str | None, typer.Option("--config")] = None,
+    config: Annotated[
+        str | None, typer.Option("--config", help="Path to a config.toml file.")
+    ] = None,
 ) -> None:
     """Validate configuration without starting anything. Mode: local.
 

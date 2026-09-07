@@ -55,7 +55,9 @@ def upgrade_command() -> None:
 
 @app.command(name="status")
 def status_command(
-    json_output: Annotated[bool, typer.Option("--json")] = False,
+    json_output: Annotated[
+        bool, typer.Option("--json", help="Print JSON instead of text.")
+    ] = False,
 ) -> None:
     """Report the schema revision and the database size. Mode: local."""
     from ideapress.services.database import get_status

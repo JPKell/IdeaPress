@@ -14,7 +14,7 @@ app = typer.Typer(no_args_is_help=True, help="Run, inspect and cancel workflow s
 
 @app.command(name="run")
 def run(
-    project_id: Annotated[str, typer.Argument()],
+    project_id: Annotated[str, typer.Argument(help="The project's id.")],
     stage: Annotated[str, typer.Argument(help="A stage identifier from workflows §2.")],
     units: Annotated[
         str | None, typer.Option("--units", help="Comma-separated unit keys; all when omitted.")
@@ -45,7 +45,9 @@ def run(
 
 @app.command(name="list")
 def list_stages(
-    json_output: Annotated[bool, typer.Option("--json")] = False,
+    json_output: Annotated[
+        bool, typer.Option("--json", help="Print JSON instead of text.")
+    ] = False,
 ) -> None:
     """List the stages, their order, their gates and which use a model. Mode: local."""
     from ideapress.domain.stages import STAGES
@@ -69,9 +71,11 @@ def list_stages(
 
 @app.command(name="status")
 def status(
-    project_id: Annotated[str, typer.Argument()],
-    task_id: Annotated[str, typer.Argument()],
-    json_output: Annotated[bool, typer.Option("--json")] = False,
+    project_id: Annotated[str, typer.Argument(help="The project's id.")],
+    task_id: Annotated[str, typer.Argument(help="The stage task's id.")],
+    json_output: Annotated[
+        bool, typer.Option("--json", help="Print JSON instead of text.")
+    ] = False,
 ) -> None:
     """Report a stage task's state, progress and attempts. Mode: local."""
     from ideapress.cli.commands.plan import runtime_for
@@ -97,8 +101,8 @@ def status(
 
 @app.command(name="cancel")
 def cancel(
-    project_id: Annotated[str, typer.Argument()],
-    task_id: Annotated[str, typer.Argument()],
+    project_id: Annotated[str, typer.Argument(help="The project's id.")],
+    task_id: Annotated[str, typer.Argument(help="The stage task's id.")],
 ) -> None:
     """Cancel a running stage. Mode: local.
 

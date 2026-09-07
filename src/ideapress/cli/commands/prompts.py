@@ -18,7 +18,11 @@ app = typer.Typer(no_args_is_help=True, help="Inspect prompt records and their h
 
 
 @app.command(name="list")
-def list_prompts(json_output: Annotated[bool, typer.Option("--json")] = False) -> None:
+def list_prompts(
+    json_output: Annotated[
+        bool, typer.Option("--json", help="Print JSON instead of text.")
+    ] = False,
+) -> None:
     """List every prompt record with its version and hash. Mode: local."""
     from ideapress.services.prompts import library
 
@@ -37,8 +41,10 @@ def list_prompts(json_output: Annotated[bool, typer.Option("--json")] = False) -
 
 @app.command(name="show")
 def show(
-    prompt_id: Annotated[str, typer.Argument()],
-    json_output: Annotated[bool, typer.Option("--json")] = False,
+    prompt_id: Annotated[str, typer.Argument(help="The prompt's id.")],
+    json_output: Annotated[
+        bool, typer.Option("--json", help="Print JSON instead of text.")
+    ] = False,
 ) -> None:
     """Show one prompt record in full. Mode: local."""
     from setspec.prompts import PromptNotFound
