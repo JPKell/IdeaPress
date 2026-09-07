@@ -107,6 +107,9 @@ ignore = ["D100", "D104"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101", "D1"]
+# Golden fixtures: literal `render()` bytes and dict fixtures captured verbatim from a run, not
+# prose a person wraps. E501 on a captured string is a defect in the rule, not the fixture.
+"tests/unit/test_context_assembly_golden.py" = ["E501"]
 # Alembic-generated: upgrade()/downgrade() carry no behaviour beyond the revision's own
 # docstring, and their bodies are op.* DDL calls Alembic itself generated.
 "src/ideapress/infrastructure/db/migrations/versions/*.py" = ["D1"]
