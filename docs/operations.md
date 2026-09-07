@@ -41,6 +41,12 @@ ideapress db restore --from ./backups/ideapress-20260901.sqlite3
 ideapress project import ./backups/local-inference.ideapress.zip
 ```
 
+A database ahead of the installed code refuses at startup with `SchemaAhead`, naming both
+revisions and the backup directory; the downgrade path is: stop the application, restore that
+backup, install the older version — proved end to end by
+`tests/integration/test_downgrade_and_schema_ahead.py`, with the backup/restore round trip itself
+proved on both dialects by `tests/integration/test_backup_restore.py`.
+
 ## PostgreSQL
 
 ```toml
