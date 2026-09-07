@@ -37,7 +37,10 @@ dependencies = [
     # Row J1: per-unit/per-project cost (loadledger) and the S4 egress badge backed by recorded
     # decisions (commissioner). `[sql]` for the mountable-models pattern (ADR-0050) — both mount
     # unconditionally in infrastructure/db/models.py, so the extra is never optional in practice.
-    "loadledger[sql]>=0.2,<0.3",
+    # K4 (2026-09-07) raises the floor to 0.3: `services/pricing.py` is now the thin edge over
+    # `loadledger.pricing`, the one ADR-0072 reader (ADR-0110), so an earlier LoadLedger cannot
+    # satisfy this application at all.
+    "loadledger[sql]>=0.3,<0.4",
     "commissioner[sql]>=0.1.1,<0.2",
     # J2 (2026-09-07): stage context assembly's reduction runs through CutCtx's DropOldestPolicy,
     # behind the unchanged assemble_context() seam (ADR-0104). No pin move: cutctx 0.1.0 requires
