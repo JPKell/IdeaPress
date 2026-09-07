@@ -24,6 +24,7 @@ from ideapress.domain.requirements import (
     SourceReference,
 )
 from ideapress.errors import ContextLimitExceeded
+from ideapress.services.project_review import render_units
 
 COMPILED_BY = CompiledBy(prompt_id="stages.requirements.compile", version="1.0.0")
 
@@ -315,3 +316,28 @@ def test_a_dropped_assembly_carries_the_context_compacted_report() -> None:
     assert len(body["dropped_turn_ids"]) == len(assembled.dropped)
     assert len(body["kept_turn_ids"]) == len(assembled.sections)
     assert body["turns_before"] == len(body["kept_turn_ids"]) + len(body["dropped_turn_ids"])
+
+
+# --- Row K3: project_review's own (unbudgeted, for now) rendering, captured as a golden fixture
+# before it is routed through the same CutCtx chain. The golden value below is never edited once
+# K3 lands: a case that needs editing here is a stop, not a rebase (docs/history/K3_HANDOFF.md).
+
+REVIEW_UNITS = {
+    "U-01": "First section text about the introduction.",
+    "U-02": "Second section text about the middle content.",
+    "U-03": "Third section text about the closing remarks.",
+}
+REVIEW_TITLES = {"U-01": "Opening", "U-02": "Middle", "U-03": "Closing"}
+REVIEW_GOLDEN = (
+    "### U-01 — Opening\n"
+    "First section text about the introduction.\n\n"
+    "### U-02 — Middle\n"
+    "Second section text about the middle content.\n\n"
+    "### U-03 — Closing\n"
+    "Third section text about the closing remarks."
+)
+
+
+def test_render_units_matches_the_captured_golden() -> None:
+    """Locks in `render_units`'s exact format before K3 gives it a budget."""
+    assert render_units(REVIEW_UNITS, REVIEW_TITLES) == REVIEW_GOLDEN
