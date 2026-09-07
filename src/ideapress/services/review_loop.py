@@ -442,6 +442,11 @@ def run_review_loop(
             break
 
         runtime.runner.checkpoint(task)
+        # Deliberately no neighbouring_units/research_notes (row K3, docs/history/K3_HANDOFF.md):
+        # `stages.revise.improve` asks the model to "change as little else as possible", the
+        # opposite of what broader cross-unit context invites, so this stays the narrow context a
+        # targeted fix needs and never has anything to drop — the context.compacted branch below
+        # is exercised at the domain layer (test_context_budget.py) but unreachable from here.
         context = assemble_context(
             unit=unit,
             requirements=requirements,

@@ -291,6 +291,17 @@ this order is enforced by `cutctx`'s `DropOldestPolicy` behind `domain.context_a
 `assemble_context()` seam, rather than by a hand-rolled fill loop; the order above, and everything
 else on this page, is unchanged by the adoption.
 
+`project_review` (stage 15) assembles a different context — every committed unit, and nothing else
+— through the same `DropOldestPolicy` chain behind a sibling seam,
+`domain.context_assembly.assemble_review_context()` (row K3). Nothing there is pinned: stage 15's
+only documented input is every committed unit, so the reduction order is units dropped from the
+*end* of reading order first — the earliest units establish the terms and facts later ones are
+checked against, so keeping that end intact for as long as the configured budget allows
+(`workflow.project_review_context_budget_tokens`) gives the reviewer an actual anchor, where
+dropping from the front would leave it comparing later units to each other with none. Because
+nothing is pinned, CutCtx's own overflow error cannot apply here; a budget too small to hold even
+the single cheapest unit is refused explicitly instead of silently reviewing an emptied document.
+
 ---
 
 ## 8. Commit and provenance

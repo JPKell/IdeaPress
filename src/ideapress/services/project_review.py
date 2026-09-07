@@ -13,6 +13,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+from ideapress.domain.context_assembly import assemble_review_context
 from ideapress.domain.inference import Correlation, ResponseFormat, StageLimits, StageRequest
 from ideapress.errors import StagePreconditionFailed
 from ideapress.infrastructure.db.models import AuditFinding as AuditFindingRow
@@ -27,18 +28,11 @@ if TYPE_CHECKING:
     from ideapress.services.runtime import Runtime
     from ideapress.services.stages import StageTask
 
-__all__ = ["PROJECT_REVIEW_PROMPT_ID", "project_review_body", "render_units"]
+__all__ = ["PROJECT_REVIEW_PROMPT_ID", "project_review_body"]
 
 logger = logging.getLogger(__name__)
 
 PROJECT_REVIEW_PROMPT_ID = "stages.project_review.consistency"
-
-
-def render_units(units: dict[str, str], titles: dict[str, str]) -> str:
-    """Render every committed unit for the reviewer, in reading order and labelled by key."""
-    return "\n\n".join(
-        f"### {key} — {titles.get(key, '')}\n{text.strip()}" for key, text in units.items()
-    )
 
 
 def project_review_body(runtime: Runtime, *, project_id: str) -> Callable[[StageTask], None]:
@@ -48,6 +42,11 @@ def project_review_body(runtime: Runtime, *, project_id: str) -> Callable[[Stage
         StagePreconditionFailed: Fewer than two units are committed. A cross-unit review of one
             unit has nothing to compare, and running it anyway would produce findings that are
             really per-unit ones the audit already made.
+        ContextLimitExceeded: Raised from within the returned body (row K3) when
+            ``workflow.project_review_context_budget_tokens`` cannot hold even the cheapest
+            committed unit. Not caught here — `project_review` runs to completion once, over the
+            whole project, with no per-unit pausing to fall back to, so the stage fails with both
+            numbers rather than reviewing an empty document.
     """
     from sqlalchemy import select
 
@@ -75,7 +74,21 @@ def project_review_body(runtime: Runtime, *, project_id: str) -> Callable[[Stage
         sink = runtime.events
         runtime.runner.checkpoint(task)
 
-        prompt = render(PROJECT_REVIEW_PROMPT_ID, {"units": render_units(units, titles)})
+        context = assemble_review_context(
+            units=units,
+            titles=titles,
+            budget_tokens=runtime.settings.workflow.project_review_context_budget_tokens,
+        )
+        if context.report is not None:
+            sink.emit(
+                database,
+                task.run_id,
+                event_type="context.compacted",
+                message=f"project_review dropped {', '.join(context.dropped)}",
+                data=context.report.to_dict(),
+            )
+
+        prompt = render(PROJECT_REVIEW_PROMPT_ID, {"units": context.render()})
         result = runtime.runner.gateway.run(
             StageRequest(
                 stage="project_review",

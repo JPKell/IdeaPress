@@ -13,6 +13,18 @@ packaging and release standards §3.
   document by `tests/contract/test_openapi_snapshot.py` (ADR-0108, row K2). Regenerate with
   `python -c 'from tests.contract.test_openapi_snapshot import write; write()'` after any route
   change.
+- **`project_review`'s prompt now has a budget** (row K3, J2's D3 follow-up,
+  `docs/history/K3_HANDOFF.md`). `domain.context_assembly.assemble_review_context()` routes every
+  committed unit through the same `cutctx.DropOldestPolicy` chain J2 wired up for per-unit
+  assembly, behind a sibling seam of the same shape. Nothing is pinned — stage 15's documented
+  input is every committed unit and nothing else — so units are dropped from the *end* of reading
+  order first, keeping the earliest units (where the project's terms and facts are established)
+  intact for as long as the new `workflow.project_review_context_budget_tokens` (default 24000)
+  allows; a budget too small to hold even the single cheapest unit is refused with
+  `ContextLimitExceeded` rather than silently reviewing an emptied document. A generous budget
+  reproduces the prior unbudgeted rendering byte for byte (golden-tested against a
+  pre-change capture, `tests/unit/test_context_budget.py`). A dropped review emits
+  `context.compacted` once, on the same event sink `unit_loop`/`review_loop` already use.
 
 ## [1.2.0] - 2026-09-07
 

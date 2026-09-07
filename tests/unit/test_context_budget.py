@@ -14,6 +14,7 @@ from cutctx import CharRatioEstimator
 from ideapress.domain.context_assembly import (
     REDUCTION_ORDER,
     assemble_context,
+    assemble_review_context,
     estimate_tokens,
 )
 from ideapress.domain.plan import PlanUnit
@@ -24,7 +25,6 @@ from ideapress.domain.requirements import (
     SourceReference,
 )
 from ideapress.errors import ContextLimitExceeded
-from ideapress.services.project_review import render_units
 
 COMPILED_BY = CompiledBy(prompt_id="stages.requirements.compile", version="1.0.0")
 
@@ -318,9 +318,10 @@ def test_a_dropped_assembly_carries_the_context_compacted_report() -> None:
     assert body["turns_before"] == len(body["kept_turn_ids"]) + len(body["dropped_turn_ids"])
 
 
-# --- Row K3: project_review's own (unbudgeted, for now) rendering, captured as a golden fixture
-# before it is routed through the same CutCtx chain. The golden value below is never edited once
-# K3 lands: a case that needs editing here is a stop, not a rebase (docs/history/K3_HANDOFF.md).
+# --- Row K3: project_review's context, routed through `assemble_review_context` (ADR-0104's
+# same seam, applied to a caller with no undroppable content). REVIEW_GOLDEN was captured from
+# `render_units` before this row touched it and is never edited once K3 lands: a case that needs
+# editing here is a stop, not a rebase (docs/history/K3_HANDOFF.md).
 
 REVIEW_UNITS = {
     "U-01": "First section text about the introduction.",
@@ -338,6 +339,60 @@ REVIEW_GOLDEN = (
 )
 
 
-def test_render_units_matches_the_captured_golden() -> None:
-    """Locks in `render_units`'s exact format before K3 gives it a budget."""
-    assert render_units(REVIEW_UNITS, REVIEW_TITLES) == REVIEW_GOLDEN
+def test_a_generous_review_budget_reproduces_the_captured_golden() -> None:
+    """The CutCtx-routed replacement reproduces `render_units`'s exact prior output byte for byte
+    when nothing needs to drop (row K3)."""
+    assembled = assemble_review_context(
+        units=REVIEW_UNITS, titles=REVIEW_TITLES, budget_tokens=100_000
+    )
+    assert assembled.dropped == ()
+    assert assembled.report is None
+    assert assembled.render() == REVIEW_GOLDEN
+
+
+def test_review_units_are_dropped_latest_in_reading_order_first() -> None:
+    """Least valuable first (row K3): the earliest units establish what a drift check compares
+    against, so a tight budget keeps them and drops the latest instead."""
+    assembled = assemble_review_context(units=REVIEW_UNITS, titles=REVIEW_TITLES, budget_tokens=32)
+    assert assembled.dropped == ("U-03",)
+    assert assembled.render() == (
+        "### U-01 — Opening\nFirst section text about the introduction.\n\n"
+        "### U-02 — Middle\nSecond section text about the middle content."
+    )
+
+    tighter = assemble_review_context(units=REVIEW_UNITS, titles=REVIEW_TITLES, budget_tokens=16)
+    assert tighter.dropped == ("U-03", "U-02")
+    assert tighter.render() == "### U-01 — Opening\nFirst section text about the introduction."
+
+
+def test_review_report_only_when_something_is_dropped() -> None:
+    """D4's rule (ADR-0104) applies here too: no report unless something was actually dropped."""
+    generous = assemble_review_context(
+        units=REVIEW_UNITS, titles=REVIEW_TITLES, budget_tokens=100_000
+    )
+    assert generous.report is None
+
+    tight = assemble_review_context(units=REVIEW_UNITS, titles=REVIEW_TITLES, budget_tokens=32)
+    report = tight.report
+    assert report is not None
+    body = report.to_dict()
+    assert body["dropped_turn_ids"] == ["U-03"]
+    assert body["kept_turn_ids"] == ["U-02", "U-01"] or body["kept_turn_ids"] == ["U-01", "U-02"]
+
+
+def test_review_refuses_when_even_the_cheapest_unit_does_not_fit() -> None:
+    """Row K3: nothing here is pinned, so a too-small budget is refused explicitly instead of
+    CutCtx silently returning an empty view — the honest failure workflows §7 asks for everywhere
+    else, reached the one way this caller can reach it."""
+    with pytest.raises(ContextLimitExceeded) as excinfo:
+        assemble_review_context(units=REVIEW_UNITS, titles=REVIEW_TITLES, budget_tokens=5)
+    assert excinfo.value.details["required_tokens"] == 16
+    assert excinfo.value.details["budget_tokens"] == 5
+
+
+def test_an_empty_project_review_assembles_to_nothing() -> None:
+    """No committed units is not a budget failure — there is simply nothing to assemble."""
+    assembled = assemble_review_context(units={}, titles={}, budget_tokens=100)
+    assert assembled.render() == ""
+    assert assembled.dropped == ()
+    assert assembled.report is None

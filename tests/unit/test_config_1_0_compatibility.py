@@ -37,11 +37,18 @@ ADDED_IN_J1_NESTED: dict[str, set[str]] = {
     "openai_compatible": {"max_data_classification"},
 }
 
+# Row K3 (staged for 1.2.0, unreleased): project_review's whole-document context gets its own
+# budget key, alongside the per-unit `context_budget_tokens` it already had.
+ADDED_IN_K3: dict[str, set[str]] = {
+    "workflow": {"project_review_context_budget_tokens"},
+}
+
 
 def _without_1_1_keys(dump: dict[str, Any]) -> dict[str, Any]:
-    """Return ``dump`` with exactly the keys 1.1 and row J1 added removed, and nothing else."""
+    """Return ``dump`` with exactly the keys 1.1, row J1 and row K3 added removed, and nothing
+    else."""
     trimmed = {section: dict(values) for section, values in dump.items()}
-    for section, keys in ADDED_IN_1_1.items():
+    for section, keys in {**ADDED_IN_1_1, **ADDED_IN_K3}.items():
         for key in keys:
             assert key in trimmed[section], f"{section}.{key} is missing from the 1.1 dump"
             del trimmed[section][key]

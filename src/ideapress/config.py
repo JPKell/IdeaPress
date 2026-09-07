@@ -525,6 +525,15 @@ class WorkflowSettings(BaseModel):
             "specification are never dropped to fit it; overflow fails with both numbers."
         ),
     )
+    project_review_context_budget_tokens: int = Field(
+        default=24_000,
+        ge=256,
+        description=(
+            "Token budget for project_review's whole-document context (workflows §2 stage 15). "
+            "Nothing here is pinned — units are dropped, latest in reading order first — and the "
+            "stage refuses with both numbers rather than silently reviewing an empty document."
+        ),
+    )
     allow_audit_gated_requirements: bool = Field(
         default=True,
         description=(

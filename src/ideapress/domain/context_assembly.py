@@ -59,9 +59,11 @@ if TYPE_CHECKING:
 __all__ = [
     "REDUCTION_ORDER",
     "AssembledContext",
+    "AssembledReview",
     "ContextSection",
     "Droppability",
     "assemble_context",
+    "assemble_review_context",
     "estimate_tokens",
 ]
 
@@ -169,6 +171,34 @@ class AssembledContext:
             if candidate.name == name:
                 return candidate
         return None
+
+
+@dataclass(frozen=True, slots=True)
+class AssembledReview:
+    """What ``project_review``'s whole-document context assembled to, and what had to go.
+
+    Unlike :class:`AssembledContext`, nothing here is pinned. Workflows §2 stage 15's only
+    documented input is "All units" — there is no per-review unit specification or requirement
+    list the way per-unit assembly has, so every unit is budgeted and the least valuable is
+    dropped first (see :func:`assemble_review_context` for which end that is, and why).
+
+    Attributes:
+        rendered_units: The surviving units, in reading order, already rendered in the stage's own
+            ``"### {key} — {title}\\n{text}"`` block format — unchanged from before this row.
+        dropped: Unit keys removed to fit, in the order they were removed.
+        budget_tokens: The budget it was assembled against.
+        report: The CutCtx ``context.compacted`` event body, when anything was dropped to fit;
+            ``None`` when nothing was.
+    """
+
+    rendered_units: tuple[str, ...] = ()
+    dropped: tuple[str, ...] = ()
+    budget_tokens: int = 0
+    report: CompactionReport | None = None
+
+    def render(self) -> str:
+        """The whole document: every surviving unit's block, joined exactly as before this row."""
+        return "\n\n".join(self.rendered_units)
 
 
 def _rank_of(name: str) -> int:
@@ -339,6 +369,103 @@ def assemble_context(
     return AssembledContext(
         sections=(*always, *kept_final),
         dropped=dropped_names,
+        budget_tokens=budget_tokens,
+        report=report,
+    )
+
+
+def assemble_review_context(
+    *,
+    units: Mapping[str, str],
+    titles: Mapping[str, str],
+    budget_tokens: int,
+    estimator: Callable[[str], int] = estimate_tokens,
+) -> AssembledReview:
+    """Assemble ``project_review``'s whole-document context within ``budget_tokens`` (row K3).
+
+    Workflows §2 stage 15's documented input is "All units" — there is no unit specification or
+    requirement list here for CutCtx's ``pinned`` to protect the way :func:`assemble_context`
+    protects them, so nothing is pinned and every unit is dropped, least valuable first, until the
+    budget fits.
+
+    **Drop order.** Units are dropped from the *end* of reading order first — the latest unit is
+    the least valuable and goes before the earliest. A cross-unit review is checking later material
+    for drift *away from* something, and the earliest units are where the project's terms, facts
+    and structure are first established; keeping that end intact for as long as the budget allows
+    gives the reviewer the actual reference material a drift check needs, where dropping from the
+    front would leave it comparing later units to each other with no anchor for what "consistent"
+    means in this project.
+
+    Args:
+        units: Every committed unit's text by key, in reading order
+            (``services.units.committed_units``'s contract).
+        titles: Unit titles by key, for the heading each block already carries.
+        budget_tokens: The ceiling, from ``workflow.project_review_context_budget_tokens``.
+        estimator: Token estimator, injected so a caller with a real tokenizer can supply one.
+
+    Returns:
+        The assembly, naming everything that was dropped to fit.
+
+    Raises:
+        ContextLimitExceeded: The budget cannot hold even the single cheapest unit. Nothing here
+            is pinned, so CutCtx's own ``BudgetUnsatisfiable`` (which fires only when a *pinned*
+            turn overflows) never applies to this caller — a budget too small would otherwise have
+            CutCtx silently return an empty view, which is the silent-degradation-with-extra-steps
+            workflows §7's philosophy refuses everywhere else. This is that same refusal, made
+            explicit at the one seam CutCtx's own contract cannot reach for a caller with no
+            undroppable content (ADR-0104's "Revisit when"), carrying the smallest unit's size and
+            the budget so an operator raises ``workflow.project_review_context_budget_tokens``
+            rather than guessing.
+    """
+    if not units:
+        return AssembledReview(budget_tokens=budget_tokens)
+
+    ordered_keys = list(units)
+    rendered_by_key = {
+        key: f"### {key} — {titles.get(key, '')}\n{text.strip()}" for key, text in units.items()
+    }
+    tokens_by_key = {key: estimator(block) for key, block in rendered_by_key.items()}
+
+    # Oldest-first is least-valuable-first: build the transcript from the tail of reading order
+    # forward, so `DropOldestPolicy` drops the latest units before the earliest (see docstring).
+    turns = tuple(
+        TranscriptTurn(
+            turn_id=key,
+            role=Role.USER,
+            content=rendered_by_key[key],
+            token_estimate=tokens_by_key[key],
+            pinned=False,
+        )
+        for key in reversed(ordered_keys)
+    )
+    transcript = Transcript(turns=turns)
+    budget = CompactionBudget(max_tokens=budget_tokens, protected_recent_turns=0)
+    plan = DropOldestPolicy().decide(transcript, budget)
+
+    kept_ids = {action.turn_id for action in plan.actions if action.action is Action.KEEP}
+    kept_keys = [key for key in ordered_keys if key in kept_ids]
+    dropped_keys = tuple(key for key in reversed(ordered_keys) if key not in kept_ids)
+
+    if not kept_keys:
+        cheapest = min(tokens_by_key.values())
+        message = (
+            f"Even the cheapest committed unit needs {cheapest} tokens and the budget is "
+            f"{budget_tokens}. Nothing in project_review's context is pinned, so raising "
+            "workflow.project_review_context_budget_tokens is the only fix — the review cannot "
+            "silently run over an empty document instead."
+        )
+        raise ContextLimitExceeded(
+            message,
+            details={"required_tokens": cheapest, "budget_tokens": budget_tokens},
+        )
+
+    report: CompactionReport | None = None
+    if dropped_keys:
+        report = CompactionExecutor().apply(transcript, plan).report
+
+    return AssembledReview(
+        rendered_units=tuple(rendered_by_key[key] for key in kept_keys),
+        dropped=dropped_keys,
         budget_tokens=budget_tokens,
         report=report,
     )
