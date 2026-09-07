@@ -7,6 +7,8 @@ packaging and release standards §3.
 
 ## [Unreleased]
 
+## [1.3.1] - 2026-09-07
+
 ### Changed
 
 - `modelrack` range widened from `>=0.5,<0.6` to `>=0.7,<0.8` so the four applications can be
