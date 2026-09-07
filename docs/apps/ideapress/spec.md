@@ -61,7 +61,7 @@ without any workflow code changing — when LoadCoach is available.
 Optional extra: `sweatmeter` (status display only).
 **Third party:** `fastapi`, `uvicorn[standard]`, `typer`, `pydantic`, `pydantic-settings`,
 `sqlalchemy`, `alembic`, `jinja2`, `python-multipart` (HTML form posts, which
-[ADR-0020](../../adr/0020-server-rendered-html.md) makes the primary UI mechanism), `httpx`
+[ADR-0020](../../adr/0020-ui-rendering-strategy.md) makes the primary UI mechanism), `httpx`
 (LoadCoach adapter).
 **External services:** an inference backend — Ollama by default, or LoadCoach, or any
 OpenAI-compatible endpoint.
