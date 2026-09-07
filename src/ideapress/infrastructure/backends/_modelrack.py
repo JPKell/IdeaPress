@@ -284,6 +284,11 @@ def to_stage_result(
             thinking_tokens=(
                 _optional_count(result.usage.thinking_tokens) if result.usage is not None else None
             ),
+            # ADR-0070 rule 1: a class the provider's protocol cannot bill comes back as a real
+            # `0` from the adapter that knows so and totals; one it could have reported and did
+            # not is `UNSUPPORTED`, which `_optional_count` keeps as `None`, out of every total.
+            cache_write_tokens=_optional_count(tokens.cache_write_tokens) if tokens else None,
+            cache_read_tokens=_optional_count(tokens.cache_read_tokens) if tokens else None,
         ),
         timing=Timing(
             duration_ms=_ms(timing.client_wall_ms) if timing else None,

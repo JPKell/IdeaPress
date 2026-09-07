@@ -499,7 +499,16 @@ class MockLoadCoach:
                 "flags": list(self._routing_flags),
                 "explanation_url": f"/api/v1/jobs/{job_id}/explanation",
             },
-            "usage": {"input_tokens": 812, "output_tokens": 1104, "thinking_tokens": "unsupported"},
+            # ADR-0070 rules 3 and 7: Ollama's protocol has no cache-billing vocabulary, so
+            # LoadCoach carries both cache classes as a real `0` on the wire — not "unsupported",
+            # which is what it sends for a class it could have billed and did not report.
+            "usage": {
+                "input_tokens": 812,
+                "output_tokens": 1104,
+                "cache_write_tokens": 0,
+                "cache_read_tokens": 0,
+                "thinking_tokens": "unsupported",
+            },
             "timing": {
                 "total_ms": 18422,
                 "provider_ms": 18310,
@@ -611,6 +620,8 @@ class MockLoadCoach:
             "usage": {
                 "input_tokens": None,
                 "output_tokens": None,
+                "cache_write_tokens": "unsupported",
+                "cache_read_tokens": "unsupported",
                 "thinking_tokens": "unsupported",
             },
             "timing": {

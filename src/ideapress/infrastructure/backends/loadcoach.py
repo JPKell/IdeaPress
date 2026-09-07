@@ -274,6 +274,20 @@ def _as_int(value: object) -> int:
     return int(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else 0
 
 
+def _as_optional_int(value: object) -> int | None:
+    """A token count LoadCoach may not have, keeping "not reported" distinct from zero.
+
+    ADR-0070 rule 7 puts all four token classes on LoadCoach's wire, and rule 1 decides what a
+    number there means: a class the provider's protocol cannot bill arrives as ``0``, which is a
+    real zero and totals; a class it could have billed and did not report arrives as the string
+    ``"unsupported"`` (ADR-0016 rule 4), which becomes ``None`` here and stays out of every total.
+    An older LoadCoach that sends no such key at all is the same fact and gets the same answer.
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return int(value)
+
+
 def _as_optional_float(value: object) -> float | None:
     """A millisecond timing, or ``None`` when LoadCoach did not report one.
 
@@ -1050,6 +1064,8 @@ class LoadCoachBackend:
                     if isinstance((usage or {}).get("thinking_tokens"), (int, float))
                     else None
                 ),
+                cache_write_tokens=_as_optional_int((usage or {}).get("cache_write_tokens")),
+                cache_read_tokens=_as_optional_int((usage or {}).get("cache_read_tokens")),
             ),
             timing=Timing(
                 duration_ms=_as_optional_float((timing or {}).get("total_ms")),
