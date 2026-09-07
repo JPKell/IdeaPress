@@ -13,10 +13,13 @@ is an untested dialect.
 
 from __future__ import annotations
 
+import shutil
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
-from sqlalchemy import inspect
+from sqlalchemy import inspect, text
+from weightsdb import create_engine_for
 from weightsdb.testing import temporary_postgres
 
 from ideapress.infrastructure.db.models import Base
@@ -24,7 +27,6 @@ from ideapress.services.database import Database, get_status, migration_runner, 
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
-    from pathlib import Path
 
 EXPECTED_TABLES = {
     "projects",
@@ -281,3 +283,36 @@ def test_0009_leaves_existing_attempts_unreported_rather_than_zero(
     assert row.input_tokens == 812
     assert row.cache_write_tokens is None
     assert row.cache_read_tokens is None
+
+
+def test_1_3_0_database_migrates_to_head_and_keeps_its_rows(tmp_path: Path) -> None:
+    """A real released-version database, not one this test created (M9_AUDIT.md Group 3, O1).
+
+    The fixture is a real ``ideapress==1.3.0`` install (from PyPI, in a scratch venv) migrated by
+    its own ``ideapress db upgrade`` and seeded with two projects through ``ideapress project
+    create`` — a real CLI write, not a repository call, since IdeaPress's CLI can do this one.
+    1.3.0's head is this build's head too (``0009`` — no revision has landed since that release),
+    so today this asserts the upgrade is the documented no-op and both rows survive; it starts
+    asserting a real migration the day ``0010`` lands.
+    """
+    fixture = Path(__file__).parent.parent / "fixtures" / "databases" / "ideapress-1.3.0.sqlite3"
+    working_copy = tmp_path / "ideapress-1.3.0.sqlite3"
+    shutil.copyfile(fixture, working_copy)
+
+    engine = create_engine_for(f"sqlite:///{working_copy}")
+    try:
+        runner = migration_runner(engine)
+        current_before = runner.current()
+        assert current_before is not None, "the 1.3.0 fixture must carry a recorded revision"
+
+        database = Database(engine)
+        upgrade(database)
+
+        assert runner.is_at_head()
+        with engine.connect() as connection:
+            slugs = {
+                row[0] for row in connection.execute(text("SELECT slug FROM projects")).fetchall()
+            }
+        assert slugs == {"fixture-project-one", "fixture-project-two"}
+    finally:
+        engine.dispose()

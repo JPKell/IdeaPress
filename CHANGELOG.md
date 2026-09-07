@@ -27,6 +27,23 @@ packaging and release standards §3.
   from `pyproject.toml`, and `tests/unit/test_readme_compatibility.py` asserting the two
   cannot drift (M9 audit Group 5, item R3).
 
+- `tests/integration/test_downgrade_and_schema_ahead.py` drives the packaging standards §6.1
+  downgrade drill end to end: upgrade, write a row, back up, jump `alembic_version` ahead,
+  `SchemaAhead` refuses and names both revisions and the backup directory, restore the backup,
+  start again (M9 audit Group 3, item O2). `ensure_ready` did not previously detect this case at
+  all — it fell through to an attempted `upgrade()` alembic would fail on its own terms. Also
+  proves IdeaPress's own translation of the same refusal into `Runtime.startup_error` (spec §20
+  AC7: an unreachable/broken database is a health condition here, never a startup crash).
+- `tests/integration/test_backup_restore.py` (new — IdeaPress had none), in the shape of
+  FreeWeight's own: WAL replay, corrupt-backup refusal, no leftover `.pre-restore` file, plus a
+  round trip parametrized over `weightsdb.testing.temporary_sqlite`/`temporary_postgres` directly
+  (M9 audit Group 3, item O4).
+- `tests/fixtures/databases/ideapress-1.3.0.sqlite3`, a real `ideapress==1.3.0` PyPI install
+  migrated and seeded with two projects through its own CLI (`ideapress project create`),
+  exercised by `test_1_3_0_database_migrates_to_head_and_keeps_its_rows` (M9 audit Group 3, item
+  O1). `.gitignore` now keeps `tests/fixtures/databases/*` out of the blanket `*.sqlite3`
+  exclusion, the same way FreeWeight's does.
+
 ### Fixed
 
 - **Every CLI argument and option now carries help text.** `test_every_command_has_help.py`
