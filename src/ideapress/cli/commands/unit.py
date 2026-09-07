@@ -87,8 +87,12 @@ def show(
                 f"      prompt {attempt['prompt_id']} {attempt['prompt_version']} "
                 f"{attempt['prompt_sha256']}"
             )
+            # An em dash, never 0: a backend that reported no count observed nothing (ADR-0016).
+            tokens_in = attempt["input_tokens"]
+            tokens_out = attempt["output_tokens"]
             typer.echo(
-                f"      tokens in {attempt['input_tokens']} out {attempt['output_tokens']}, "
+                f"      tokens in {tokens_in if tokens_in is not None else '—'} "
+                f"out {tokens_out if tokens_out is not None else '—'}, "
                 f"{attempt['provider_ms']} ms"
             )
             if attempt["degradations"]:

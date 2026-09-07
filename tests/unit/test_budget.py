@@ -279,6 +279,59 @@ def test_an_unreported_cache_class_still_floors_a_fully_rated_price(database: Da
     assert service.project_cost(project_id="p1")["money_spent_display"] == "at least 3 USD"
 
 
+def test_an_unreported_input_count_is_never_priced_as_zero(database: Database) -> None:
+    """Row K4: LoadCoach sends `"unsupported"` for a count it does not have (ADR-0016 rule 4).
+
+    That arrives here as `None`, becomes `UNSUPPORTED`, and is excluded — so the estimate does not
+    total and the figure is a floor. The coercion this replaced read it as `0`, which priced a
+    real call's whole input side at nothing and reported the result as a measured total.
+    """
+    from baseaicore import Money
+
+    pricing = ModelPricing(
+        identity=_PRICED_MODEL,
+        rates=TokenRates(
+            currency="USD",
+            input_per_million_tokens=Money.from_decimal("USD", "1.00"),
+            output_per_million_tokens=Money.from_decimal("USD", "2.00"),
+            cache_write_per_million_tokens=Money.from_decimal("USD", "1.25"),
+            cache_read_per_million_tokens=Money.from_decimal("USD", "0.10"),
+        ),
+        source=PricingSource.USER_OVERRIDE,
+        observed_at=AT,
+    )
+    service = _priced_service(database, (pricing,))
+    priced = service.price(
+        canonical_id="ollama/gemma4:12b",
+        usage=DomainTokenUsage(
+            input_tokens=None,
+            output_tokens=1_000_000,
+            cache_write_tokens=0,
+            cache_read_tokens=0,
+        ),
+        at=AT,
+    )
+    assert priced.cost is not None
+    assert not priced.cost.is_complete
+    assert priced.unpriced_reason
+    with database.write() as session:
+        service.debit(
+            session,
+            project_id="p1",
+            run_id="unit1",
+            source_ref="attempt1",
+            stage="draft",
+            backend="ollama",
+            priced=priced,
+            at=AT,
+        )
+    cost = service.project_cost(project_id="p1")
+    # The output side alone, announced as a floor — not "3 USD", and never "0 USD".
+    assert cost["money_spent_display"] == "at least 2 USD"
+    assert cost["tokens_spent_display"] == "at least 1000000"
+    assert cost["unmetered_debit_count"] == 1
+
+
 def test_a_partial_estimate_omits_an_unpriced_component_and_still_floors(
     database: Database,
 ) -> None:

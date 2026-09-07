@@ -22,6 +22,21 @@ packaging and release standards §3.
   Existing rows stay `NULL` — a build that never asked observed nothing, and a back-fill of `0`
   would be the fabricated zero ADR-0016 forbids.
 
+### Fixed
+
+- **A token count LoadCoach could not take is no longer recorded as zero.** All four billable
+  classes on `ideapress.domain.inference.TokenUsage` are now `int | None`, `None` meaning the
+  backend reported no count. `infrastructure/backends/loadcoach.py` read `"unsupported"` and a
+  missing key as `0` for input and output — harmless while LoadCoach sent `null` there, and a
+  fabricated zero from loadcoach 1.1.3 onward, which renders every unavailable count as
+  `"unsupported"` (ADR-0016 rule 4, ADR-0112). The ModelRack adapter's `_count` helper, which
+  turned `UNSUPPORTED` into `0` "for arithmetic only", is gone for the same reason. An unreported
+  class now becomes `UNSUPPORTED` at the BaseAiCore boundary, so the estimate does not total and
+  the figure is announced as a floor (ADR-0069) instead of pricing a real call's input side at
+  nothing. The unit detail page and `ideapress unit show` render an unreported count as an em
+  dash, and the backend conformance suite states the rule for tokens as it already did for
+  timings.
+
 ### Changed
 
 - **`services/pricing.py` is now a thin edge over `loadledger.pricing`** (row K4, ADR-0110). The

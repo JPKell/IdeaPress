@@ -227,18 +227,13 @@ def _ms(value: object) -> float | None:
     return float(value) if is_supported(value) and isinstance(value, (int, float)) else None
 
 
-def _count(value: object) -> int:
-    """Read a token count, treating an unsupported one as zero *for arithmetic only*.
-
-    Token counts feed budget arithmetic that must produce a number. A backend that reports none
-    also reports ``token_counts=False`` in its capabilities, which is where the UI learns not to
-    present the total as measured.
-    """
-    return int(value) if is_supported(value) and isinstance(value, (int, float)) else 0
-
-
 def _optional_count(value: object) -> int | None:
-    """Read a token count that is genuinely optional, keeping "not reported" distinct from zero."""
+    """Read a token count, keeping "not reported" distinct from zero.
+
+    Every token count goes through this since row K4, input and output included. The `_count`
+    helper it replaced returned `0` for `UNSUPPORTED` "for arithmetic only", which put a
+    fabricated zero into a provenance record that a person is asked to trust (ADR-0016).
+    """
     return int(value) if is_supported(value) and isinstance(value, (int, float)) else None
 
 
@@ -279,8 +274,8 @@ def to_stage_result(
         structured=None,
         model=model,
         usage=TokenUsage(
-            input_tokens=_count(tokens.input_tokens) if tokens else 0,
-            output_tokens=_count(tokens.output_tokens) if tokens else 0,
+            input_tokens=_optional_count(tokens.input_tokens) if tokens else None,
+            output_tokens=_optional_count(tokens.output_tokens) if tokens else None,
             thinking_tokens=(
                 _optional_count(result.usage.thinking_tokens) if result.usage is not None else None
             ),

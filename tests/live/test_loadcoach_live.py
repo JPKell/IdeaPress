@@ -211,6 +211,7 @@ def test_the_configured_budget_is_what_the_real_loadcoach_applies(
             budget=48,
         )
     )
+    assert result.usage.output_tokens is not None, "a live LoadCoach reports its counts"
     assert result.usage.output_tokens <= 128, (
         f"asked for 48 output tokens and got {result.usage.output_tokens}; the configured budget "
         "is not reaching the provider"

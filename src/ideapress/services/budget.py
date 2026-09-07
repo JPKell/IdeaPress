@@ -61,7 +61,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
     from datetime import datetime
 
-    from baseaicore import CostEstimate
+    from baseaicore import CostEstimate, TokenCount
     from baseaicore import TokenUsage as BaseTokenUsage
     from loadledger import LedgerEntry, WindowBalance
 
@@ -270,21 +270,17 @@ class BudgetService:
             The usage with its estimate, or with ``cost=None`` and a reason: no model identity, no
             catalogue entry for these weights (the local case, and the "not covered" case alike).
         """
-        from baseaicore import UNSUPPORTED
         from baseaicore import TokenUsage as BaseTokenUsage
 
+        # `None` on any class is "the backend reported no such count", which is `UNSUPPORTED` —
+        # never 0, on any of the four. A backend whose protocol cannot bill a class reports that
+        # class as a real 0 itself (ADR-0070 rule 1), and that is what lets an estimate total; a
+        # class nobody reported is excluded, and the debit is a floor (ADR-0069).
         base_usage = BaseTokenUsage(
-            input_tokens=usage.input_tokens,
-            output_tokens=usage.output_tokens,
-            # `None` is "the backend reported no such class", which is `UNSUPPORTED` — never 0.
-            # A backend whose protocol cannot bill a class reports it as 0 itself (ADR-0070
-            # rule 1), and that is what lets the estimate total.
-            cache_write_tokens=(
-                UNSUPPORTED if usage.cache_write_tokens is None else usage.cache_write_tokens
-            ),
-            cache_read_tokens=(
-                UNSUPPORTED if usage.cache_read_tokens is None else usage.cache_read_tokens
-            ),
+            input_tokens=_reported(usage.input_tokens),
+            output_tokens=_reported(usage.output_tokens),
+            cache_write_tokens=_reported(usage.cache_write_tokens),
+            cache_read_tokens=_reported(usage.cache_read_tokens),
         )
         if canonical_id is None:
             return PricedUsage(
@@ -482,6 +478,19 @@ def balance_view(balance: WindowBalance) -> dict[str, Any]:
         "untotalled_debit_count": balance.untotalled_debit_count,
         "unmetered_debit_count": balance.unmetered_debit_count,
     }
+
+
+def _reported(count: int | None) -> TokenCount:
+    """Translate IdeaPress's "not reported" into BaseAiCore's, at the one boundary that needs it.
+
+    IdeaPress's domain carries no sentinel (spec §3), so an unreported count is ``None`` there and
+    :data:`baseaicore.UNSUPPORTED` here. Never ``0``: a class nothing reported is excluded from
+    every total and makes the debit a floor (ADR-0016, ADR-0069), where a zero would silently
+    claim the call was billed nothing for it.
+    """
+    from baseaicore import UNSUPPORTED
+
+    return UNSUPPORTED if count is None else count
 
 
 def _money(amount: MoneyAmount | None) -> Money | None:
