@@ -25,16 +25,20 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from baseaicore import SuiteError
+from baseaicore import DataClassification, SuiteError
 from sqlalchemy import select
 
-from ideapress.domain.stage_state import TERMINAL_RUN_STATES
+from ideapress.domain.stage_state import IN_FLIGHT_UNIT_STATES, TERMINAL_RUN_STATES
 from ideapress.errors import ProjectNotFound, StageAlreadyRunning, StagePreconditionFailed
 from ideapress.infrastructure.db.models import Attempt as AttemptRow
 from ideapress.infrastructure.db.models import StageRun as StageRunRow
+from ideapress.infrastructure.db.models import Unit as UnitRow
 from ideapress.observability.logging import correlation
+from ideapress.services.budget import pseudo_run_id
+from ideapress.services.egress import backend_target
 
 if TYPE_CHECKING:
+    from loadledger import CeilingVerdict
     from sqlalchemy.orm import Session
 
     from ideapress.domain.inference import StageResult
@@ -44,6 +48,8 @@ if TYPE_CHECKING:
     from ideapress.services.inference import InferenceGateway
 
 __all__ = ["StageRunner", "StageTask", "boot_id", "process_is_alive", "record_attempt"]
+# `_govern_attempt` and `_pause_for_exceeded_budget` are intentionally private: row J1's tests
+# exercise them through `record_attempt`, the public funnel, never directly.
 
 
 def boot_id() -> str:
@@ -148,6 +154,15 @@ def record_attempt(
 
     Returns:
         The attempt's identifier.
+
+    **The debit site (row J1).** This is the one funnel every stage attempt routes through
+    (kickoff ground truth 2), so it is also where a budget debit and an egress decision are
+    recorded — once per attempt, atomically with the attempt row itself (ADR-0044) — with **no
+    signature change** reaching this function's nine call sites, three of which
+    (``services/unit_loop.py``, ``services/project_review.py``, ``services/review_loop.py``) row
+    J2 owns concurrently and this row must not touch. See
+    :meth:`~ideapress.services.database.Database.attach_governance` for how governance reaches
+    this function without a new parameter.
     """
     from baseaicore import sha256_of
 
@@ -197,7 +212,112 @@ def record_attempt(
                 row.response_text = result.text
         session.add(row)
         session.flush()
+        try:
+            _govern_attempt(
+                database,
+                session,
+                stage_run_id=stage_run_id,
+                stage=stage,
+                unit_id=unit_id,
+                attempt_id=row.id,
+                result=result,
+            )
+        except Exception:  # noqa: BLE001 — governance never blocks recording the attempt itself
+            logger.exception("attempt.governance_failed", extra={"attempt_id": row.id})
         return row.id
+
+
+def _govern_attempt(
+    database: Database,
+    session: Session,
+    *,
+    stage_run_id: str,
+    stage: str,
+    unit_id: str | None,
+    attempt_id: str,
+    result: StageResult | None,
+) -> None:
+    """Debit the budget ledger and record an egress decision for one attempt (row J1).
+
+    Runs inside the same write-transaction :func:`record_attempt` already opened, so the debit,
+    the decision and the attempt row commit together or not at all (ADR-0044).
+
+    A no-op when nothing has attached governance
+    (:attr:`~ideapress.services.database.Database.budget` /
+    :attr:`~ideapress.services.database.Database.egress` are ``None`` — every existing test that
+    builds a bare :class:`~ideapress.services.database.Database` directly, and any future one that
+    does the same), and a no-op when ``result`` is ``None`` — a deterministic step
+    (``validate``, ``coverage``, ``commit``) or a failure before any usage existed reached no
+    backend to evaluate and has no usage to debit.
+
+    Raises:
+        ideapress.services.budget.CurrencyMismatchError: An estimate priced in a currency an
+            active money ceiling caps in another — a real configuration bug. Propagated rather
+            than swallowed here so the caller (this function's own `except Exception` in
+            :func:`record_attempt`) logs it once, in one place, instead of every debit site
+            needing to know about it.
+    """
+    budget = database.budget
+    egress = database.egress
+    settings = database.settings
+    if budget is None or egress is None or settings is None or result is None:
+        return
+    stage_run = session.get(StageRunRow, stage_run_id)
+    project_id = stage_run.project_id if stage_run is not None else ""
+    if not project_id:
+        return
+
+    at = datetime.now(UTC)
+    run_id = unit_id if unit_id is not None else pseudo_run_id(project_id)
+    canonical_id = result.model.canonical_id if result.model else None
+    priced = budget.price(canonical_id=canonical_id, usage=result.usage, at=at)
+    entry = budget.debit(
+        session,
+        project_id=project_id,
+        run_id=run_id,
+        source_ref=attempt_id,
+        stage=stage,
+        backend=result.backend,
+        priced=priced,
+        at=at,
+    )
+    if unit_id is not None and any(verdict.exceeded for verdict in entry.verdicts):
+        _pause_for_exceeded_budget(session, unit_id=unit_id, verdicts=entry.verdicts)
+
+    classification = DataClassification(settings.inference.data_classification)
+    egress.evaluate(
+        run_id=run_id,
+        source_ref=attempt_id,
+        classification=classification,
+        target=backend_target(settings, result.backend),
+        session=session,
+    )
+
+
+def _pause_for_exceeded_budget(
+    session: Session, *, unit_id: str, verdicts: tuple[CeilingVerdict, ...]
+) -> None:
+    """Pause a unit whose attempt just crossed a bound budget ceiling (D4).
+
+    Reuses the existing pause path (``services/workspace.py``'s ``pause_guidance``) rather than
+    raising: IdeaPress's pause/resume is its established way to stop work a person can unblock,
+    and LoadLedger itself decides nothing about what to do with an ``exceeded`` verdict (spec §3)
+    — that policy is this function.
+
+    A no-op for a unit not in an in-flight state: a unit already ``paused``, ``planned`` or
+    ``committed`` has no ``paused`` arrow to take a second time (or needs none), and this must
+    never raise on a unit its own stage has already moved on from.
+    """
+    unit = session.get(UnitRow, unit_id)
+    if unit is None or unit.state not in IN_FLIGHT_UNIT_STATES:
+        return
+    reasons = ", ".join(
+        f"{verdict.ceiling.scope.value}{f' ({verdict.ceiling.tag})' if verdict.ceiling.tag else ''}"
+        for verdict in verdicts
+        if verdict.exceeded
+    )
+    unit.state = "paused"
+    unit.paused_reason = f"A budget ceiling was exceeded: {reasons}."
 
 
 class StageRunner:

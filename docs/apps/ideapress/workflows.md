@@ -286,6 +286,11 @@ Reduction order when the budget is exceeded: research notes → distant unit sum
 summaries. Requirements and the unit specification are **never** dropped; if they alone exceed the
 budget, the stage fails with numbers rather than silently truncating the contract.
 
+Since J2 ([ADR-0104](../../adr/0104-an-adopted-reductions-seam-and-error-vocabulary-survive-it.md)),
+this order is enforced by `cutctx`'s `DropOldestPolicy` behind `domain.context_assembly`'s unchanged
+`assemble_context()` seam, rather than by a hand-rolled fill loop; the order above, and everything
+else on this page, is unchanged by the adoption.
+
 ---
 
 ## 8. Commit and provenance
@@ -310,6 +315,32 @@ facts and a pin can be refused between them, so recording the request would make
 record say something nobody verified. `NULL` in all three columns means no adapter answered, which
 is distinct from an adapter whose name is empty (impossible) and is why the columns are nullable
 rather than defaulted to `""`.
+
+**Row J1 adds two more facts to the same funnel** (`services/stages.py::record_attempt`), recorded
+once per attempt, atomically with the attempt row: a **budget debit** (LoadLedger) and an **egress
+decision** (Commissioner). Neither changes what is recorded above; both ride beside it.
+
+* **The debit.** `run_id` is the unit's own id, or — for a stage attempt with no unit (`plan`,
+  `project_review`) — the project's pseudo-run `project:<project_id>`, so nothing is silently
+  undebited. Tags are `project:<id>`, `stage:<name>` and `backend:<name>`. Usage and a
+  `pricing_hash` are stored; money is never stored, only re-derived (ADR-0030). A local model's
+  cost is `UNSUPPORTED`, rendered `—` with the reason, never `$0.00` (ADR-0016); a price list that
+  could not total an estimate renders "at least" (ADR-0069). A bound `per_output` ceiling pauses
+  the unit exactly as an exhausted output-token budget already does (ADR-0103); a bound
+  `per_project` ceiling (lifetime, never resets) is visible on the workspace's project-cost badge
+  and pauses nothing directly.
+* **The decision.** Evaluated against the backend as *configured* — its remote-ness, its declared
+  `max_data_classification` — never against whether it currently answers (ADR-0073's ordering,
+  applied here even though IdeaPress has one configured backend rather than PromptCadence's several
+  tiers). A local backend (Ollama) is always `target_not_remote`; a remote backend with no declared
+  ceiling is denied, fail closed (ADR-0054, ADR-0103). Commissioner does not enforce: IdeaPress's
+  own `providers.allow_remote` gate at startup is what actually refuses a call, unchanged by this
+  row. The decision's `source_ref` is the attempt's own id, so a denial is visible beside the
+  attempt it was evaluated for (§8's provenance table) without a join to the mounted table
+  (ADR-0050 decision 2).
+
+Both are best-effort relative to the attempt itself: a governance failure (a misconfigured currency,
+say) is logged and never blocks recording the attempt — provenance is the funnel's first duty.
 
 Committed units are immutable; a revision creates a new version and the history is retained.
 

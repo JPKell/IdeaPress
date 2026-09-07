@@ -238,9 +238,13 @@ def test_a_loopback_backend_is_not_labelled_as_egress() -> None:
     assert described[0]["egress"] is False
 
 
-def test_the_workspace_says_where_work_goes_on_a_lan_bind() -> None:
-    """The badge is on the workspace, not only the backends page: the workspace is where somebody
-    presses the button that sends their draft somewhere."""
+def test_the_workspace_says_nothing_has_run_yet_before_any_egress_decision() -> None:
+    """Row J1 D7: a fresh installation states that nothing has run, never the pre-J1 ad-hoc flag.
+
+    Before row J1 the badge was computed from configuration on every render; from J1 it reads the
+    most recently *recorded* decision, and a fresh installation (or one whose backend just
+    changed) has recorded none. Falling back to the old flag would silently reintroduce it.
+    """
     from ideapress.services.workspace import _backend_facts  # noqa: PLC2701 — the unit under test
 
     settings = _lan_settings()
@@ -249,6 +253,34 @@ def test_the_workspace_says_where_work_goes_on_a_lan_bind() -> None:
     runtime = build_runtime(settings)
     try:
         facts = _backend_facts(runtime)
+        assert facts["has_run"] is False
+        assert facts["egress"] is False
+    finally:
+        runtime.close()
+
+
+def test_the_workspace_says_where_work_goes_once_a_decision_is_recorded() -> None:
+    """The badge is on the workspace, not only the backends page: the workspace is where somebody
+    presses the button that sends their draft somewhere. Row J1: backed by a recorded decision."""
+    from baseaicore import DataClassification
+
+    from ideapress.services.egress import backend_target
+    from ideapress.services.workspace import _backend_facts  # noqa: PLC2701 — the unit under test
+
+    settings = _lan_settings()
+    settings.inference.mode = "openai_compatible"
+    settings.inference.openai_compatible.base_url = "https://api.example.com/v1"
+    runtime = build_runtime(settings)
+    try:
+        assert runtime.storage.egress is not None
+        runtime.storage.egress.evaluate(
+            run_id="project:test",
+            source_ref="attempt:test",
+            classification=DataClassification(settings.inference.data_classification),
+            target=backend_target(settings, "openai_compatible"),
+        )
+        facts = _backend_facts(runtime)
+        assert facts["has_run"] is True
         assert facts["egress"] is True
         assert facts["mode"] == "openai_compatible"
     finally:

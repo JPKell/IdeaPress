@@ -156,6 +156,36 @@ settings:       key TEXT PK · value_json · updated_at
 api_tokens:     as in FreeWeight
 ```
 
+### Mounted tables (row J1): `ledger_*`, `egress_decisions`
+
+Five tables IdeaPress does not define — `loadledger.sql.mount_ledger_tables` and
+`commissioner.sql.mount_egress_tables` do, into this application's own `Base.metadata`, at module
+import in `infrastructure/db/models.py` (ADR-0050). They appear in this database's own migration
+history (`0007`, `0008`), are backed up and restored with everything else here, and are read and
+written **only** through `loadledger.sql.SqlLedger` and `commissioner.sql.SqlEgressLedger` — never
+by a query this application writes against the tables directly, and never joined to an IdeaPress
+entity (ADR-0050 decision 2; a mounted shape is the owning package's to change under an upgrade
+note).
+
+```text
+ledger_entries        entry_id PK · run_id · source_ref · occurred_at · unpriced BOOLEAN
+                       · pricing_hash · debit_json · verdicts_json
+ledger_balances        (scope, window_key) PK · tokens_spent · unpriced_debit_count
+                       · untotalled_debit_count · unmetered_debit_count
+ledger_balance_money   (scope, window_key, currency) PK · nanos_spent
+ledger_runs            run_id PK · declared_at
+egress_decisions       decision_id PK · run_id · verdict · target_name · decided_at
+                       · decision_json
+```
+
+`run_id` on a ledger row is a unit's own id, or the project's pseudo-run `project:<project_id>` for
+a stage attempt with no unit (`plan`, `project_review`); on an egress row it is the same value,
+carried through so a decision joins to its attempt by `source_ref` (the attempt's own id) rather
+than by a join to this table (workflows §8). Neither table stores a money figure: `ledger_entries`
+stores usage and a `pricing_hash`, never a nanos total, and `egress_decisions` stores the whole
+`governance.egress_decision` payload with four of its fields projected out as indexed columns for
+the query surface (ADR-0030 rule 1, commissioner spec §10).
+
 ---
 
 ## 3. Unit state machine

@@ -24,7 +24,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, ClassVar, Final, Literal
 
-from baseaicore import ConfigurationError
+from baseaicore import ConfigurationError, normalize_currency
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from pydantic import ValidationError as PydanticValidationError
 
@@ -34,6 +34,7 @@ __all__ = [
     "ENV_PREFIX",
     "EXAMPLE_CONFIG_TOML",
     "LOOPBACK_HOSTS",
+    "BudgetSettings",
     "ConfigurationError",
     "ExecutionSettings",
     "InferenceSettings",
@@ -41,7 +42,9 @@ __all__ = [
     "LoadedSettings",
     "LoggingSettings",
     "ModelsSettings",
+    "MoneyAmount",
     "OpenAICompatibleSettings",
+    "PricingSettings",
     "ProvidersSettings",
     "ServerSettings",
     "Settings",
@@ -79,6 +82,26 @@ def _split_csv(value: Any) -> Any:
     """Accept a comma-separated string for a tuple field, as environment variables must (§3)."""
     if isinstance(value, str):
         return tuple(part.strip() for part in value.split(",") if part.strip())
+    return value
+
+
+def _validate_classification_or_none(value: str | None, *, field: str) -> str | None:
+    """Refuse a classification ceiling outside `baseaicore.DataClassification`, unless unset.
+
+    Shared by every `max_data_classification` key (row J1, ADR-0054 D6): `None` is a real
+    configuration state — "no ceiling declared" — and Commissioner's shipped policy denies a
+    remote target on exactly that state rather than assuming the least restrictive level.
+    """
+    if value is None:
+        return None
+    from baseaicore import DataClassification
+
+    try:
+        DataClassification(value)
+    except ValueError:
+        levels = ", ".join(level.value for level in DataClassification)
+        message = f"{field}.max_data_classification is {value!r}. Choose from: {levels}, or unset."
+        raise ValueError(message) from None
     return value
 
 
@@ -193,6 +216,22 @@ class LoadCoachSettings(BaseModel):
             '`class = "interactive"` so a person is never queued behind background work.'
         ),
     )
+    max_data_classification: str | None = Field(
+        default=None,
+        description=(
+            "The most sensitive data this backend may receive: public | internal | confidential. "
+            "Required for Commissioner to approve a remote call through it (row J1, ADR-0054); "
+            "unset means no ceiling is declared, which a remote target is *denied* under, never "
+            "assumed public (fail closed — a behaviour change from J1's egress badge, which "
+            "previously rendered but never gated). Ollama carries no such key: it is never remote."
+        ),
+    )
+
+    @field_validator("max_data_classification")
+    @classmethod
+    def _known_ceiling(cls, value: str | None) -> str | None:
+        """Refuse a ceiling outside `baseaicore`'s ordered vocabulary. See `InferenceSettings`."""
+        return _validate_classification_or_none(value, field="inference.loadcoach")
 
     @field_validator("job_stages")
     @classmethod
@@ -237,6 +276,20 @@ class OpenAICompatibleSettings(BaseModel):
             "with no provider prefix, so the `[models.stages]` bindings do not apply to it."
         ),
     )
+    max_data_classification: str | None = Field(
+        default=None,
+        description=(
+            "The most sensitive data this endpoint may receive: public | internal | confidential. "
+            "Unset denies a remote endpoint outright (fail closed, ADR-0054); see "
+            "`inference.loadcoach.max_data_classification`."
+        ),
+    )
+
+    @field_validator("max_data_classification")
+    @classmethod
+    def _known_ceiling(cls, value: str | None) -> str | None:
+        """Refuse a ceiling outside `baseaicore`'s ordered vocabulary."""
+        return _validate_classification_or_none(value, field="inference.openai_compatible")
 
 
 class InferenceSettings(BaseModel):
@@ -504,6 +557,73 @@ class ProvidersSettings(BaseModel):
     allow_remote: bool = Field(default=False)
 
 
+class MoneyAmount(BaseModel):
+    """A configured money amount: a currency code plus whole nanos (billionths of one unit).
+
+    Kept as a small config-native shape rather than `baseaicore.Money` itself — TOML gives us an
+    untyped ``{currency, nanos}`` table, and this is that table validated. Convert with
+    ``baseaicore.Money(currency=amount.currency, nanos=amount.nanos)`` at the point of use
+    (transcribed from PromptCadence's `config.MoneyAmount`, row J1 D4).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    currency: str = Field(default="USD", examples=["USD"])
+    nanos: int = Field(default=0, ge=0, examples=[2_000_000_000])
+
+    @field_validator("currency")
+    @classmethod
+    def _normalize(cls, value: str) -> str:
+        """Normalize to the alpha-3 form `baseaicore.Money` itself requires."""
+        return normalize_currency(value)
+
+
+class PricingSettings(BaseModel):
+    """``[pricing]`` — where a `baseaicore.ModelPricing` catalogue is read from (D3, ADR-0072).
+
+    Optional in full: an installation naming no file gets every attempt costed as unpriced, which
+    is correct for a pure-Ollama installation and honest for a remote one that has not supplied
+    prices yet — never a fabricated ``$0.00`` (ADR-0016).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    file: str = Field(
+        default="",
+        description=(
+            "Path to a JSON price catalogue in the format ADR-0072 defines. Empty means no "
+            "prices are known; every debit accumulates tokens only and renders '—'."
+        ),
+    )
+
+
+class BudgetSettings(BaseModel):
+    """``[budget]`` — LoadLedger's two ceilings, and how a partial price counts (D1, D4, ADR-0069).
+
+    Every ceiling is optional and independent: naming neither the money nor the token half of a
+    ceiling means that ceiling does not exist, and the ledger still accumulates and still renders
+    (row J1 exit 1). ``per_output_*`` binds one unit's own attempts (or, for a stage with no unit —
+    ``plan``, ``project_review`` — the project's pseudo-run); ``per_project_*`` binds every attempt
+    tagged with the project, lifetime, and never resets.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    per_output_money_ceiling: MoneyAmount | None = Field(default=None)
+    per_output_token_ceiling: int | None = Field(default=None, ge=1)
+    per_project_money_ceiling: MoneyAmount | None = Field(default=None)
+    per_project_token_ceiling: int | None = Field(default=None, ge=1)
+    partial_pricing: Literal["floor", "strict"] = Field(
+        default="floor",
+        description=(
+            "How a money ceiling treats a debit whose estimate did not total (ADR-0069). 'floor': "
+            "the ceiling may fire late, by the unreported portion. 'strict': such a debit counts "
+            "as exceeding, so the ceiling never binds late — at the cost of tripping on the first "
+            "remote response a provider does not fully report."
+        ),
+    )
+
+
 class LoggingSettings(BaseModel):
     """Structured logging. Project content is never logged at INFO or above (spec §14)."""
 
@@ -536,6 +656,8 @@ class Settings(BaseModel):
     execution: ExecutionSettings = Field(default_factory=ExecutionSettings)
     workflow: WorkflowSettings = Field(default_factory=WorkflowSettings)
     providers: ProvidersSettings = Field(default_factory=ProvidersSettings)
+    pricing: PricingSettings = Field(default_factory=PricingSettings)
+    budget: BudgetSettings = Field(default_factory=BudgetSettings)
     logging: LoggingSettings = Field(default_factory=LoggingSettings)
 
     @model_validator(mode="after")
@@ -920,6 +1042,24 @@ structured_output_tokens = 8192
 
 [providers]
 allow_remote = false        # a remote backend sends your drafts off this machine
+
+# Where a `baseaicore.ModelPricing` catalogue (ADR-0072) is read from, for the workspace's cost
+# figures. Optional: with no file, every attempt is honestly unpriced ('—', never '$0.00').
+# [pricing]
+# file = "/path/to/prices.json"
+
+# LoadLedger ceilings (row J1). Every ceiling is optional and independent; naming neither half
+# means it does not exist, and the ledger still accumulates and still renders.
+# [budget]
+# per_output_token_ceiling = 2000000
+# per_project_token_ceiling = 20000000
+# partial_pricing = "floor"          # floor | strict (ADR-0069)
+# [budget.per_output_money_ceiling]
+# currency = "USD"
+# nanos = 2000000000                  # $2.00
+# [budget.per_project_money_ceiling]
+# currency = "USD"
+# nanos = 20000000000                 # $20.00
 
 [logging]
 level = "INFO"

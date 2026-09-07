@@ -16,6 +16,7 @@ from ideapress.infrastructure.db.models import Critique as CritiqueRow
 from ideapress.infrastructure.db.models import Unit as UnitRow
 from ideapress.infrastructure.db.models import UnitVersion as UnitVersionRow
 from ideapress.infrastructure.db.models import Validation as ValidationRow
+from ideapress.services.egress import decision_view
 from ideapress.services.plan import load_requirements
 from ideapress.services.units import load_unit, unit_history
 
@@ -106,10 +107,21 @@ def unit_detail(runtime: Runtime, *, project_id: str, unit_key: str) -> dict[str
             else []
         )
         rounds_by_attempt = {attempt.id: attempt.round for attempt in attempts}
+        unit_id = unit.id
+
+    budget = runtime.storage.budget
+    cost = budget.unit_cost(project_id=project_id, unit_id=unit_id) if budget is not None else None
+
+    egress = runtime.storage.egress
+    egress_by_attempt: dict[str, dict[str, Any]] = {}
+    if egress is not None:
+        for decision in egress.decisions(run_id=unit_id):
+            egress_by_attempt[decision.request.source_ref] = decision_view(decision)
 
     return {
         "project_id": project_id,
         "unit_key": unit_key,
+        "cost": cost,
         "title": unit.title,
         "goal": unit.goal_text,
         "state": unit.state,
@@ -164,6 +176,10 @@ def unit_detail(runtime: Runtime, *, project_id: str, unit_key: str) -> dict[str
                 # attempt rather than from another application's logs (P7 AC2).
                 "routing": dict(attempt.routing_json) if attempt.routing_json else None,
                 "idempotency_key": attempt.idempotency_key,
+                # The row J1 egress decision this attempt's own model call was evaluated under,
+                # joined by reference (D7, D8) — `None` on data written before this row, or on an
+                # installation with nothing attached.
+                "egress": egress_by_attempt.get(attempt.id),
             }
             for attempt in attempts
         ],

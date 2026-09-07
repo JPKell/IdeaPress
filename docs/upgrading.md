@@ -56,6 +56,28 @@ Two behaviours to know about if you are coming from 0.1.x:
   `ideapress backend list` and never applied. If you had set it expecting nothing to happen, you
   will now get a fallback — and a `backend_fallback` degradation on the attempt saying so.
 
+## 1.1.0 → 1.2.0 (unreleased, row J1)
+
+No migration data changes — two new tables are added (`ledger_*`, `egress_decisions`, migrations
+`0007`/`0008`), all empty until IdeaPress's first attempt after the upgrade.
+
+What is new: per-unit and per-project cost on the workspace page (`[pricing]`, `[budget]`), and the
+egress badge is now backed by a durable, queryable decision instead of a computed flag.
+
+One behaviour to know about if you run a remote backend (`loadcoach` or `openai_compatible` with
+`providers.allow_remote = true`):
+
+* **A remote backend now needs a declared ceiling, or every attempt against it is recorded as
+  denied.** Set `inference.loadcoach.max_data_classification` or
+  `inference.openai_compatible.max_data_classification` to `"public"`, `"internal"` or
+  `"confidential"` — whichever this installation's `inference.data_classification` may reach that
+  backend. **Nothing about what actually runs changes**: Commissioner records a verdict and enforces
+  nothing, and IdeaPress's own `providers.allow_remote` gate is exactly what it was. What changes is
+  the record: before this row, a remote call left no queryable trace beyond the workspace badge's
+  current-moment "leaves this machine"; from this row, every attempt against an unceilinged remote
+  backend is a durable `denied` row (fail closed, never assumed public), and the workspace badge
+  reads that record rather than recomputing the flag.
+
 ## Checking the version
 
 ```bash

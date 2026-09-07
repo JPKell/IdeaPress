@@ -316,19 +316,27 @@ def store_plan(database: Database, *, project_id: str, result: PlanResult) -> No
         session.execute(
             delete(UnitRow).where(UnitRow.project_id == project_id, UnitRow.state != "committed")
         )
-        for unit in result.plan.units:
-            session.add(
-                UnitRow(
-                    project_id=project_id,
-                    unit_key=unit.key,
-                    ordinal=unit.ordinal,
-                    title=unit.title,
-                    goal_text=unit.goal_text,
-                    requirement_keys_json=list(unit.requirement_keys),
-                    target_words=unit.target_words,
-                    state="planned",
-                )
+        unit_rows = [
+            UnitRow(
+                project_id=project_id,
+                unit_key=unit.key,
+                ordinal=unit.ordinal,
+                title=unit.title,
+                goal_text=unit.goal_text,
+                requirement_keys_json=list(unit.requirement_keys),
+                target_words=unit.target_words,
+                state="planned",
             )
+            for unit in result.plan.units
+        ]
+        session.add_all(unit_rows)
+        # Row J1: declared with the ledger before any attempt exists, so a per-unit cost view on a
+        # freshly planned unit reads a real empty window rather than `UnknownRun`. A no-op when
+        # nothing has attached governance (`Database.budget` is `None`).
+        if database.budget is not None:
+            session.flush()
+            for row in unit_rows:
+                database.budget.declare_run(session, row.id)
 
 
 def _row_to_requirement(row: RequirementRow) -> Requirement:

@@ -79,6 +79,7 @@ The optional LoadCoach backend: queueing, routing by task profile, and feedback.
 | `timeout_seconds` | int | `600` | `IDEAPRESS_INFERENCE__LOADCOACH__TIMEOUT_SECONDS` |  |
 | `honour_stage_bindings` | bool | `false` | `IDEAPRESS_INFERENCE__LOADCOACH__HONOUR_STAGE_BINDINGS` | Send the stage's `[models.stages]` binding to LoadCoach as a model override. Off by default: LoadCoach chooses the model, which is what it is for. Turning it on pins the model and gives up routing, evidence and reliability for that stage (ADR-0040). |
 | `job_stages` | tuple[str, ...] | `['draft', 'revise', 'repair', 'project_review']` | `IDEAPRESS_INFERENCE__LOADCOACH__JOB_STAGES` | Stages submitted through the asynchronous `/jobs` queue rather than synchronous `/generate`. The long ones; everything else is interactive and submitted with `class = "interactive"` so a person is never queued behind background work. |
+| `max_data_classification` | str | *(none)* | `IDEAPRESS_INFERENCE__LOADCOACH__MAX_DATA_CLASSIFICATION` | The most sensitive data this backend may receive: public | internal | confidential. Required for Commissioner to approve a remote call through it (row J1, ADR-0054); unset means no ceiling is declared, which a remote target is *denied* under, never assumed public (fail closed — a behaviour change from J1's egress badge, which previously rendered but never gated). Ollama carries no such key: it is never remote. |
 
 ## `[inference.openai_compatible]`
 
@@ -90,6 +91,7 @@ Any OpenAI-compatible endpoint. Empty base_url means "not configured", not "loca
 | `api_key_env` | str | *(empty)* | `IDEAPRESS_INFERENCE__OPENAI_COMPATIBLE__API_KEY_ENV` |  |
 | `timeout_seconds` | int | `300` | `IDEAPRESS_INFERENCE__OPENAI_COMPATIBLE__TIMEOUT_SECONDS` |  |
 | `model` | str | *(empty)* | `IDEAPRESS_INFERENCE__OPENAI_COMPATIBLE__MODEL` | The model name this endpoint serves. OpenAI-compatible servers expose one namespace with no provider prefix, so the `[models.stages]` bindings do not apply to it. |
+| `max_data_classification` | str | *(none)* | `IDEAPRESS_INFERENCE__OPENAI_COMPATIBLE__MAX_DATA_CLASSIFICATION` | The most sensitive data this endpoint may receive: public | internal | confidential. Unset denies a remote endpoint outright (fail closed, ADR-0054); see `inference.loadcoach.max_data_classification`. |
 
 ## `[models]`
 
@@ -148,6 +150,26 @@ Egress policy. Remote inference is opt-in, per stage, and labelled in the UI.
 | Key | Type | Default | Environment variable | Notes |
 | --- | --- | --- | --- | --- |
 | `allow_remote` | bool | `false` | `IDEAPRESS_PROVIDERS__ALLOW_REMOTE` |  |
+
+## `[pricing]`
+
+``[pricing]`` — where a `baseaicore.ModelPricing` catalogue is read from (D3, ADR-0072).
+
+| Key | Type | Default | Environment variable | Notes |
+| --- | --- | --- | --- | --- |
+| `file` | str | *(empty)* | `IDEAPRESS_PRICING__FILE` | Path to a JSON price catalogue in the format ADR-0072 defines. Empty means no prices are known; every debit accumulates tokens only and renders '—'. |
+
+## `[budget]`
+
+``[budget]`` — LoadLedger's two ceilings, and how a partial price counts (D1, D4, ADR-0069).
+
+| Key | Type | Default | Environment variable | Notes |
+| --- | --- | --- | --- | --- |
+| `per_output_money_ceiling` | MoneyAmount | *(none)* | `IDEAPRESS_BUDGET__PER_OUTPUT_MONEY_CEILING` |  |
+| `per_output_token_ceiling` | int | *(none)* | `IDEAPRESS_BUDGET__PER_OUTPUT_TOKEN_CEILING` |  |
+| `per_project_money_ceiling` | MoneyAmount | *(none)* | `IDEAPRESS_BUDGET__PER_PROJECT_MONEY_CEILING` |  |
+| `per_project_token_ceiling` | int | *(none)* | `IDEAPRESS_BUDGET__PER_PROJECT_TOKEN_CEILING` |  |
+| `partial_pricing` | one of `floor` | `strict` | `"floor"` | `IDEAPRESS_BUDGET__PARTIAL_PRICING` | How a money ceiling treats a debit whose estimate did not total (ADR-0069). 'floor': the ceiling may fire late, by the unreported portion. 'strict': such a debit counts as exceeding, so the ceiling never binds late — at the cost of tripping on the first remote response a provider does not fully report. |
 
 ## `[logging]`
 

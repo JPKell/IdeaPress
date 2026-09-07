@@ -25,13 +25,20 @@ dependencies = [
     # data_classification` is validated against — arrived in baseaicore 0.4.1. A floor a needed
     # symbol is not in imports cleanly and fails at the first request that uses it (F3 finding 4).
     "baseaicore>=0.4.1,<0.5",
-    # Widened from `<0.5` at E5's sweep, once mirrorwall 0.2.2 lifted the cap that held every
-    # application at setspec 0.4. IdeaPress's setspec surface is `setspec.prompts` plus
-    # `GeneratorInfo`; the floor stays 0.4 because nothing here requires a later payload.
-    "setspec>=0.4,<0.7",
+    # Floor raised to 0.5 at row J1 (D6): commissioner 0.1.1 pins `setspec>=0.5,<0.7` for
+    # `governance.egress_decision` 1.0, and admitting 0.4.x here would let IdeaPress resolve a
+    # setspec commissioner itself forbids — the same "one repo's floor is another's ceiling"
+    # trap E5 closed for mirrorwall. IdeaPress's own setspec surface (`setspec.prompts`,
+    # `GeneratorInfo`) needs nothing past 0.4, so this is purely commissioner's requirement.
+    "setspec>=0.5,<0.7",
     "modelrack>=0.5,<0.6",
     "weightsdb>=0.2,<0.3",
     "mirrorwall>=0.2,<0.3",
+    # Row J1: per-unit/per-project cost (loadledger) and the S4 egress badge backed by recorded
+    # decisions (commissioner). `[sql]` for the mountable-models pattern (ADR-0050) — both mount
+    # unconditionally in infrastructure/db/models.py, so the extra is never optional in practice.
+    "loadledger[sql]>=0.2,<0.3",
+    "commissioner[sql]>=0.1.1,<0.2",
     "fastapi>=0.115,<1",
     "uvicorn[standard]>=0.30,<1",
     "pydantic>=2.9,<3",

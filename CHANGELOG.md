@@ -7,6 +7,41 @@ packaging and release standards §3.
 
 ## [Unreleased]
 
+Row J1 (IP-A1 LoadLedger, IP-A2 Commissioner). Ships nothing on its own — no version bump, no tag,
+no publish (IdeaPress is already `1.1.0`); row J2 cuts `1.2.0` carrying this work and IP-A3 CutCtx.
+
+### Added
+- **Per-unit and per-project cost on the workspace page**, from `loadledger 0.2.0` mounted into
+  this application's own database (ADR-0050; migration `0007`). Every stage attempt debits once,
+  atomically with its attempt row, at the one funnel every stage already routes through
+  (`services/stages.py::record_attempt`). A local model's cost is `UNSUPPORTED`, rendered `—` with
+  the reason, never `$0.00` (ADR-0016); a price list that could not total an estimate renders "at
+  least" (ADR-0069). `[pricing] file` optionally names a price catalogue in the format ADR-0072
+  defines; `[budget]` configures an optional `per_output` ceiling (one unit's own attempts, or a
+  project's pseudo-run for a stage with no unit) and an optional `per_project` ceiling (lifetime,
+  never resets). A bound `per_output` ceiling pauses the in-flight unit, reusing the existing
+  pause/resume path (ADR-0103).
+- **The workspace's egress badge now reads a recorded decision**, from `commissioner 0.1.1` mounted
+  the same way (migration `0008`). Every attempt is evaluated against the configured backend and
+  recorded, approved or denied, through Commissioner's shipped `OrderedClassificationPolicy`
+  (ADR-0054). A fresh installation, or one whose backend just changed, states plainly that nothing
+  has run yet rather than falling back to the pre-J1 flag.
+- `inference.loadcoach.max_data_classification` and `inference.openai_compatible.max_data_classification`
+  — the per-backend ceiling Commissioner's fail-closed policy checks against (ADR-0103, D6).
+
+### Changed
+- **Behaviour change:** a remote backend (`loadcoach` or `openai_compatible`, with
+  `providers.allow_remote = true`) with no declared `max_data_classification` now has every attempt
+  recorded as a denial (`no_ceiling_declared`), fail closed, rather than the badge simply stating
+  "leaves this machine" with no durable record at all. Nothing about what actually runs changes —
+  Commissioner does not enforce, and `providers.allow_remote` is the unchanged, real gate. See
+  `docs/upgrading.md`.
+- `setspec` floor raised from `>=0.4,<0.7` to `>=0.5,<0.7`, matching what `commissioner 0.1.1`
+  itself requires (ADR-0103).
+- `services/workspace.py`'s ad-hoc `"egress"` expression and `_is_remote` helper are deleted; the
+  workspace badge and the per-attempt egress fact in a unit's provenance table both read
+  `Database.egress` instead.
+
 ## [1.1.0] - 2026-09-05
 
 IdeaPress 1.1: **LA2** — a stage may pin a LoRA adapter, the pin travels to LoadCoach as its

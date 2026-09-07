@@ -116,6 +116,7 @@ def workspace_view(
         "unit": detail,
         "pause": pause_guidance(detail.get("paused_reason") if detail else None),
         "backend": _backend_facts(runtime),
+        "project_cost": _project_cost(runtime, project_id),
         "coverage_summary": _coverage_summary(detail),
         "diff": None,
         # The live view attaches to this when a stage is running, and the page says "reload to see
@@ -194,40 +195,49 @@ def _coverage_summary(detail: dict[str, Any] | None) -> dict[str, Any]:
 
 
 def _backend_facts(runtime: Runtime) -> dict[str, Any]:
-    """Which backend is configured, and whether work routed through it leaves the machine.
+    """Which backend is configured, and what its most recently *recorded* egress decision says.
 
     Risk S4: the user is told plainly, per backend, where their content would go. The badge is on
     the workspace and not only on the backends page, because the workspace is where somebody is
     about to press a button that sends their draft somewhere.
+
+    **Row J1 (D7): backed by a recorded decision, not an ad-hoc flag.** The pre-J1 version computed
+    "leaves this machine" from configuration on every render (``_is_remote``, deleted here). This
+    reads the newest :class:`~commissioner.EgressDecision` this installation has evaluated against
+    the configured backend instead — the same host-based remote-ness test, now *recorded and
+    queryable* rather than recomputed and forgotten. A fresh installation, or one that just changed
+    its backend, has evaluated nothing yet: that state is reported honestly (``has_run: False``)
+    rather than falling back to the old flag.
     """
     backend = runtime.backend
     if backend is None:
-        return {"mode": "none", "egress": False, "routes_internally": False, "detail": ""}
+        return {
+            "mode": "none",
+            "has_run": False,
+            "egress": False,
+            "verdict": "",
+            "reason": "",
+            "routes_internally": False,
+            "detail": "",
+        }
     capabilities = backend.capabilities()
+    egress = runtime.storage.egress if runtime.database is not None else None
+    decision = egress.latest_for_target(backend.name) if egress is not None else None
     return {
         "mode": backend.name,
-        "egress": runtime.settings.inference.mode != "ollama" and _is_remote(runtime),
+        "has_run": decision is not None,
+        "egress": decision.request.target.remote if decision is not None else False,
+        "verdict": decision.verdict.value if decision is not None else "",
+        "reason": decision.reason if decision is not None else "",
         "routes_internally": capabilities.routes_internally,
         "structured_output": capabilities.structured_output,
         "detail": "",
     }
 
 
-def _is_remote(runtime: Runtime) -> bool:
-    """Whether the configured backend's endpoint is off this machine.
-
-    Read from configuration rather than by contacting the backend: the workspace renders under a
-    300 ms budget (spec §15) and must not wait on a network round trip to draw a badge.
-    """
-    inference = runtime.settings.inference
-    url = {
-        "ollama": inference.ollama.base_url,
-        "loadcoach": inference.loadcoach.base_url,
-        "openai_compatible": inference.openai_compatible.base_url,
-    }.get(inference.mode, "")
-    if not url:
-        return False
-    from urllib.parse import urlparse
-
-    host = (urlparse(url).hostname or "").lower()
-    return host not in {"127.0.0.1", "localhost", "::1", ""}
+def _project_cost(runtime: Runtime, project_id: str) -> dict[str, Any] | None:
+    """The project's lifetime cost badge (D5), or ``None`` when nothing has attached a ledger."""
+    budget = runtime.storage.budget if runtime.database is not None else None
+    if budget is None:
+        return None
+    return budget.project_cost(project_id=project_id)

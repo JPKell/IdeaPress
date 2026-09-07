@@ -77,6 +77,19 @@ def test_downgrade_removes_every_table(sqlite_database: Database) -> None:
     assert not (remaining & EXPECTED_TABLES)
 
 
+def test_0007_and_0008_mount_loadledger_and_commissioner_tables(sqlite_database: Database) -> None:
+    """Row J1 (ADR-0050): the four LoadLedger tables and Commissioner's one, at head."""
+    upgrade(sqlite_database)
+    tables = set(inspect(sqlite_database.engine).get_table_names())
+    assert tables >= {
+        "ledger_entries",
+        "ledger_balances",
+        "ledger_balance_money",
+        "ledger_runs",
+        "egress_decisions",
+    }
+
+
 def test_models_and_migration_agree_on_sqlite(sqlite_database: Database) -> None:
     """Database standards §5.2: the migration and the declarative models cannot drift apart."""
     upgrade(sqlite_database)
@@ -103,6 +116,62 @@ def test_downgrade_removes_every_table_on_postgresql(postgres_database: Database
     migration_runner(postgres_database.engine).downgrade("base")
     remaining = set(inspect(postgres_database.engine).get_table_names())
     assert not (remaining & EXPECTED_TABLES)
+
+
+def test_0007_and_0008_leave_an_existing_dev_database_untouched(sqlite_database: Database) -> None:
+    """Row J1's two mounts, over data written before them (simulating an operator's own database).
+
+    Migrated to `0006` first — where a real installation sits today — with a real project, run
+    and attempt, then to `head`. The pre-existing rows must survive byte-for-byte and the two new
+    mounts must appear, empty: a real upgrade adds tables, it never touches what was already there.
+    """
+    from sqlalchemy import text
+
+    runner = migration_runner(sqlite_database.engine)
+    runner.upgrade("0006")
+    with sqlite_database.engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO projects (id, title, slug, content_type, content_type_version,"
+                " workflow_id, workflow_version, status, brief_text, author_material_json,"
+                " config_json, created_at, updated_at)"
+                " VALUES ('01PROJECT', 'T', 't', 'article', '1.0', 'default', '1.0', 'active',"
+                " 'b', '[]', '{}', '2026-09-01T00:00:00', '2026-09-01T00:00:00')"
+            )
+        )
+        connection.execute(
+            text(
+                "INSERT INTO stage_runs (id, project_id, stage, state, units_total,"
+                " units_completed, units_paused, started_at, options_json, backend, backend_mode)"
+                " VALUES ('01RUN', '01PROJECT', 'draft', 'completed', 1, 1, 0,"
+                " '2026-09-01T00:00:00', '{}', 'ollama', 'ollama')"
+            )
+        )
+        connection.execute(
+            text(
+                "INSERT INTO attempts (id, stage_run_id, stage, attempt, round, backend,"
+                " backend_mode, outcome, model_canonical_id, degradations_json, created_at)"
+                " VALUES ('01ATTEMPT', '01RUN', 'draft', 1, 0, 'ollama', 'ollama', 'completed',"
+                " 'ollama/gemma4:12b@sha256:abcd', '[]', '2026-09-01T00:00:00')"
+            )
+        )
+
+    runner.upgrade("head")
+
+    with sqlite_database.engine.connect() as connection:
+        row = connection.execute(
+            text("SELECT id, title FROM projects WHERE id = '01PROJECT'")
+        ).one()
+        assert row.title == "T"
+        attempt = connection.execute(
+            text("SELECT model_canonical_id FROM attempts WHERE id = '01ATTEMPT'")
+        ).one()
+        assert attempt.model_canonical_id == "ollama/gemma4:12b@sha256:abcd"
+    tables = set(inspect(sqlite_database.engine).get_table_names())
+    assert tables >= {"ledger_entries", "ledger_runs", "egress_decisions"}
+    with sqlite_database.engine.connect() as connection:
+        assert connection.execute(text("SELECT COUNT(*) FROM ledger_entries")).scalar() == 0
+        assert connection.execute(text("SELECT COUNT(*) FROM egress_decisions")).scalar() == 0
 
 
 def test_0006_leaves_existing_attempts_as_base_subjects(sqlite_database: Database) -> None:

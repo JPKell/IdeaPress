@@ -28,14 +28,30 @@ ADDED_IN_1_1: dict[str, set[str]] = {
     "models": {"stage_adapters"},
 }
 
+# Row J1 (staged for 1.2.0, unreleased — ground truth 1 of its kickoff): two whole new sections
+# that exist only to carry LoadLedger's and Commissioner's own configuration, plus one new leaf key
+# on each of the two backends that can be remote. None moves an existing value or default.
+ADDED_IN_J1_SECTIONS: set[str] = {"budget", "pricing"}
+ADDED_IN_J1_NESTED: dict[str, set[str]] = {
+    "loadcoach": {"max_data_classification"},
+    "openai_compatible": {"max_data_classification"},
+}
+
 
 def _without_1_1_keys(dump: dict[str, Any]) -> dict[str, Any]:
-    """Return ``dump`` with exactly the keys 1.1 added removed, and nothing else."""
+    """Return ``dump`` with exactly the keys 1.1 and row J1 added removed, and nothing else."""
     trimmed = {section: dict(values) for section, values in dump.items()}
     for section, keys in ADDED_IN_1_1.items():
         for key in keys:
             assert key in trimmed[section], f"{section}.{key} is missing from the 1.1 dump"
             del trimmed[section][key]
+    for section in ADDED_IN_J1_SECTIONS:
+        assert section in trimmed, f"{section} is missing from the dump"
+        del trimmed[section]
+    for backend, keys in ADDED_IN_J1_NESTED.items():
+        for key in keys:
+            assert key in trimmed["inference"][backend], f"inference.{backend}.{key} is missing"
+            del trimmed["inference"][backend][key]
     return trimmed
 
 

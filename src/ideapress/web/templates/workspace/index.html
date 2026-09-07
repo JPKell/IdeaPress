@@ -25,10 +25,25 @@
 
 <p class="backend-line">
   Backend: <strong>{{ backend.mode }}</strong>
-  {% if backend.egress %}{{ badge("leaves this machine", tone="warning") }}{% else %}{{ badge("stays on this machine", tone="success") }}{% endif %}
+  {% if not backend.has_run %}
+    {{ badge("no egress decision recorded yet", tone="neutral", title="Nothing has run against this backend yet.") }}
+  {% elif backend.egress %}
+    {{ badge("leaves this machine", tone="warning") }}
+    {% if backend.verdict == "denied" %}{{ badge("egress denied: " ~ backend.reason, tone="danger") }}{% endif %}
+  {% else %}
+    {{ badge("stays on this machine", tone="success") }}
+  {% endif %}
   {% if backend.routes_internally %}{{ badge("routes by task profile", tone="neutral") }}{% endif %}
   {% if backend.mode != "none" and not backend.structured_output %}{{ badge("no schema enforcement — validated here", tone="neutral") }}{% endif %}
 </p>
+
+{% if project_cost %}
+<p class="project-cost-line">
+  Project cost so far: <strong>{{ project_cost.money_spent_display }}</strong>
+  ({{ project_cost.tokens_spent_display }} tokens)
+  {% if project_cost.has_ceiling and project_cost.exceeded %}{{ badge("ceiling exceeded", tone="danger") }}{% endif %}
+</p>
+{% endif %}
 
 {% if running_task_id %}
 <section class="stage-live" data-stage-stream="/api/v1/projects/{{ project.id }}/tasks/{{ running_task_id }}/stream"
@@ -73,6 +88,8 @@
       {"label": "Goal", "value": unit.goal},
       {"label": "Version", "value": unit.version if unit.version is not none else "not committed"},
       {"label": "Words", "value": unit.word_count if unit.word_count is not none else "—"},
+      {"label": "Cost", "value": unit.cost.money_spent_display if unit.cost else "—"},
+      {"label": "Tokens spent", "value": unit.cost.tokens_spent_display if unit.cost else "—"},
     ]) }}
 
     {% if pause.paused %}

@@ -21,8 +21,10 @@ never one of these.
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Final
 
+from commissioner.sql import mount_egress_tables
+from loadledger.sql import mount_ledger_tables
 from sqlalchemy import (
     Boolean,
     Float,
@@ -38,6 +40,8 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from weightsdb import PortableJSON, UtcDateTime, ulid_primary_key
 
 __all__ = [
+    "EGRESS_TABLES",
+    "LEDGER_TABLES",
     "ApiToken",
     "Attempt",
     "Base",
@@ -500,3 +504,44 @@ class Critique(Base):
     created_at: Mapped[datetime] = mapped_column(UtcDateTime, nullable=False, default=utcnow)
 
     __table_args__ = (Index("ix_critiques_attempt_id", "attempt_id"),)
+
+
+LEDGER_TABLES: Final = mount_ledger_tables(Base.metadata)
+"""LoadLedger's four tables, mounted into this application's metadata (ADR-0050, migration 0007).
+
+**Mounted here, at module import, on purpose — never conditionally.** ``Base.metadata`` is what
+Alembic's ``env.py`` names as ``target_metadata`` and what a parity check compares the live schema
+against, both reading the metadata *as it is when they inspect it*. A mount performed later — inside
+a service, a request handler or behind a configuration flag — is a mount autogenerate never sees,
+and the revision it then generates does not merely omit these tables, it **drops** them. So this
+line has no condition on it and never will (transcribed from
+``promptcadence.infrastructure.db.models``, which took this mount first).
+
+The prefix is left at ``loadledger.sql.DEFAULT_TABLE_PREFIX`` (``ledger_``), giving
+``ledger_entries``, ``ledger_balances``, ``ledger_balance_money`` and ``ledger_runs``. Changing it
+once a deployment has migrated is a table rename, not a setting, so it is not configurable here.
+
+The handle is kept rather than dropped so tests can assert the prefix and the shapes; no query in
+this application is written against these :class:`~sqlalchemy.Table` objects. Reads and writes go
+through :class:`loadledger.sql.SqlLedger` (ADR-0050 decision 2) — a join from an application entity
+to a mounted table would freeze a shape the package is free to change under an upgrade note.
+"""
+
+
+EGRESS_TABLES: Final = mount_egress_tables(Base.metadata)
+"""Commissioner's ``egress_decisions`` table, mounted into this application's metadata.
+
+The second package mount here, and a **transcription** of :data:`LEDGER_TABLES` above rather than a
+second design (ADR-0050; migration ``0008``). Everything that made that one an example applies
+unchanged, so only what differs is written down again:
+
+The prefix stays ``commissioner.sql.DEFAULT_TABLE_PREFIX`` (``egress_``), giving one table,
+``egress_decisions``. Changing it once a deployment has migrated is a table rename, not a setting,
+so it is not configurable here either.
+
+Reads and writes go through :class:`commissioner.sql.SqlEgressLedger`, never through this handle
+(ADR-0050 decision 2). That matters more here than it did for the ledger: an egress decision is the
+audit record of a refusal, and a query this application wrote against the table directly would be
+one the package could not keep honest across an upgrade. The handle is kept only so the migration
+parity test can assert the shape and the prefix.
+"""

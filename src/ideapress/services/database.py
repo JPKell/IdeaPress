@@ -37,6 +37,10 @@ if TYPE_CHECKING:
     from sqlalchemy.orm import Session, sessionmaker
     from weightsdb import MigrationOutcome
 
+    from ideapress.config import Settings
+    from ideapress.services.budget import BudgetService
+    from ideapress.services.egress import EgressService
+
 __all__ = [
     "MIGRATIONS_LOCATION",
     "Database",
@@ -81,12 +85,15 @@ class Database:
     takes a handle rather than building an engine from a URL.
     """
 
-    __slots__ = ("_engine", "_sessions")
+    __slots__ = ("_budget", "_egress", "_engine", "_sessions", "_settings")
 
     def __init__(self, engine: Engine) -> None:
         """Wrap an existing engine. Prefer :meth:`from_url` unless you built the engine yourself."""
         self._engine = engine
         self._sessions = session_factory(engine)
+        self._budget: BudgetService | None = None
+        self._egress: EgressService | None = None
+        self._settings: Settings | None = None
 
     @classmethod
     def from_url(cls, database_url: str, *, statement_timeout_ms: int | None = None) -> Database:
@@ -102,6 +109,52 @@ class Database:
     def sessions(self) -> sessionmaker[Session]:
         """The session factory bound to this handle's engine."""
         return self._sessions
+
+    @property
+    def budget(self) -> BudgetService | None:
+        """The LoadLedger mount's service, or ``None`` when nothing has attached one.
+
+        Set once, by :func:`ideapress.services.runtime.build_runtime`, through
+        :meth:`attach_governance`. ``None`` here means "not governed" rather than "no budget
+        configured" — a test that builds a bare :class:`Database` gets attempts recorded with no
+        debit at all, which is why every call site that reads this checks for ``None`` rather than
+        assuming a service.
+        """
+        return self._budget
+
+    @property
+    def egress(self) -> EgressService | None:
+        """The Commissioner mount's service, or ``None``. See :attr:`budget`."""
+        return self._egress
+
+    @property
+    def settings(self) -> Settings | None:
+        """The validated configuration this handle's governance was built from, or ``None``."""
+        return self._settings
+
+    def attach_governance(
+        self, *, budget: BudgetService, egress: EgressService, settings: Settings
+    ) -> None:
+        """Bind the budget and egress services this handle's attempts will be governed by.
+
+        Called exactly once, by :func:`ideapress.services.runtime.build_runtime`, right after the
+        database opens. This is the **only** way :func:`ideapress.services.stages.record_attempt`
+        — a free function every stage body already calls with this same handle — reaches a budget
+        ledger, a pricing catalogue and an egress policy without a new parameter threading through
+        every one of its nine call sites, four of which this row must not edit (row J1/J2
+        concurrency: ``services/unit_loop.py``, ``services/project_review.py`` and
+        ``services/review_loop.py`` are J2's).
+
+        Args:
+            budget: The process's :class:`~ideapress.services.budget.BudgetService`.
+            egress: The process's :class:`~ideapress.services.egress.EgressService`.
+            settings: The validated configuration both were built from — kept here too because
+                the governance funnel needs it to describe the backend that answered as an egress
+                target (:func:`ideapress.services.egress.backend_target`).
+        """
+        self._budget = budget
+        self._egress = egress
+        self._settings = settings
 
     @contextmanager
     def write(self) -> Iterator[Session]:

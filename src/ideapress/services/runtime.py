@@ -12,6 +12,7 @@ because the database is missing — it is created and migrated, which is what ma
 from __future__ import annotations
 
 import logging
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -20,9 +21,12 @@ from mirrorwall import ComponentHealth, ComponentStatus
 from weightsdb import DatabaseError
 
 from ideapress.services.backends import backend_health_component, build_backend
+from ideapress.services.budget import BudgetService
 from ideapress.services.database import Database, database_health_component, ensure_ready
+from ideapress.services.egress import EgressService
 from ideapress.services.events import StageEventSink
 from ideapress.services.inference import InferenceGateway
+from ideapress.services.pricing import PricingCatalog
 from ideapress.services.projects import ProjectService
 from ideapress.services.prompts import prompts_health_component
 from ideapress.services.stages import StageRunner
@@ -36,6 +40,11 @@ if TYPE_CHECKING:
 __all__ = ["Runtime", "build_runtime"]
 
 logger = logging.getLogger(__name__)
+
+
+def _utcnow() -> datetime:
+    """The one clock every attempt's budget and egress governance shares (row J1)."""
+    return datetime.now(UTC)
 
 
 class Runtime:
@@ -104,6 +113,18 @@ class Runtime:
             logger.error("storage.unavailable", exc_info=exc)
             self.startup_error = str(exc)
             return
+        # Row J1: attached before the handle is published anywhere, so every stage attempt this
+        # process ever records is governed (`ideapress.services.stages.record_attempt` reads these
+        # off the same handle every caller already threads through — see `Database.
+        # attach_governance`). An unreadable `[pricing] file` is a startup refusal (ADR-0072 §7),
+        # deliberately not caught here: a price list nobody can read is a configuration error the
+        # same as an unsafe bind, not an unreachable backend (spec §20 AC7 is about the latter).
+        pricing = PricingCatalog.from_settings(settings)
+        database.attach_governance(
+            budget=BudgetService(database, settings, pricing, clock=_utcnow),
+            egress=EgressService(database, clock=_utcnow),
+            settings=settings,
+        )
         self._database = database
         self._projects = ProjectService(database, project_dir=Path(project_dir))
         self._sink = StageEventSink()
