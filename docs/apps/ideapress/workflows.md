@@ -50,7 +50,7 @@ Two rules make this more than a chain of prompts:
 | # | Stage | Input | Output | Gate | Model? |
 |---|---|---|---|---|---|
 | 1 | `requirements` | Brief, author material | Identified requirements (blocking/advisory), constraints, prohibitions | Every requirement has an ID and a checkable statement | Yes (bounded, JSON) |
-| 2 | `research` | Brief, sources | Source notes with citations | Every note cites an available source | Optional |
+| 2 | `research` | Brief's URLs, files in the project's `sources/` directory | Source notes with citations | Every note cites an available source | Optional |
 | 3 | `research_synthesis` | Notes | Structured synthesis | Structure valid; no uncited claim | Yes |
 | 4 | `outline` | Requirements + synthesis | Unit plan (ordered units with goals and requirement IDs) | Every blocking requirement assigned to ≥ 1 unit | Yes |
 | 5 | `draft` | Unit spec + bounded context | Unit text | Non-empty; length band; structure | Yes |
@@ -67,10 +67,42 @@ Two rules make this more than a chain of prompts:
 | 16 | `export` | Committed units | Rendered document | Deterministic render | **No** |
 
 Five stages involve no model at all: `validate`, `coverage`, `commit` and `export` — which are the
-four that decide whether work proceeds — and `research`, whose "Optional" is the stage itself. No
-research backend ships at 1.0 (spec §21 lists them as future extensions), so `research` reaches no
-model, has no `[models.stages]` binding, and the eleven bindings in [spec §12](spec.md) are exactly
-the model-using stages. The ADR that adds a research backend decides its binding then.
+four that decide whether work proceeds — and `research`, whose "Optional" is the stage itself.
+`research` reaches no model, has no `[models.stages]` binding, and the eleven bindings in
+[spec §12](spec.md) are exactly the model-using stages.
+
+**The research backend, since 1.4** ([ADR-0116](../../adr/0116-research-runs-under-toolyard-and-fetches-only-a-named-host.md)).
+1.0 shipped none, and the sentence that stood here said the ADR adding one would decide its
+binding. Its binding is `toolyard`: the stage builds one `ToolExecutor` per run and issues one call
+per target through ToolYard's fixed registry → allowlist → schema → egress → containment order,
+so every refusal is a structured result rather than an exception, and every call — refused ones
+included — is a row in IdeaPress's own `tool_call_records` table. There is no prompt, no plan step
+and no per-turn tool selection: Python decides the calls from what the project already holds.
+
+* **`http_fetch`**, one call per absolute `http(s)://` URL appearing **verbatim** in the brief, in
+  order, de-duplicated. Nothing rewrites, completes or infers a URL. The tool is registered only
+  when `[research] allowed_hosts` names a host; on an installation that names none it is absent
+  from the registry and from the allowlist, and a URL in the brief produces a recorded `REFUSED` /
+  `unknown_tool` result naming the missing configuration rather than a fetch.
+* **`read_file`**, one call per regular file directly inside the project's own
+  `<project directory>/sources/` — the operator's drop box, and the invocation's only read root.
+  An export written into the project directory sits outside that root and is refused with
+  `path_escape`.
+
+Every successful call writes one `sources` row carrying the retrieved text, its digest and its
+citation — the URL or the resolved path — which is what satisfies this row's gate. A call that did
+not succeed writes **no** row: a note whose source was refused cites nothing. Those rows are the
+same ones `fact_check` (stage 10) checks claims against and the same ones §7 budgets as "research
+notes", so a project that runs this stage changes three downstream behaviours at once and a project
+that never runs it is byte-for-byte what 1.3 produced.
+
+**Egress is decided per host, before the fetch** ([ADR-0073](../../adr/0073-egress-is-decided-on-configuration-before-availability.md),
+[ADR-0103](../../adr/0103-ideapress-reacts-to-a-verdict-it-does-not-own.md)). A Commissioner verdict
+is recorded for the URL's host before the executor is entered; an approved verdict raises the
+invocation's egress ceiling to `network`, a denied one leaves it closed and ToolYard refuses the
+call with `egress_not_permitted`. A remote host with no `[research] max_data_classification` is
+denied — fail closed, the same rule the backend target follows. A denied host therefore leaves both
+an `egress_decisions` row and a `tool_call_records` row, and raises nothing.
 
 **Which stages may carry an adapter pin: exactly the model-using ones**, and only in `loadcoach`
 mode. `[models.stage_adapters]` (spec §12,
@@ -290,6 +322,14 @@ Since J2 ([ADR-0104](../../adr/0104-an-adopted-reductions-seam-and-error-vocabul
 this order is enforced by `cutctx`'s `DropOldestPolicy` behind `domain.context_assembly`'s unchanged
 `assemble_context()` seam, rather than by a hand-rolled fill loop; the order above, and everything
 else on this page, is unchanged by the adoption.
+
+**"Relevant research notes" became reachable at 1.4.** Until then `assemble_context` accepted
+`research_notes`, ranked them and dropped them first, and no running stage ever passed one — the
+first line of the reduction order was exercised only by tests. §2's `research` stage is the
+supplier: the `sources` rows it writes are what the draft and repair path passes as
+`(title, text)` pairs, ranked by explicit reference exactly as this section says. The revision path
+deliberately still passes none — `stages.revise.improve` asks for the smallest possible change, and
+broader context invites the opposite — so a revision's context is the narrow one it has always been.
 
 `project_review` (stage 15) assembles a different context — every committed unit, and nothing else
 — through the same `DropOldestPolicy` chain behind a sibling seam,

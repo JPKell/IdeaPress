@@ -39,9 +39,18 @@ created_at · updated_at · completed_at NULL · archived_at NULL
 
 ### `sources`
 ```text
-id ULID PK · project_id FK ON DELETE CASCADE · kind      -- file|note|url(opt-in)
+id ULID PK · project_id FK ON DELETE CASCADE · kind      -- file|note|url
 title · path TEXT NULL · sha256 · content_text TEXT NULL · metadata_json · created_at
 ```
+
+The project's evidence set: what `fact_check` (workflows §2 stage 10) checks claims against, what
+`export` counts for its grounding statement, and — since 1.4 — what `assemble_context` budgets as
+"research notes". The `research` stage is its writer
+([ADR-0116](../../adr/0116-research-runs-under-toolyard-and-fetches-only-a-named-host.md)); until
+1.4 the table had readers and no writer at all. `path` carries the citation the stage's gate
+demands: the URL for a `url` row, the resolved path for a `file` one. `metadata_json` carries the
+`invocation_id` of the tool call that retrieved it, which is how a note joins back to its
+`tool_call_records` row and to the egress decision rendered before the fetch.
 
 ### `requirements`
 ```text
@@ -102,7 +111,9 @@ cache_write_tokens NULL · cache_read_tokens NULL    -- ADR-0070 rule 4's four d
                                                     -- protocol bills none (rule 1), and
                                                     -- only 0 may be totalled (ADR-0016)
 provider_ms · overhead_ms · ttft_ms
-outcome TEXT           -- completed|validation_failed|provider_error|timeout|cancelled|content_rejected
+outcome TEXT           -- completed|validation_failed|provider_error|timeout|cancelled
+                       -- |content_rejected|refused    -- `refused` is a ToolYard rule declining a
+                       -- research call (ADR-0116); `content_rejected` is a *model* declining a task
 rejection_reason TEXT NULL                              -- the model's own words, when it refused
 routing_json NULL                                       -- LoadCoach decision id, score, flags,
                                                         -- runtime_profile_hash, served_context
@@ -161,6 +172,35 @@ backend_config: id ULID PK · mode · base_url · model_bindings_json · last_te
 settings:       key TEXT PK · value_json · updated_at
 api_tokens:     as in FreeWeight
 ```
+
+### `tool_call_records`
+Every research tool call, whatever its outcome (1.4,
+[ADR-0116](../../adr/0116-research-runs-under-toolyard-and-fetches-only-a-named-host.md), migration
+`0010`).
+
+```text
+id ULID PK · project_id FK ON DELETE CASCADE · attempt_id FK ON DELETE CASCADE
+invocation_id                                           -- minted here, never by a model; how the
+                                                        -- egress decision decided *before* the
+                                                        -- fetch joins to the call it governed
+tool_name · args_json TEXT NULL · args_sha256           -- args_json NULL under redaction; the
+                                                        -- digest is always present
+status TEXT            -- ok|refused|failed|timeout
+reason TEXT NULL · reason_detail TEXT NULL              -- ToolYard's closed reason set, and the
+                                                        -- detail that makes a refusal diagnosable
+                                                        -- from the row alone (toolyard §11.2)
+result_summary · result_sha256 · duration_ms
+risk_class · egress                                     -- the spec's own declarations, copied so
+                                                        -- the row survives a tool being withdrawn
+started_at · created_at
+INDEX (project_id, started_at) · INDEX (attempt_id)
+```
+
+This is **not** a mounted table: ToolYard ships a record shape and one `append` method and owns no
+data at all (toolyard spec §10), so unlike `ledger_*` and `egress_decisions` below there is nothing
+to mount — the columns are IdeaPress's, chosen to carry every field
+`toolyard.ToolCallRecord` produces without reshaping one. Refused and failed calls get rows for the
+same reason the ledger records a denial: the table answers "what did this project try".
 
 ### Mounted tables (row J1): `ledger_*`, `egress_decisions`
 

@@ -57,7 +57,12 @@ without any workflow code changing — when LoadCoach is available.
 
 ## 5. Dependencies
 
-**Suite:** `baseaicore`, `setspec`, `modelrack`, `weightsdb`, `mirrorwall`.
+**Suite:** `baseaicore`, `setspec`, `modelrack`, `weightsdb`, `mirrorwall`, `cutctx` (the context
+reduction seam, [ADR-0104](../../adr/0104-an-adopted-reductions-seam-and-error-vocabulary-survive-it.md)),
+`loadledger[sql]` and `commissioner[sql]` (the two mounted tables, row J1,
+[ADR-0103](../../adr/0103-ideapress-reacts-to-a-verdict-it-does-not-own.md)), and — since 1.4 —
+`toolyard`, which is how the `research` stage fetches and reads
+([ADR-0116](../../adr/0116-research-runs-under-toolyard-and-fetches-only-a-named-host.md)).
 Optional extra: `sweatmeter` — a presence probe only. IdeaPress shows no machine telemetry
 ([ADR-0115](../../adr/0115-ideapress-shows-no-machine-telemetry.md)); installing it makes
 `INSUFFICIENT_VRAM` (§13) reachable, nothing more.
@@ -125,8 +130,22 @@ results); events.
 ## 10. Data ownership
 
 Owns `ideapress.sqlite3`: projects, briefs, plans, units, requirements, stage_runs, attempts,
-validations, audits, revisions, drafts, exports, backend_config, settings. Owns its project artifact
-directory. Reads nothing belonging to another application.
+validations, audits, revisions, drafts, exports, backend_config, settings, and — since 1.4 —
+`tool_call_records`. Owns its project artifact directory, including the `sources/` subdirectory an
+operator drops research material into. Reads nothing belonging to another application.
+
+`tool_call_records` is ToolYard's record shape in IdeaPress's own table
+([ADR-0116](../../adr/0116-research-runs-under-toolyard-and-fetches-only-a-named-host.md), migration
+`0010`). ToolYard ships `ToolCallRecord` and one `append` method and owns no data at all — not even
+a mountable table, which is what distinguishes it from `loadledger` and `commissioner` below — so
+the columns, the migration, the retention and every query over them are IdeaPress's. A row exists
+for every research tool call, refused and failed ones included: the table answers "what did this
+project try", and one that kept only successes would answer the wrong question. It joins to its
+attempt by `attempt_id` and to its egress decision by `invocation_id`.
+
+The `sources` rows the `research` stage writes are the project's own evidence set — the same rows
+`fact_check` checks claims against and `export` counts for its grounding statement. A note is a
+source, not a second kind of thing.
 
 The adapter columns on `attempts` — `adapter_name`, `adapter_digest`, `subject_canonical_id` — are
 **IdeaPress's own data**, written from what LoadCoach's response said answered the request. They are
@@ -248,9 +267,29 @@ half still fails closed against a remote registration, which is the invariant th
                                                # project review); raised above 8192 it also
                                                # lifts the draft/repair/revise thinking floor;
                                                # accepted range 1024-131072
+# `[research]` is the `research` stage's whole configuration (ADR-0116). Every default is closed:
+# `allowed_hosts` empty means `http_fetch` is not registered at all — not ToolYard's own "empty
+# means loopback", which for this application would let a URL in a brief reach a service on the
+# user's own machine. `max_data_classification` unset means a remote host is *denied*, fail closed,
+# the same rule `[inference.loadcoach] max_data_classification` follows (ADR-0103 decision 2).
+[research]   allowed_tools = ["http_fetch", "read_file"]
+             allowed_hosts = []          # no host, so a fresh install fetches nothing
+             max_fetch_bytes = 1048576   # per fetched document
+             max_file_bytes = 1048576    # per file read from the project's sources/ directory
+             timeout_seconds = 30.0      # per tool call
+             max_data_classification = ""   # public | internal | confidential; empty denies remote
+
 [providers]  allow_remote = false
 [logging]    level = "INFO"  include_content = false
 ```
+
+`[research] allowed_tools` is the executor's **allowlist**, not the registry: a name it omits is
+refused `not_allowlisted`, and a name it contains that could not be built — `http_fetch` with no
+host — is refused `unknown_tool`. Both are recorded results, never startup failures, because a
+server that will not boot tells an operator less than a row naming what was withheld and why
+([ADR-0053](../../adr/0053-a-refused-tool-call-is-a-result-not-an-exception.md) decision 1: a
+handler is registered in code or not at all, so no configuration could ever supply one). A name
+that is not one of the two shipped tools is refused at startup, because it can only be a typo.
 
 Stage → LoadCoach task profile mapping lives in the adapter, in one place
 ([Workflows §6](workflows.md)), never scattered through workflow code.
@@ -284,6 +323,16 @@ Behavioural rules:
   cannot allow. Both are **permanent for the request as written**, so neither is retried: the pin
   has to change, or the adapter has to be registered. `ADAPTER_NOT_FOUND` carries the names
   LoadCoach does have, so the message says what to write instead.
+* **A refused research tool call is not an error code and never appears in the table above**
+  ([ADR-0053](../../adr/0053-a-refused-tool-call-is-a-result-not-an-exception.md),
+  [ADR-0116](../../adr/0116-research-runs-under-toolyard-and-fetches-only-a-named-host.md)). A host
+  outside the allowlist, a denied egress verdict, a path escaping the project's `sources/`
+  directory, a document over the byte cap, an origin that is down — every one of them is a
+  `toolyard.ToolResult` with a status and a machine-readable reason, recorded as a
+  `tool_call_records` row and shown on the unit page. The stage completes; the note is simply not
+  written. The attempt for such a call records `outcome = "refused"` (or `provider_error` /
+  `timeout` for the two ToolYard statuses that mean the world answered badly rather than a rule
+  saying no), which is what makes the refusal legible from the attempt alone.
 * `INSUFFICIENT_VRAM` is the wait-or-refuse outcome of
   [ADR-0038](../../adr/0038-one-model-at-a-time-per-gpu.md): the preflight found less free VRAM than
   the configured model needs with room for its context. It carries **both figures** — required and
@@ -413,7 +462,12 @@ is why it takes no hard dependency on `sweatmeter` regardless.
 * More export formats (PDF, EPUB, DOCX).
 * Failure memory — remembering what previously failed for a project so retries avoid it.
 * Concept competition — generating several execution approaches and selecting among them.
-* Research backends (local document ingestion; opt-in web search).
+* ~~Research backends (local document ingestion; opt-in web search).~~ **Built at 1.4**
+  ([ADR-0116](../../adr/0116-research-runs-under-toolyard-and-fetches-only-a-named-host.md)):
+  `read_file` over the project's `sources/` directory and `http_fetch` over an operator-named host
+  list, both through ToolYard's executor. What is still future here is anything that decides its
+  own targets — following a link out of a fetched document, paginating a result set, or a search
+  engine of any kind.
 * Per-project prompt overrides with the same record schema and hashing.
 * Publishing integrations (explicitly opt-in, clearly marked as egress).
 * Using LoadCoach's reliability data to inform stage-level model hints.

@@ -38,8 +38,11 @@ from ideapress.services.budget import pseudo_run_id
 from ideapress.services.egress import backend_target
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from loadledger import CeilingVerdict
     from sqlalchemy.orm import Session
+    from toolyard import ToolCallRecord
 
     from ideapress.domain.inference import StageResult
     from ideapress.domain.stages import StageId
@@ -134,6 +137,8 @@ def record_attempt(
     error_code: str | None = None,
     error_text: str | None = None,
     store_content: bool = False,
+    project_id: str | None = None,
+    tool_calls: Sequence[ToolCallRecord] = (),
 ) -> str:
     """Write one attempt record — the unit of provenance (workflows §8).
 
@@ -147,13 +152,26 @@ def record_attempt(
         round_: The revision round; 0 for the first pass.
         prompt_id, prompt_version, prompt_sha256: Which prompt record produced it.
         outcome: ``completed``, ``validation_failed``, ``provider_error``, ``timeout``,
-            ``cancelled`` or ``content_rejected``.
+            ``cancelled``, ``content_rejected`` or ``refused``. The last two are different facts:
+            ``content_rejected`` is a *model* declining the task, ``refused`` is a ToolYard rule
+            declining a research call before or instead of the work (ADR-0053, ADR-0116).
         error_code, error_text: For a failure.
         store_content: Whether the prompt and response text may be stored. Off by default: this is
             the user's private work and hashes are enough for provenance (data model §4).
+        project_id: Which project, needed only when ``tool_calls`` is non-empty — a tool-call row
+            names its project directly rather than reaching it through two joins. Ignored
+            otherwise, because every other caller's project is already reachable from the run.
+        tool_calls: ToolYard records collected during this attempt, staged as
+            ``tool_call_records`` rows **inside this function's own transaction** so the record
+            and the attempt that owns it are one write (ADR-0044, ADR-0116). Empty for every
+            attempt that made no tool call, which is every attempt but the research stage's.
 
     Returns:
         The attempt's identifier.
+
+    Raises:
+        ValueError: ``tool_calls`` was given without a ``project_id``. A caller bug, and one that
+            would otherwise write a row that cannot be found from the project it belongs to.
 
     **The debit site (row J1).** This is the one funnel every stage attempt routes through
     (kickoff ground truth 2), so it is also where a budget debit and an egress decision are
@@ -214,6 +232,14 @@ def record_attempt(
                 row.response_text = result.text
         session.add(row)
         session.flush()
+        if tool_calls:
+            if project_id is None:
+                message = "record_attempt was given tool_calls with no project_id."
+                raise ValueError(message)
+            from ideapress.infrastructure.tool_calls import tool_call_row
+
+            for record in tool_calls:
+                session.add(tool_call_row(record, project_id=project_id, attempt_id=row.id))
         try:
             _govern_attempt(
                 database,

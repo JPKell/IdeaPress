@@ -55,6 +55,7 @@ __all__ = [
     "Critique",
     "Export",
     "StageRun",
+    "ToolCallRecord",
     "Unit",
     "UnitVersion",
     "Validation",
@@ -464,6 +465,58 @@ class Export(Base):
     created_at: Mapped[datetime] = mapped_column(UtcDateTime, nullable=False, default=utcnow)
 
     __table_args__ = (Index("ix_exports_project_id_created_at", "project_id", "created_at"),)
+
+
+class ToolCallRecord(Base):
+    """One model-directed-shaped tool call the `research` stage made, whatever its outcome.
+
+    ToolYard owns no data (its spec §10): it defines :class:`toolyard.ToolCallRecord` and one
+    method to append one, and this application owns the table, the retention and the migration.
+    Unlike ``ledger_*`` and ``egress_decisions`` below there is nothing to *mount* — the columns
+    are IdeaPress's, chosen to carry every field the package's record produces without reshaping
+    one (ADR-0116, migration ``0010``).
+
+    Refused, failed and timed-out calls get rows exactly as successful ones do. The table answers
+    "what did this project try", and one that kept only successes would answer the wrong question.
+    """
+
+    __tablename__ = "tool_call_records"
+
+    id: Mapped[str] = ulid_primary_key()
+    project_id: Mapped[str] = mapped_column(
+        String(26), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    )
+    attempt_id: Mapped[str] = mapped_column(
+        String(26), ForeignKey("attempts.id", ondelete="CASCADE"), nullable=False
+    )
+    # Minted by this application before the call, never by a model — and the join to the egress
+    # decision rendered *before* the fetch, which therefore could not carry an attempt id
+    # (ADR-0073: the ordering is the guarantee).
+    invocation_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    # Long enough for a name no tool has: a refusal that does not say what was asked for cannot be
+    # diagnosed, so `unknown_tool` records the name as given.
+    tool_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    # NULL under redaction, or when the arguments were too large to store; the digest is always
+    # present, so two records of the same call are comparable either way.
+    args_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    args_sha256: Mapped[str] = mapped_column(String(71), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    reason: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    reason_detail: Mapped[str | None] = mapped_column(Text, nullable=True)
+    result_summary: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    result_sha256: Mapped[str] = mapped_column(String(71), nullable=False, default="")
+    duration_ms: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # The spec's own declarations, copied rather than re-derived, so the row still describes the
+    # call after a tool is withdrawn from the registry.
+    risk_class: Mapped[str] = mapped_column(String(20), nullable=False, default="")
+    egress: Mapped[str] = mapped_column(String(20), nullable=False, default="")
+    started_at: Mapped[datetime] = mapped_column(UtcDateTime, nullable=False, default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, nullable=False, default=utcnow)
+
+    __table_args__ = (
+        Index("ix_tool_call_records_project_id_started_at", "project_id", "started_at"),
+        Index("ix_tool_call_records_attempt_id", "attempt_id"),
+    )
 
 
 class AuditFinding(Base):

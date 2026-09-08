@@ -54,6 +54,11 @@ dependencies = [
     # behind the unchanged assemble_context() seam (ADR-0104). No pin move: cutctx 0.1.0 requires
     # baseaicore>=0.4.1,<0.5, already this application's floor.
     "cutctx>=0.1,<0.2",
+    # M1 (2026-09-08, ADR-0116): the `research` stage executes `read_file` and `http_fetch`
+    # through toolyard's executor rather than a second httpx fetch loop with a second reading of
+    # ADR-0026 §3. Same range PromptCadence pins. A suite package is unbudgeted (ADR-0114), so
+    # gold-standards §1.1's enumerated non-suite set does not move.
+    "toolyard>=0.1.1,<0.2",
     "fastapi>=0.115,<1",
     "uvicorn[standard]>=0.30,<1",
     "pydantic>=2.9,<3",

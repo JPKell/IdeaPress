@@ -543,3 +543,102 @@ nameless one.
 adapter axis: a committed unit's attempts name the subject that produced the text.
 **Deferred:** routed (unpinned) adapter selection, which needs LA3's evidence; per-project pin
 overrides; any adapter on the direct or OpenAI-compatible paths.
+
+---
+
+## Phase 11 — The `research` stage, under ToolYard · **row M1**
+
+**Goal:** IdeaPress 1.4 — the stage [workflows §2](workflows.md) row 2 has specified since M6 and
+no build has implemented. A project whose brief names a URL, or whose `sources/` directory holds a
+file, produces source notes with citations; every call runs through `toolyard`'s executor; every
+refusal is a recorded result rather than an exception; and the notes reach `assemble_context`,
+whose `research_notes` input has been dead since it was written.
+
+**Prerequisites:** P10 (`ideapress 1.3.x`); `toolyard 0.1.1` published; `commissioner 0.1.1` and
+row J1's `services/egress.py` (the decision path this reuses); row J2's `assemble_context` seam
+(ADR-0104) and its `REDUCTION_ORDER`, unchanged by this phase.
+[ADR-0116](../../adr/0116-research-runs-under-toolyard-and-fetches-only-a-named-host.md) is this
+phase's scope statement and its configuration decision.
+
+**Work**
+* **The store and its table.** `tool_call_records` (migration `0010`) and an implementation of
+  `toolyard.ToolCallStore` that collects during the call and is flushed onto the same transaction
+  the attempt row commits in — PromptCadence's `CollectingToolCallStore` shape, transcribed. A
+  record is written for every call: refused and failed included.
+* **The plant.** One `ToolRegistry`, one `toolyard.PathContainment` and one `ToolExecutor` per
+  stage run. `read_file` is registered always; `http_fetch` only when `[research] allowed_hosts`
+  names a host, with the resolver and the httpx transport injected so the whole fetch path is
+  exercised with no socket opened. The allowlist is `[research] allowed_tools`; the registry is
+  never narrowed, the allowlist is.
+* **The stage.** `research` in `STAGE_BODIES`, and the one stage `start_stage` does not require a
+  plan for — workflows §2 puts it at position 2 and the plan at position 4. URL extraction is pure
+  and lives in `domain/research.py`: absolute `http(s)://` only, verbatim, de-duplicated, in
+  order. Files come from `<project directory>/sources/`, sorted, top level only.
+* **Egress before the fetch.** One Commissioner verdict per URL host, rendered and recorded before
+  the executor is entered (ADR-0073), enforced by the invocation's `max_egress`. A remote host with
+  no declared ceiling is denied (ADR-0103 decision 2, fail closed).
+* **Notes into the workflow.** A successful call writes one `sources` row with its citation;
+  `draft`/`repair` pass those rows to `assemble_context` as `research_notes`. The revision path
+  passes none, unchanged from row K3.
+* **The surface.** The unit page and `ideapress unit show --provenance` gain a Research section:
+  the notes with their citations, and every tool call with its status and reason. Server-rendered,
+  no new JS, no new route.
+* **Release.** `ideapress 1.4.0`.
+
+**Files/subsystems**
+```text
+src/ideapress/config.py                                   [research]
+src/ideapress/domain/research.py                          URL extraction, pure
+src/ideapress/infrastructure/tool_calls.py                the ToolCallStore and the row mapping
+src/ideapress/infrastructure/db/models.py                 ToolCallRecord
+src/ideapress/infrastructure/db/migrations/versions/0010_tool_call_records.py
+src/ideapress/services/research_tools.py                  the registry, containment and executor
+src/ideapress/services/research.py                        the stage body
+src/ideapress/services/stage_registry.py                  one more entry
+src/ideapress/services/stages.py                          record_attempt carries tool-call rows
+src/ideapress/services/unit_loop.py                       notes reach assemble_context
+src/ideapress/services/unit_reports.py                    the unit view's research section
+src/ideapress/web/templates/units/detail.html             one section
+src/ideapress/cli/commands/unit.py                        one section under --provenance
+```
+
+**Tests**
+* Every refusal path as a **result**: a host outside the allowlist, a denied egress verdict, a
+  scheme that is not http(s), a path escaping `sources/`, a document over the byte cap, an origin
+  answering 500 — each recorded, none raising.
+* A denied host leaves an `egress_decisions` row **and** a `tool_call_records` row, joined by
+  invocation id, and the stage still completes.
+* A fresh installation (`allowed_hosts = []`) with a URL in the brief: `http_fetch` unregistered,
+  the call refused `unknown_tool`, no socket opened.
+* A shipped `1.0` configuration file still loads to a `1.0` settings object once `[research]` is
+  taken back out — the compatibility golden, extended, not replaced.
+* Notes rank and drop exactly as `REDUCTION_ORDER` says, through the existing golden fixtures.
+* The whole fetch path through `httpx.MockTransport`: no test in the default suite opens a socket.
+
+**Acceptance criteria**
+1. A project whose brief names a URL produces notes from it, with the call recorded on the
+   provenance the unit page shows.
+2. A disallowed host is refused **as a result**, visible on the unit, with an `egress_decisions`
+   row and no exception anywhere.
+3. A brief with no URL, or an installation with no allowed host, runs the workflow exactly as 1.3
+   did — proven by the existing e2e journey passing unchanged.
+4. `SELECT tool_name, status, reason FROM tool_call_records` distinguishes what was fetched, what
+   was read and what was refused, from the database alone.
+5. Full gate green; coverage ≥ 85 %; the lock proved in a clean venv.
+
+**Known risks:** the empty-allowlist trap — `toolyard.http_fetch_tool([])` means *loopback only*,
+not *nothing*, so an application that passes its own empty list through gets a fetcher that can
+reach the user's own machine. Mitigated by not registering the tool at all in that case, and by a
+test that asserts the registry's contents rather than the tool's behaviour. Second risk: the
+research stage silently changing what every project drafts against — mitigated because nothing
+writes a `sources` row until the stage is run explicitly, and no existing project has one.
+**Likely failure modes:** an egress decision rendered after the fetch rather than before, which
+looks identical in the database and reverses the guarantee; a note written for a refused call,
+which would break workflows §2's gate; a `read_file` root set to the project directory rather than
+its `sources/` subdirectory, which would let the stage ingest its own exports.
+**Gold standards:** every IdeaPress gold standard, unchanged. G9 in particular — the default suite
+opens no socket, with a network tool now shipping — and G12, whose "no outbound call in the default
+configuration" is now a property of the registry rather than of the absence of code.
+**Deferred:** any target the stage did not get from the project — following a link out of a fetched
+document, pagination, search of any kind; a research backend on a schedule; `write_file`,
+`list_dir` or `run_command`, none of which this stage needs and none of which is registered.

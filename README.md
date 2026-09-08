@@ -43,10 +43,13 @@ Declared version ranges from `pyproject.toml` — kept from drifting by
 | `loadledger` | `>=0.3,<0.4` |
 | `commissioner` | `>=0.1.1,<0.2` |
 | `cutctx` | `>=0.1,<0.2` |
+| `toolyard` | `>=0.1.1,<0.2` |
 | `sweatmeter` | `>=0.4,<0.5` |
 
 `loadledger` and `commissioner` are installed with their `[sql]` extra (not optional in practice:
-both mount unconditionally in `infrastructure/db/models.py`). `sweatmeter` is the optional
+both mount unconditionally in `infrastructure/db/models.py`). `toolyard` is how the `research`
+stage fetches and reads (ADR-0116); nothing else in IdeaPress touches it. `sweatmeter` is the
+optional
 `[telemetry]` extra — never a hard dependency — and gates only `doctor`'s VRAM-preflight capability
 flag; IdeaPress shows no machine telemetry (ADR-0115).
 
