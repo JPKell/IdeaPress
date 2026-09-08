@@ -7,6 +7,31 @@ packaging and release standards §3.
 
 ## [Unreleased]
 
+### Changed
+
+- `baseaicore` floor raised from `0.4.1` to `0.4.2`: `modelrack 0.7`'s own floor already requires
+  `baseaicore>=0.4.2`, so the declared `0.4.1` lowest range could never resolve (found by the
+  cross-repository compatibility matrix, row L7).
+
+### Added
+
+- `tests/unit/test_readme_version.py` — asserts the version README.md states after its `Status:`
+  line equals `__about__.__version__`, so a release cannot leave the README stale (M9 re-audit,
+  row L7).
+
+### Fixed
+
+- README's `Status:` line still read `1.2.0`, on PyPI; it now states `1.3.2` in the repository,
+  tagged locally as `v1.3.2` (not yet pushed), with PyPI still serving `1.3.1`.
+- `docs/upgrading.md` stopped at `1.2.0 → 1.3.0`; it now covers `1.3.0 → 1.3.2` (dependency-only,
+  no operator behaviour change).
+- `.github/workflows/ci.yml`'s `install-check` job never installed the `[telemetry]` extra
+  (`sweatmeter`, status display only); it now installs it and imports `sweatmeter` from the built
+  wheel, the same way `[postgres]` is proven (M9 re-audit, row L7, item I5).
+- `.github/workflows/ci.yml`'s nightly schedule ran only the `performance` job; it now also runs
+  a `live` job (`pytest -m live -rs`), matching packaging standards §5 and ModelRack's
+  `nightly.yml` shape (M9 re-audit, row L7, item I5 / Q1's G19).
+
 ## [1.3.2] - 2026-09-07
 
 ### Changed

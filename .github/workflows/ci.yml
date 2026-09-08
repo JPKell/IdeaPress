@@ -199,6 +199,11 @@ jobs:
       # Packaging standards §10: the optional postgres extra must resolve and install
       # cleanly from the built wheel too, not only from an editable source checkout.
       - run: pip install "$(ls dist/*.whl)[postgres]"
+      # The optional telemetry extra (sweatmeter, status display only) must resolve and import
+      # cleanly from the built wheel too — nothing installed it before (M9 re-audit, row L7, item
+      # I5).
+      - run: pip install "$(ls dist/*.whl)[telemetry]"
+      - run: python -c "import sweatmeter"
       - run: pipx install dist/*.whl && ideapress --version
 
   performance:
@@ -216,3 +221,21 @@ jobs:
       - run: pip install --require-hashes -r requirements/ci.lock
       - run: pip install . --no-deps
       - run: pytest -m performance -s
+
+  live:
+    # Packaging standards §5 requires both a nightly performance job and a nightly live job;
+    # this schedule had only the former (M9 re-audit, row L7, item I5 / Q1's G19). `tests/live/`
+    # holds five files, including the LA2 three-stage project and the LoadCoach live suite. On a
+    # GitHub-hosted runner these skip themselves honestly when nothing real is reachable — `-rs`
+    # reports every skip with its reason, so "nothing was here to test against" stays visible
+    # rather than indistinguishable from "everything passed".
+    name: live suite (nightly)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install --require-hashes -r requirements/ci.lock
+      - run: pip install . --no-deps
+      - run: pytest -m live -rs

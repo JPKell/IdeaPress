@@ -21,10 +21,10 @@ classifiers = [
 ]
 # sweatmeter is an optional extra ([telemetry]) for status display only, never a hard dependency.
 dependencies = [
-    # Floor raised at 1.1: `DataClassification` — the vocabulary `[inference]
-    # data_classification` is validated against — arrived in baseaicore 0.4.1. A floor a needed
-    # symbol is not in imports cleanly and fails at the first request that uses it (F3 finding 4).
-    "baseaicore>=0.4.1,<0.5",
+    # Floor raised to 0.4.2 (2026-09-07, row L7): modelrack 0.7's own floor already requires
+    # baseaicore>=0.4.2, so the declared 0.4.1 lowest range could never resolve (found by the
+    # cross-repository compatibility matrix, Q6/O3).
+    "baseaicore>=0.4.2,<0.5",
     # Floor raised to 0.5 at row J1 (D6): commissioner 0.1.1 pins `setspec>=0.5,<0.7` for
     # `governance.egress_decision` 1.0, and admitting 0.4.x here would let IdeaPress resolve a
     # setspec commissioner itself forbids — the same "one repo's floor is another's ceiling"

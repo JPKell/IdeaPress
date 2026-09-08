@@ -2,7 +2,8 @@
 
 Turns an idea into finished content through configurable, Python-controlled workflows in which models perform bounded, validated tasks.
 
-**Status:** `1.2.0`, on PyPI — 10 phases built through M8's 1.0 and the LA2/M13 rows beyond it:
+**Status:** `1.3.2` in the repository — `v1.3.2` tagged locally (not yet pushed); **PyPI still
+serves `1.3.1`**. 10 phases built through M8's 1.0 and the LA2/M13 rows beyond it:
 requirements, plan, draft/validate/repair/commit, audit and bounded revision, exports, an optional
 LoadCoach backend, per-stage adapter pins, and now per-unit/per-project cost (LoadLedger), a
 recorded egress decision (Commissioner) and CutCtx-driven stage context compaction — see
@@ -35,7 +36,7 @@ Declared version ranges from `pyproject.toml` — kept from drifting by
 
 | Package | Range |
 |---|---|
-| `baseaicore` | `>=0.4.1,<0.5` |
+| `baseaicore` | `>=0.4.2,<0.5` |
 | `setspec` | `>=0.5,<0.7` |
 | `modelrack` | `>=0.7,<0.8` |
 | `weightsdb` | `>=0.2,<0.3` |

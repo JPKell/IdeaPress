@@ -100,6 +100,19 @@ Two behaviours to know about:
   a thin edge over `loadledger.pricing`; `[pricing] file` and the configuration error it raises on
   a broken path are unchanged, and every existing pricing test passes unchanged.
 
+## 1.3.0 → 1.3.2
+
+No migration and no data changes across either patch.
+
+* **1.3.1 widened the `modelrack` floor to `>=0.7,<0.8`** so the four applications can be
+  installed into one environment again (packaging standards §4): `freeweight 1.1.0` and
+  `loadcoach 1.1.3` floor it at 0.7, and `pip install freeweight loadcoach ideapress promptcadence`
+  refused to resolve with 1.3.0. IdeaPress's providers are unchanged in shape across the range;
+  nothing about how a project runs changes.
+* **1.3.2 raised the `mirrorwall` floor to `>=0.2.2,<0.3`** — a dependency-resolution fix only:
+  the two earlier releases pin `setspec<0.5`, below this application's own floor, so the declared
+  lowest range could never resolve. Nothing behaves differently for an operator.
+
 ## Checking the version
 
 ```bash
