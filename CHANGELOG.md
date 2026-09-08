@@ -7,6 +7,12 @@ packaging and release standards §3.
 
 ## [Unreleased]
 
+### Changed
+
+- Small tightenings ruff's SIM/PERF families flagged in the exporters, diff, archive, logging and
+  requirements modules (`extend` with generators, one `with` block, `contextlib.suppress`).
+  No behaviour change.
+
 ## [1.4.0] - 2026-09-08
 
 ### Added

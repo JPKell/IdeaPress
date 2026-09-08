@@ -14,6 +14,7 @@ residency control and no model disclosure is how that is found in P2 instead.
 
 from __future__ import annotations
 
+import contextlib
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
@@ -178,12 +179,11 @@ class FakeBackend:
         """
         if not self.capabilities().residency_control:
             return
-        try:
+        # A script with no such model fails earlier, so the suppression is never exercised.
+        with contextlib.suppress(ProviderError):
             self._provider.load(
                 reference_to_identity(model_reference, default="fake"), RuntimeProfile()
             )
-        except ProviderError:  # pragma: no cover — a script with no such model fails earlier
-            pass
 
     def generate(self, request: StageRequest) -> StageResult:
         """Run one scripted task to completion."""

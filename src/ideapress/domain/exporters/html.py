@@ -182,8 +182,10 @@ def render_html(document: ExportDocument) -> str:
                 f"{_e(attempt.model_canonical_id or 'not disclosed')}, prompt "
                 f"{_e(attempt.prompt_id or '—')} {_e(attempt.prompt_version or '')}</li>"
             )
-            for degradation in sorted(attempt.degradations):
-                parts.append(f"<li>degradation: {_e(degradation)}</li>")
+            parts.extend(
+                f"<li>degradation: {_e(degradation)}</li>"
+                for degradation in sorted(attempt.degradations)
+            )
         parts.append("</ul>")
     parts.extend(["</footer>", "</body>", "</html>"])
     return "\n".join(parts) + "\n"

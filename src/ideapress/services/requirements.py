@@ -162,11 +162,7 @@ def assemble_documents(*, brief: str, sources: Mapping[str, str] | None = None) 
         :func:`~ideapress.domain.requirements.ground_requirement` checks quotations against, so a
         quote from a document the model was not shown cannot pass.
     """
-    documents = {"brief": brief}
-    for title, text in (sources or {}).items():
-        if title != "brief":
-            documents[title] = text
-    return documents
+    return {"brief": brief, **{t: text for t, text in (sources or {}).items() if t != "brief"}}
 
 
 def _render_documents(documents: Mapping[str, str]) -> str:

@@ -130,10 +130,14 @@ def diff_lines(
                     )
                 )
             continue
-        for index in range(i1, i2):
-            rows.append(DiffLine(kind="removed", text=old_lines[index], old_number=index + 1))
-        for index in range(j1, j2):
-            rows.append(DiffLine(kind="added", text=new_lines[index], new_number=index + 1))
+        rows.extend(
+            DiffLine(kind="removed", text=old_lines[index], old_number=index + 1)
+            for index in range(i1, i2)
+        )
+        rows.extend(
+            DiffLine(kind="added", text=new_lines[index], new_number=index + 1)
+            for index in range(j1, j2)
+        )
     return tuple(rows), truncated
 
 

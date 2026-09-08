@@ -523,9 +523,12 @@ def _extract_manifest(path: Path, staging: Path) -> dict[str, Any]:
     staging.mkdir(parents=True, exist_ok=True)
     target = staging / MANIFEST_NAME
     if zipfile.is_zipfile(path):
-        with zipfile.ZipFile(path) as archive, archive.open(MANIFEST_NAME) as source:
-            with target.open("wb") as sink:
-                shutil.copyfileobj(source, sink, length=1 << 20)
+        with (
+            zipfile.ZipFile(path) as archive,
+            archive.open(MANIFEST_NAME) as source,
+            target.open("wb") as sink,
+        ):
+            shutil.copyfileobj(source, sink, length=1 << 20)
     else:
         with tarfile.open(path) as tar:
             handle = tar.extractfile(MANIFEST_NAME)

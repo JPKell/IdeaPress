@@ -52,12 +52,12 @@ def render_markdown(document: ExportDocument) -> str:
         lines.append("")
         lines.append("| Unit | Title | State | Requirements it owed | Reason |")
         lines.append("| --- | --- | --- | --- | --- |")
-        for missing in sorted(document.incomplete_units, key=lambda u: u.ordinal):
-            lines.append(
-                f"| {missing.key} | {_cell(missing.title)} | {missing.state} "
-                f"| {', '.join(missing.requirement_keys) or '—'} "
-                f"| {_cell(missing.reason) or '—'} |"
-            )
+        lines.extend(
+            f"| {missing.key} | {_cell(missing.title)} | {missing.state} "
+            f"| {', '.join(missing.requirement_keys) or '—'} "
+            f"| {_cell(missing.reason) or '—'} |"
+            for missing in sorted(document.incomplete_units, key=lambda u: u.ordinal)
+        )
         lines.append("")
         lines.append(
             "Their text is deliberately absent — an export carries work that passed its gates. "
@@ -110,9 +110,9 @@ def render_markdown(document: ExportDocument) -> str:
                 f"model {attempt.model_canonical_id or 'not disclosed'}, "
                 f"prompt {attempt.prompt_id or '—'} {attempt.prompt_version or ''}"
             )
-            if attempt.degradations:
-                for degradation in sorted(attempt.degradations):
-                    lines.append(f"  - degradation: {degradation}")
+            lines.extend(
+                f"  - degradation: {degradation}" for degradation in sorted(attempt.degradations)
+            )
         lines.append("")
 
     return "\n".join(lines).rstrip("\n") + "\n"
