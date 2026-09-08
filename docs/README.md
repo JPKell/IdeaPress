@@ -11,6 +11,7 @@
 - [Operations](operations.md) — where things live, backups, PostgreSQL, logs, performance budgets
 - [Upgrading](upgrading.md) — the compatibility guarantees, and 0.1.x → 1.2.0
 - [Security](security.md) — the bind, untrusted model output, your content, archives
+- [llama.cpp setup](LLAMACPP_SETUP.md) — install, the model directory, adapters, swapping, model suggestions (mirrored; LoadCoach's guide, relevant when this backend is LoadCoach)
 
 ## The design
 
