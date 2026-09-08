@@ -7,6 +7,8 @@ packaging and release standards §3.
 
 ## [Unreleased]
 
+## [1.3.3] - 2026-09-07
+
 ### Changed
 
 - `baseaicore` floor raised from `0.4.1` to `0.4.2`: `modelrack 0.7`'s own floor already requires

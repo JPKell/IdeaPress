@@ -2,7 +2,7 @@
 
 Turns an idea into finished content through configurable, Python-controlled workflows in which models perform bounded, validated tasks.
 
-**Status:** `1.3.2` in the repository — `v1.3.2` tagged locally (not yet pushed); **PyPI still
+**Status:** `1.3.3` in the repository — `v1.3.2` tagged locally (not yet pushed); **PyPI still
 serves `1.3.1`**. 10 phases built through M8's 1.0 and the LA2/M13 rows beyond it:
 requirements, plan, draft/validate/repair/commit, audit and bounded revision, exports, an optional
 LoadCoach backend, per-stage adapter pins, and now per-unit/per-project cost (LoadLedger), a
