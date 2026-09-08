@@ -13,6 +13,8 @@ from sqlalchemy import select
 from ideapress.infrastructure.db.models import Attempt as AttemptRow
 from ideapress.infrastructure.db.models import AuditFinding as AuditFindingRow
 from ideapress.infrastructure.db.models import Critique as CritiqueRow
+from ideapress.infrastructure.db.models import Source as SourceRow
+from ideapress.infrastructure.db.models import ToolCallRecord as ToolCallRow
 from ideapress.infrastructure.db.models import Unit as UnitRow
 from ideapress.infrastructure.db.models import UnitVersion as UnitVersionRow
 from ideapress.infrastructure.db.models import Validation as ValidationRow
@@ -23,7 +25,65 @@ from ideapress.services.units import load_unit, unit_history
 if TYPE_CHECKING:
     from ideapress.services.runtime import Runtime
 
-__all__ = ["unit_detail", "unit_list"]
+__all__ = ["research_report", "unit_detail", "unit_list"]
+
+
+def research_report(runtime: Runtime, *, project_id: str) -> dict[str, Any]:
+    """The project's research notes and every tool call that produced or failed to produce one.
+
+    Project-scoped rather than unit-scoped, and shown on the unit page anyway (row M1, ADR-0116):
+    the `research` stage runs before any unit exists — workflows §2 puts it at position 2 and the
+    plan at position 4 — so a research call has no unit to belong to. What a person reading a unit
+    needs is which sources fed it and which fetches were refused, and both of those are facts
+    about the project.
+
+    Args:
+        runtime: The process's handles.
+        project_id: Which project.
+
+    Returns:
+        ``{"notes": [...], "tool_calls": [...]}``. Notes carry their citation, their digest and
+        their length rather than their text — a unit page that inlined every fetched document
+        would be unreadable, and the text is what the draft context already carried. Tool calls
+        carry ToolYard's status, reason and detail, so a refusal is diagnosable from the page the
+        way it is from the row (toolyard §11.2). Both lists are empty for every project that never
+        ran the stage, which renders as the existing empty state.
+    """
+    with runtime.storage.read() as session:
+        notes = session.scalars(
+            select(SourceRow)
+            .where(SourceRow.project_id == project_id)
+            .order_by(SourceRow.created_at, SourceRow.id)
+        ).all()
+        calls = session.scalars(
+            select(ToolCallRow)
+            .where(ToolCallRow.project_id == project_id)
+            .order_by(ToolCallRow.started_at, ToolCallRow.id)
+        ).all()
+    return {
+        "notes": [
+            {
+                "kind": note.kind,
+                "title": note.title,
+                "citation": note.path or note.title,
+                "sha256": note.sha256,
+                "characters": len(note.content_text or ""),
+            }
+            for note in notes
+        ],
+        "tool_calls": [
+            {
+                "tool": call.tool_name,
+                "status": call.status,
+                "reason": call.reason,
+                "detail": call.reason_detail,
+                "duration_ms": call.duration_ms,
+                "egress": call.egress,
+                "started_at": call.started_at.isoformat(),
+            }
+            for call in calls
+        ],
+    }
 
 
 def unit_list(runtime: Runtime, *, project_id: str) -> list[dict[str, Any]]:
@@ -122,6 +182,8 @@ def unit_detail(runtime: Runtime, *, project_id: str, unit_key: str) -> dict[str
         "project_id": project_id,
         "unit_key": unit_key,
         "cost": cost,
+        # Project-scoped, on the unit page on purpose: see `research_report` (row M1).
+        "research": research_report(runtime, project_id=project_id),
         "title": unit.title,
         "goal": unit.goal_text,
         "state": unit.state,

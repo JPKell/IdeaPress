@@ -99,6 +99,40 @@
   </table></div>
 {% else %}{{ empty_state("No critique recorded.") }}{% endif %}
 
+<h3>Research</h3>
+{% if research.notes or research.tool_calls %}
+  {% if research.notes %}
+  <div class="table-scroll"><table>
+    <caption>Source notes this project's units were drafted against, and what each cites</caption>
+    <thead><tr><th scope="col">Kind</th><th scope="col">Cites</th><th scope="col">Characters</th><th scope="col">Digest</th></tr></thead>
+    <tbody>
+    {% for note in research.notes %}
+      <tr><td>{{ badge(note.kind, tone="neutral") }}</td>
+          <td>{{ note.citation }}</td>
+          <td>{{ note.characters }}</td>
+          <td>{{ note.sha256 }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}{{ empty_state("No notes were written: every research call was refused or failed.") }}{% endif %}
+  {% if research.tool_calls %}
+  <div class="table-scroll"><table>
+    <caption>Every research tool call, including the ones that were refused</caption>
+    <thead><tr><th scope="col">Tool</th><th scope="col">Result</th><th scope="col">Reason</th><th scope="col">Detail</th><th scope="col">Egress</th><th scope="col">Duration</th></tr></thead>
+    <tbody>
+    {% for call in research.tool_calls %}
+      <tr><td>{{ call.tool }}</td>
+          <td>{{ badge(call.status, tone="success" if call.status == "ok" else ("warning" if call.status == "refused" else "danger")) }}</td>
+          <td>{{ call.reason or "—" }}</td>
+          <td>{{ call.detail or "—" }}</td>
+          <td>{{ call.egress }}</td>
+          <td>{{ call.duration_ms }} ms</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% endif %}
+{% else %}{{ empty_state("The research stage has not run for this project.") }}{% endif %}
+
 <h3>Provenance</h3>
 {% if attempts %}
   <div class="table-scroll"><table>

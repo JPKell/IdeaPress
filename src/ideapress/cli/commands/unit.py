@@ -101,6 +101,23 @@ def show(
             )
             if attempt["degradations"]:
                 typer.echo(f"      degradations: {'; '.join(attempt['degradations'])}")
+        research = detail["research"]
+        # Project-scoped, printed under the unit's provenance on purpose: a research call runs
+        # before any unit exists, and what this unit was drafted against is still the question a
+        # person reading its provenance is asking (row M1, ADR-0116).
+        if research["notes"] or research["tool_calls"]:
+            typer.echo("\nRESEARCH")
+            for note in research["notes"]:
+                typer.echo(
+                    f"  note   {note['kind']:<5} {note['characters']:>7} chars  {note['citation']}"
+                )
+            for call in research["tool_calls"]:
+                typer.echo(
+                    f"  call   {call['tool']:<11} {call['status']:<8} "
+                    f"{call['reason'] or '—'}  ({call['duration_ms']} ms)"
+                )
+                if call["detail"]:
+                    typer.echo(f"           {call['detail']}")
 
 
 @app.command(name="history")
