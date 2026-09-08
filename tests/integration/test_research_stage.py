@@ -339,3 +339,30 @@ def test_a_note_with_no_text_is_omitted_from_the_context(runtime: Runtime) -> No
     _run_research(runtime, project_id, transport=_transport("   "))
 
     assert project_notes(runtime, project_id) == []
+
+
+# ---------------------------------------------------------------------------------------------
+# The stage registry, and the one precondition `research` does not have to meet
+# ---------------------------------------------------------------------------------------------
+
+
+def test_the_stage_is_startable_before_a_plan_exists(runtime: Runtime) -> None:
+    """Workflows §2 puts research at position 2 and the plan at position 4 (ADR-0116 decision 7)."""
+    from ideapress.services.stage_bodies import start_stage
+
+    _configure(runtime)
+    project_id = _project(runtime, BRIEF_WITHOUT_URL)
+
+    task = start_stage(runtime, project_id=project_id, stage="research")
+    assert _wait(runtime, task.run_id) == "completed"
+
+
+def test_every_other_stage_still_requires_a_plan(runtime: Runtime) -> None:
+    """The exemption is `research`'s alone: the precondition it relaxes is still there."""
+    from ideapress.errors import StagePreconditionFailed
+    from ideapress.services.stage_bodies import start_stage
+
+    project_id = _project(runtime, BRIEF_WITHOUT_URL)
+
+    with pytest.raises(StagePreconditionFailed, match="no plan"):
+        start_stage(runtime, project_id=project_id, stage="draft")

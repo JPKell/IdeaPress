@@ -212,3 +212,14 @@ def test_a_tool_name_that_ships_nowhere_is_refused_at_startup() -> None:
     """Configuration cannot supply a handler, so an unknown name can only be a typo."""
     with pytest.raises(ValueError, match="run_command"):
         ResearchSettings(allowed_tools=("read_file", "run_command"))
+
+
+def test_the_shipped_resolver_answers_for_loopback() -> None:
+    """The one line ToolYard cannot own, because `.importlinter` forbids it `socket` forever.
+
+    `getaddrinfo` on a loopback name opens no connection, so this stays inside the default suite's
+    no-network rule while still proving the shipped resolver is the resolver, not a stub.
+    """
+    from ideapress.services.research_tools import resolve_host
+
+    assert "127.0.0.1" in set(resolve_host("localhost")) | {"::1"}
