@@ -316,3 +316,38 @@ def test_1_3_0_database_migrates_to_head_and_keeps_its_rows(tmp_path: Path) -> N
         assert slugs == {"fixture-project-one", "fixture-project-two"}
     finally:
         engine.dispose()
+
+
+def test_1_1_0_database_migrates_to_head_and_keeps_its_rows(tmp_path: Path) -> None:
+    """The earliest-published-release companion to the ``1.3.0`` fixture above (row L8, O1).
+
+    ``1.3.0``'s own fixture test above is a documented no-op — its head and this build's head are
+    the same revision, so it never actually drove a migration. ``1.1.0`` is IdeaPress's earliest
+    PyPI release with a schema, and its head is ``0006``, three revisions behind this build's
+    ``0009`` — real ledger and egress tables, and the cache/token-class columns, all apply on top
+    of two projects an independent ``1.1.0`` install created through its own CLI.
+    """
+    fixture = Path(__file__).parent.parent / "fixtures" / "databases" / "ideapress-1.1.0.sqlite3"
+    working_copy = tmp_path / "ideapress-1.1.0.sqlite3"
+    shutil.copyfile(fixture, working_copy)
+
+    engine = create_engine_for(f"sqlite:///{working_copy}")
+    try:
+        runner = migration_runner(engine)
+        current_before = runner.current()
+        assert current_before is not None, "the 1.1.0 fixture must carry a recorded revision"
+        assert current_before == "0006", (
+            f"the 1.1.0 fixture must sit at IdeaPress's earliest schema; found {current_before!r}"
+        )
+
+        database = Database(engine)
+        upgrade(database)
+
+        assert runner.is_at_head()
+        with engine.connect() as connection:
+            slugs = {
+                row[0] for row in connection.execute(text("SELECT slug FROM projects")).fetchall()
+            }
+        assert slugs == {"fixture-project-one", "fixture-project-two"}
+    finally:
+        engine.dispose()
