@@ -2,8 +2,7 @@
 
 Turns an idea into finished content through configurable, Python-controlled workflows in which models perform bounded, validated tasks.
 
-**Status:** `1.3.3` in the repository — `v1.3.2` tagged locally (not yet pushed); **PyPI still
-serves `1.3.1`**. 10 phases built through M8's 1.0 and the LA2/M13 rows beyond it:
+**Status:** `1.3.3` in the repository (tagged `v1.3.3`; `pip index versions ideapress` says what PyPI serves). 10 phases built through M8's 1.0 and the LA2/M13 rows beyond it:
 requirements, plan, draft/validate/repair/commit, audit and bounded revision, exports, an optional
 LoadCoach backend, per-stage adapter pins, and now per-unit/per-project cost (LoadLedger), a
 recorded egress decision (Commissioner) and CutCtx-driven stage context compaction — see
