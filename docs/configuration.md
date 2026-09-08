@@ -144,6 +144,19 @@ The bounds every loop in workflows §5 runs under.
 | `allow_audit_gated_requirements` | bool | `true` | `IDEAPRESS_WORKFLOW__ALLOW_AUDIT_GATED_REQUIREMENTS` | Whether an audit's explicit per-requirement attestation may satisfy a blocking requirement that has no deterministic check (ADR-0039). Silence never satisfies one either way. False forces a wholly mechanical gate: such a requirement pauses its unit until it gets a deterministic check or is demoted to advisory. |
 | `structured_output_tokens` | int | `8192` | `IDEAPRESS_WORKFLOW__STRUCTURED_OUTPUT_TOKENS` | Output-token budget for the structured stages (requirements, outline, audit_fast, audit_deep, critique, project_review), and — when raised above the 8192 default — the thinking floor for the text-writing stages (draft, repair, revise) as well. Includes the model's reasoning: a thinking model spends output tokens before its first word of answer, and 8192 is the measured floor for the default models (spec §15). Raise this when a unit pauses with an exhausted output budget. |
 
+## `[research]`
+
+`[research]` — the whole configuration of the `research` stage (ADR-0116).
+
+| Key | Type | Default | Environment variable | Notes |
+| --- | --- | --- | --- | --- |
+| `allowed_tools` | tuple[str, ...] | `['http_fetch', 'read_file']` | `IDEAPRESS_RESEARCH__ALLOWED_TOOLS` | The executor's allowlist. A shipped tool omitted here is refused `not_allowlisted` as a recorded result, never a startup failure; a name that is not a shipped tool is refused at startup, because it can only be a typo. |
+| `allowed_hosts` | tuple[str, ...] | `[]` | `IDEAPRESS_RESEARCH__ALLOWED_HOSTS` | Hosts `http_fetch` may fetch from, compared case-insensitively. Empty — the default — means the tool is not registered at all, so a fresh installation fetches nothing until an operator names a host. |
+| `max_fetch_bytes` | int | `1048576` | `IDEAPRESS_RESEARCH__MAX_FETCH_BYTES` | Largest document `http_fetch` will transfer. A body over it stops the transfer rather than truncating, because a note built from half a document cites a source that does not say what the note says. |
+| `max_file_bytes` | int | `1048576` | `IDEAPRESS_RESEARCH__MAX_FILE_BYTES` | Largest file `read_file` will load from the project's `sources/` directory. A larger file is refused rather than partly read, for the same reason. |
+| `timeout_seconds` | float | `30.0` | `IDEAPRESS_RESEARCH__TIMEOUT_SECONDS` | Per tool call. There is no way to express 'no timeout', deliberately. |
+| `max_data_classification` | str | *(none)* | `IDEAPRESS_RESEARCH__MAX_DATA_CLASSIFICATION` | The most sensitive data a *remote* fetch target may receive: public | internal | confidential. Unset denies every remote host (fail closed, ADR-0054, ADR-0103 decision 2); a loopback host carries no ceiling and is approved. See `inference.loadcoach.max_data_classification`, whose rule this transcribes from the backend target to the fetch target. |
+
 ## `[providers]`
 
 Egress policy. Remote inference is opt-in, per stage, and labelled in the UI.

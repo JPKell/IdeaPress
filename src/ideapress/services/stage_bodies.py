@@ -170,7 +170,10 @@ def start_stage(
             select(UnitRow).where(UnitRow.project_id == project_id).order_by(UnitRow.ordinal)
         ).all()
         keys = [row.unit_key for row in planned]
-    if not keys:
+    if not keys and stage != "research":
+        # `research` is the one stage that runs before a plan exists: workflows §2 puts it at
+        # position 2 and the plan at position 4, so requiring units here would make the stage
+        # startable only after the thing it feeds had already run (row M1, ADR-0116).
         message = (
             "This project has no plan, so there are no units to work on. Run the plan stage first."
         )

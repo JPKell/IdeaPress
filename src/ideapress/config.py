@@ -34,6 +34,7 @@ __all__ = [
     "ENV_PREFIX",
     "EXAMPLE_CONFIG_TOML",
     "LOOPBACK_HOSTS",
+    "RESEARCH_TOOLS",
     "BudgetSettings",
     "ConfigurationError",
     "ExecutionSettings",
@@ -46,6 +47,7 @@ __all__ = [
     "OpenAICompatibleSettings",
     "PricingSettings",
     "ProvidersSettings",
+    "ResearchSettings",
     "ServerSettings",
     "Settings",
     "StageBindings",
@@ -558,6 +560,119 @@ class WorkflowSettings(BaseModel):
     )
 
 
+RESEARCH_TOOLS: Final[tuple[str, ...]] = ("http_fetch", "read_file")
+"""The two tools the `research` stage may run (ADR-0116).
+
+Not a registry and not extensible by configuration: a handler is registered in code at startup or
+it does not exist (ADR-0053 decision 1), so a name outside this tuple can only be a typo and is
+refused at startup. `write_file`, `list_dir` and `run_command` are shipped by ToolYard and are
+deliberately absent — nothing in this stage writes, lists or runs anything."""
+
+
+class ResearchSettings(BaseModel):
+    """`[research]` — the whole configuration of the `research` stage (ADR-0116).
+
+    Every default is closed. An installation that writes no `[research]` block at all fetches
+    nothing, because `allowed_hosts` is empty and an empty host list means `http_fetch` is **not
+    registered** — deliberately not ToolYard's own reading, where an empty list means loopback
+    only. That reading is right for a package and wrong for the application holding the user's
+    private drafts: it would let a URL in a brief reach a service on the user's own machine.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    allowed_tools: tuple[str, ...] = Field(
+        default=RESEARCH_TOOLS,
+        description=(
+            "The executor's allowlist. A shipped tool omitted here is refused `not_allowlisted` "
+            "as a recorded result, never a startup failure; a name that is not a shipped tool is "
+            "refused at startup, because it can only be a typo."
+        ),
+    )
+    allowed_hosts: tuple[str, ...] = Field(
+        default=(),
+        description=(
+            "Hosts `http_fetch` may fetch from, compared case-insensitively. Empty — the default "
+            "— means the tool is not registered at all, so a fresh installation fetches nothing "
+            "until an operator names a host."
+        ),
+    )
+    max_fetch_bytes: int = Field(
+        default=1_048_576,
+        ge=1_024,
+        description=(
+            "Largest document `http_fetch` will transfer. A body over it stops the transfer "
+            "rather than truncating, because a note built from half a document cites a source "
+            "that does not say what the note says."
+        ),
+    )
+    max_file_bytes: int = Field(
+        default=1_048_576,
+        ge=1_024,
+        description=(
+            "Largest file `read_file` will load from the project's `sources/` directory. A larger "
+            "file is refused rather than partly read, for the same reason."
+        ),
+    )
+    timeout_seconds: float = Field(
+        default=30.0,
+        gt=0.0,
+        le=600.0,
+        description="Per tool call. There is no way to express 'no timeout', deliberately.",
+    )
+    max_data_classification: str | None = Field(
+        default=None,
+        description=(
+            "The most sensitive data a *remote* fetch target may receive: public | internal | "
+            "confidential. Unset denies every remote host (fail closed, ADR-0054, ADR-0103 "
+            "decision 2); a loopback host carries no ceiling and is approved. See "
+            "`inference.loadcoach.max_data_classification`, whose rule this transcribes from the "
+            "backend target to the fetch target."
+        ),
+    )
+
+    _split_hosts = field_validator("allowed_hosts", "allowed_tools", mode="before")(_split_csv)
+
+    @field_validator("allowed_tools")
+    @classmethod
+    def _shipped_tools_only(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        """Refuse a name that is not one of the two shipped tools.
+
+        Args:
+            value: The configured tool names.
+
+        Returns:
+            ``value`` when every entry names a shipped tool.
+
+        Raises:
+            ValueError: An entry names something else. Configuration cannot supply a handler
+                (ADR-0053 decision 1), so an unknown name allowlists a tool that can never exist
+                — the same silent no-op the `[models.stages]` check exists to prevent.
+        """
+        unknown = sorted(set(value) - set(RESEARCH_TOOLS))
+        if unknown:
+            named = ", ".join(unknown)
+            choices = ", ".join(RESEARCH_TOOLS)
+            message = (
+                f"research.allowed_tools names {named}, which is not a tool this stage ships. "
+                f"Choose from: {choices}."
+            )
+            raise ValueError(message)
+        return value
+
+    @field_validator("allowed_hosts")
+    @classmethod
+    def _lowercase_hosts(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        """Normalize to the case-insensitive comparison ToolYard makes, once, here."""
+        return tuple(host.strip().lower() for host in value if host.strip())
+
+    @field_validator("max_data_classification")
+    @classmethod
+    def _known_ceiling(cls, value: str | None) -> str | None:
+        """Refuse a ceiling outside `baseaicore`'s ordered vocabulary."""
+        return _validate_classification_or_none(value, field="research")
+
+
 class ProvidersSettings(BaseModel):
     """Egress policy. Remote inference is opt-in, per stage, and labelled in the UI."""
 
@@ -664,6 +779,7 @@ class Settings(BaseModel):
     models: ModelsSettings = Field(default_factory=ModelsSettings)
     execution: ExecutionSettings = Field(default_factory=ExecutionSettings)
     workflow: WorkflowSettings = Field(default_factory=WorkflowSettings)
+    research: ResearchSettings = Field(default_factory=ResearchSettings)
     providers: ProvidersSettings = Field(default_factory=ProvidersSettings)
     pricing: PricingSettings = Field(default_factory=PricingSettings)
     budget: BudgetSettings = Field(default_factory=BudgetSettings)
@@ -1048,6 +1164,21 @@ allow_audit_gated_requirements = true
 # first word of answer; a unit paused for an exhausted output budget needs this raised.
 # Accepted range: 1024-131072.
 structured_output_tokens = 8192
+
+# The `research` stage (workflows §2 row 2, ADR-0116). Every default is closed: with no host named
+# `http_fetch` is not registered at all, so a fresh install fetches nothing. `allowed_tools` is the
+# executor's allowlist, not its registry — a shipped tool omitted here is refused as a recorded
+# result. Notes come from URLs written verbatim in the brief and from files an operator drops in
+# `<project directory>/sources/`, which is the only path a tool call ever reads.
+[research]
+allowed_tools = ["http_fetch", "read_file"]
+allowed_hosts = []          # e.g. ["docs.example.com"]; empty means no fetch tool at all
+max_fetch_bytes = 1048576
+max_file_bytes = 1048576
+timeout_seconds = 30.0
+# The most sensitive data a *remote* fetch target may receive. Unset denies every remote host
+# (fail closed, ADR-0103 decision 2); a loopback host carries no ceiling and is approved.
+# max_data_classification = "public"
 
 [providers]
 allow_remote = false        # a remote backend sends your drafts off this machine

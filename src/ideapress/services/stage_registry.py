@@ -43,6 +43,15 @@ def _draft(
     return draft_body(runtime, project_id=project_id, unit_keys=unit_keys, resume=resume)
 
 
+def _research(
+    runtime: Runtime, *, project_id: str, unit_keys: Sequence[str], resume: bool
+) -> Callable[[StageTask], None]:
+    """Fetch and read the project's sources into notes. Optional, and never automatic."""
+    from ideapress.services.research import research_factory
+
+    return research_factory(runtime, project_id=project_id, unit_keys=unit_keys, resume=resume)
+
+
 def _project_review(
     runtime: Runtime, *, project_id: str, unit_keys: Sequence[str], resume: bool
 ) -> Callable[[StageTask], None]:
@@ -53,6 +62,7 @@ def _project_review(
 
 
 STAGE_BODIES: Final[dict[StageId, StageBodyFactory]] = {
+    "research": _research,
     "draft": _draft,
     "project_review": _project_review,
 }
@@ -60,4 +70,7 @@ STAGE_BODIES: Final[dict[StageId, StageBodyFactory]] = {
 
 `draft` is the whole core loop rather than one step of it, because `validate`, `repair`, `coverage`
 and `commit` are not separately startable: they are decided *within* a unit's attempt, and a user
-who could run `commit` on its own could commit a unit that never passed validation."""
+who could run `commit` on its own could commit a unit that never passed validation.
+
+`research` is the one entry that takes neither units nor a resume flag: workflows §2 puts it at
+position 2 and the plan at position 4, so it runs before any unit exists (row M1, ADR-0116)."""

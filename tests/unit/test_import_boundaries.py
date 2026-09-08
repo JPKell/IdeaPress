@@ -29,10 +29,44 @@ def _python_files() -> Iterator[Path]:
     yield from sorted(SRC.rglob("*.py"))
 
 
-def _imported_roots(path: Path) -> set[str]:
+def _is_type_checking_guard(node: ast.AST) -> bool:
+    """Whether ``node`` is an ``if TYPE_CHECKING:`` block, in either spelling."""
+    if not isinstance(node, ast.If):
+        return False
+    test = node.test
+    if isinstance(test, ast.Name):
+        return test.id == "TYPE_CHECKING"
+    return isinstance(test, ast.Attribute) and test.attr == "TYPE_CHECKING"
+
+
+def _imported_roots(path: Path, *, runtime_only: bool = False) -> set[str]:
+    """The distribution roots this module imports.
+
+    Args:
+        path: The module.
+        runtime_only: Skip the bodies of ``if TYPE_CHECKING:`` blocks. A name imported only there
+            exists for an annotation and is never executed, so it cannot *do* anything — which is
+            the property the provider-library rule below is actually about (row M1: the research
+            plant takes an injected ``httpx.BaseTransport`` it never constructs, and typing it as
+            ``Any`` to satisfy a scan would be worse than the scan being precise).
+
+    Returns:
+        Every top-level module name imported, including imports inside function bodies, where a
+        leak would otherwise hide from a module-level scan.
+    """
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     roots: set[str] = set()
+    skipped: set[int] = set()
+    if runtime_only:
+        for node in ast.walk(tree):
+            if _is_type_checking_guard(node):
+                assert isinstance(node, ast.If)  # noqa: S101 — narrowing for the walk below
+                for guarded in node.body:
+                    for inner in ast.walk(guarded):
+                        skipped.add(id(inner))
     for node in ast.walk(tree):
+        if id(node) in skipped:
+            continue
         if isinstance(node, ast.Import):
             roots.update(alias.name.split(".")[0] for alias in node.names)
         elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
@@ -42,12 +76,40 @@ def _imported_roots(path: Path) -> set[str]:
 
 @pytest.mark.parametrize("library", ["modelrack", "httpx"])
 def test_provider_libraries_appear_only_in_adapters(library: str) -> None:
+    """No module outside the adapters *executes* an import of a provider library.
+
+    Type-checking-only imports are exempt, and only they: a name under ``if TYPE_CHECKING:`` is
+    never bound at runtime, so no code can construct a client, open a connection or reach a
+    provider through it. What the rule protects — risk T9, provider specifics in workflow code —
+    is untouched by an annotation.
+    """
     offenders = [
         path.relative_to(SRC).as_posix()
         for path in _python_files()
-        if library in _imported_roots(path) and not path.is_relative_to(ADAPTER_ONLY)
+        if library in _imported_roots(path, runtime_only=True)
+        and not path.is_relative_to(ADAPTER_ONLY)
     ]
     assert offenders == [], f"{library} imported outside infrastructure/backends: {offenders}"
+
+
+@pytest.mark.parametrize("library", ["modelrack", "httpx"])
+def test_the_type_checking_exemption_is_used_by_no_more_than_the_research_plant(
+    library: str,
+) -> None:
+    """The exemption above is narrow, and this is what keeps it narrow.
+
+    Two modules type-import ``httpx`` for the transport the research plant injects (row M1). If a
+    third appears, that is the moment to ask whether it is really an annotation.
+    """
+    allowed = {"services/research.py", "services/research_tools.py"}
+    exempt = {
+        path.relative_to(SRC).as_posix()
+        for path in _python_files()
+        if library in _imported_roots(path)
+        and library not in _imported_roots(path, runtime_only=True)
+        and not path.is_relative_to(ADAPTER_ONLY)
+    }
+    assert exempt <= allowed, f"{library} type-imported somewhere new: {sorted(exempt - allowed)}"
 
 
 def test_no_module_imports_another_application() -> None:

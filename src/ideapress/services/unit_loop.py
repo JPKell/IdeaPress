@@ -30,6 +30,7 @@ from ideapress.errors import ContextLimitExceeded
 from ideapress.infrastructure.db.models import Unit as UnitRow
 from ideapress.services.plan import load_plan, load_requirements
 from ideapress.services.prompts import render
+from ideapress.services.research import project_notes as project_notes_for
 from ideapress.services.review_loop import run_review_loop
 from ideapress.services.stages import record_attempt
 from ideapress.services.units import (
@@ -122,6 +123,7 @@ def run_unit(
     requirements: Sequence[Requirement],
     neighbours: dict[str, str],
     ordinals: dict[str, int],
+    research_notes: Sequence[tuple[str, str]],
     emit: Callable[[str, str, dict[str, Any]], None],
 ) -> UnitOutcome:
     """Draft, validate, repair and commit one unit.
@@ -134,6 +136,10 @@ def run_unit(
         requirements: The requirements it carries.
         neighbours: Committed unit text, for consistency context.
         ordinals: Unit positions, so "adjacent" means adjacent.
+        research_notes: The project's research notes as ``(title, text)`` pairs — workflows §7's
+            "relevant research notes … budgeted, ranked by explicit reference", and the first
+            thing dropped when the budget binds. Empty for every project that never ran the
+            `research` stage, which is every project before 1.4 (row M1, ADR-0116).
         emit: Event emitter, taking ``(event_type, message, data)``.
 
     Returns:
@@ -174,6 +180,7 @@ def run_unit(
             budget_tokens=settings.workflow.context_budget_tokens,
             neighbouring_units=neighbours,
             unit_ordinals=ordinals,
+            research_notes=research_notes,
             previous_findings=findings,
         )
         is_repair = attempt > 1
@@ -506,6 +513,9 @@ def draft_body(
             plan = load_plan(session, project_id)
             requirements = load_requirements(session, project_id)
             neighbours = committed_units(session, project_id)
+            # Read once for the whole stage: the `research` stage does not run concurrently with
+            # this one (one stage task per project), so the notes cannot change under the loop.
+            research_notes = project_notes_for(runtime, project_id)
             states = {
                 row.unit_key: row.state
                 for row in session.scalars(
@@ -536,6 +546,7 @@ def draft_body(
                 requirements=[by_key[key] for key in unit.requirement_keys if key in by_key],
                 neighbours=neighbours,
                 ordinals=ordinals,
+                research_notes=research_notes,
                 emit=emit,
             )
             if outcome.committed:

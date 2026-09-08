@@ -442,11 +442,15 @@ def run_review_loop(
             break
 
         runtime.runner.checkpoint(task)
-        # Deliberately no neighbouring_units/research_notes (row K3, docs/history/K3_HANDOFF.md):
-        # `stages.revise.improve` asks the model to "change as little else as possible", the
-        # opposite of what broader cross-unit context invites, so this stays the narrow context a
-        # targeted fix needs and never has anything to drop — the context.compacted branch below
-        # is exercised at the domain layer (test_context_budget.py) but unreachable from here.
+        # Deliberately no neighbouring_units/research_notes (row K3, docs/history/K3_HANDOFF.md;
+        # unchanged by row M1, which made research notes real): `stages.revise.improve` asks the
+        # model to "change as little else as possible", the opposite of what broader cross-unit
+        # context invites, so this stays the narrow context a targeted fix needs. From 1.4 the
+        # notes exist and are passed on the draft/repair path (services/unit_loop.py) — they are
+        # withheld *here* by choice rather than by their absence, which is the sentence this
+        # comment now has to carry. The consequence is unchanged: nothing budgeted is built, so
+        # the context.compacted branch below stays unreachable from this call site and is
+        # exercised at the domain layer (test_context_budget.py).
         context = assemble_context(
             unit=unit,
             requirements=requirements,
