@@ -113,6 +113,38 @@ No migration and no data changes across either patch.
   the two earlier releases pin `setspec<0.5`, below this application's own floor, so the declared
   lowest range could never resolve. Nothing behaves differently for an operator.
 
+## 1.3.x → 1.4.0
+
+One migration (`0010`, a new `tool_call_records` table) and **no change at all** unless you
+configure and run the new `research` stage.
+
+* **Nothing runs it implicitly.** `research` is Optional (workflows §2 row 2) and is started by
+  hand: `ideapress stage run <project> research`. A project that never runs it has no `sources`
+  rows, drafts exactly what 1.3 drafted, and exports exactly what 1.3 exported.
+* **A fresh installation fetches nothing.** `[research] allowed_hosts` defaults to empty, and an
+  empty list means `http_fetch` is **not registered** — not "loopback only", which is ToolYard's
+  own reading of an empty list and deliberately not this application's. Until you name a host, a
+  URL in a brief produces a recorded refusal, never a request.
+* **Running the stage changes three things downstream, on purpose.** Research notes enter the
+  draft and repair context (and are the first section dropped when the context budget binds);
+  `fact_check` gains documents to check claims against, so it starts applying to projects it
+  previously skipped for want of a source; and an export's grounding statement reports that
+  sources existed. If you do not want any of that for a project, do not run the stage for it.
+* **Declare a ceiling before you name a remote host.** A remote fetch target with no
+  `[research] max_data_classification` is *denied* — fail closed, the same rule
+  `[inference.loadcoach] max_data_classification` has followed since 1.2. The denial is a
+  recorded `egress_decisions` row and a `tool_call_records` row; the stage completes and writes no
+  note. A loopback host carries no ceiling and is approved.
+* **Where to put local documents.** `<project directory>/sources/`, and only there. It is the one
+  path a tool call may read; an export sitting beside it in the project directory is outside
+  containment and is refused.
+
+```toml
+[research]
+allowed_hosts = ["docs.example.com"]
+max_data_classification = "public"
+```
+
 ## Checking the version
 
 ```bash

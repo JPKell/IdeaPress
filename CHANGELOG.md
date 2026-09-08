@@ -7,6 +7,58 @@ packaging and release standards §3.
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-09-08
+
+### Added
+
+- **The `research` stage** — [workflows §2](docs/apps/ideapress/workflows.md) row 2, specified
+  since M8 and never built ([ADR-0116](https://github.com/JPKell/OpenWeight-Gym/blob/main/adr/0116-research-runs-under-toolyard-and-fetches-only-a-named-host.md),
+  row M1). It reaches no model. It executes `read_file` and `http_fetch` through `toolyard`'s
+  executor — IdeaPress is that package's second consumer — and turns two kinds of target into
+  source notes with citations: absolute `http(s)://` URLs written **verbatim** in the brief, and
+  regular files an operator drops in the project's own `<project directory>/sources/` directory.
+  Run it with `ideapress stage run <project> research`; it is Optional, and nothing runs it
+  implicitly. Re-running replaces the project's notes rather than appending to them.
+- `[research]` configuration: `allowed_tools`, `allowed_hosts`, `max_fetch_bytes`,
+  `max_file_bytes`, `timeout_seconds`, `max_data_classification`. **Every default is closed.**
+- `tool_call_records` (migration `0010`): every research tool call, refused and failed ones
+  included, with ToolYard's status, reason and reason detail, joined to its attempt and — by
+  invocation id — to the egress decision rendered before it.
+- The unit page and `ideapress unit show --provenance` show the project's research notes with
+  their citations and every tool call with its status and reason. Server-rendered; no new route,
+  no new JS.
+- `toolyard>=0.1.1,<0.2` as a runtime dependency. A suite package is unbudgeted under ADR-0114, so
+  the enumerated non-suite dependency set in gold-standards §1.1 is unchanged.
+
+### Changed
+
+- **`assemble_context` receives research notes for the first time.** The `research_notes` argument,
+  its ranking and `REDUCTION_ORDER[0]` have existed since the context assembler was written and no
+  running stage ever supplied one (row J2's finding). The draft and repair path now does. The
+  revision path deliberately still supplies none — row K3's decision that `stages.revise.improve`
+  gets the narrowest context a targeted fix needs is unchanged.
+- `attempts.outcome` gains `refused`, for an attempt whose tool call a ToolYard rule declined.
+  `content_rejected` keeps its own meaning: a *model* declining a task.
+- `sources.kind` values are `file`, `note` and `url`; the `url(opt-in)` gloss is gone, because the
+  opt-in is now a named thing (`[research] allowed_hosts`).
+
+### Upgrade notes
+
+- **Nothing changes for an installation that does not configure and run the stage.** With no
+  `[research]` block there is no allowed host, so `http_fetch` is not registered at all — not even
+  for loopback, which is ToolYard's own default for an empty list and deliberately not this
+  application's. A project that never runs the stage has no `sources` rows and drafts exactly what
+  `1.3` drafted.
+- **Running the stage changes three downstream behaviours at once**, and all three are the point:
+  research notes enter the draft and repair context (and are the first thing dropped when the
+  budget binds); `fact_check` (stage 10) gains documents to check claims against, so it begins to
+  apply to projects it previously skipped for want of a source; and an export's grounding
+  statement reports that sources existed.
+- **A remote fetch host with no `[research] max_data_classification` is denied** — fail closed, the
+  same rule `[inference.loadcoach] max_data_classification` has followed since 1.2. The refusal is
+  a recorded `egress_decisions` row plus a `tool_call_records` row, never an exception, and the
+  stage completes.
+
 ### Removed
 
 - `show_telemetry_bar`, a hardcoded-`False` Jinja global never wired to any `TelemetrySnapshot` and
