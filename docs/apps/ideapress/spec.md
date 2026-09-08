@@ -58,7 +58,9 @@ without any workflow code changing — when LoadCoach is available.
 ## 5. Dependencies
 
 **Suite:** `baseaicore`, `setspec`, `modelrack`, `weightsdb`, `mirrorwall`.
-Optional extra: `sweatmeter` (status display only).
+Optional extra: `sweatmeter` — a presence probe only. IdeaPress shows no machine telemetry
+([ADR-0115](../../adr/0115-ideapress-shows-no-machine-telemetry.md)); installing it makes
+`INSUFFICIENT_VRAM` (§13) reachable, nothing more.
 **Third party:** `fastapi`, `uvicorn[standard]`, `typer`, `pydantic`, `pydantic-settings`,
 `sqlalchemy`, `alembic`, `jinja2`, `python-multipart` (HTML form posts, which
 [ADR-0020](../../adr/0020-ui-rendering-strategy.md) makes the primary UI mechanism), `httpx`
@@ -337,10 +339,10 @@ continue; it never aborts the stage.
 
 ## 16. Cross-platform considerations
 
-Fully portable — no platform-specific code beyond the shared path handling. Optional telemetry display
-degrades per [Cross-Platform Standards](../../standards/cross-platform-standards.md). IdeaPress is the
-most likely component to be used on Windows or macOS, which is why it takes no hard dependency on
-`sweatmeter`.
+Fully portable — no platform-specific code beyond the shared path handling. IdeaPress shows no
+machine telemetry ([ADR-0115](../../adr/0115-ideapress-shows-no-machine-telemetry.md)), so there is
+no display to degrade; IdeaPress is the most likely component to be used on Windows or macOS, which
+is why it takes no hard dependency on `sweatmeter` regardless.
 
 ## 17. Observability
 

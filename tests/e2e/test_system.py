@@ -113,6 +113,14 @@ def test_system_page_renders_without_a_backend(client: TestClient) -> None:
     assert "Health" in response.text
 
 
+def test_the_page_shows_no_machine_telemetry(client: TestClient) -> None:
+    """ADR-0115: IdeaPress shows no machine telemetry. This application's own Jinja globals no
+    longer name the shell's telemetry-bar slot at all, so this proves MirrorWall's own default for
+    that slot is what keeps the region out — not a value this application happens to still pass."""
+    response = client.get("/system", headers={"accept": "text/html"})
+    assert "telemetry-bar" not in response.text
+
+
 def test_static_assets_are_served_from_the_package_not_a_cdn(client: TestClient) -> None:
     """UI standards: no external request at page load.
 

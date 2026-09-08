@@ -7,6 +7,14 @@ packaging and release standards §3.
 
 ## [Unreleased]
 
+### Removed
+
+- `show_telemetry_bar`, a hardcoded-`False` Jinja global never wired to any `TelemetrySnapshot` and
+  never branched on by any template. IdeaPress shows no machine telemetry (ADR-0115): every model
+  call is either serialised and unloaded locally (ADR-0038) or routed through LoadCoach, which owns
+  the machine's telemetry surface for what it accepts. The `[telemetry]` extra and its `doctor`
+  presence probe are unchanged — they still gate whether `INSUFFICIENT_VRAM` is reachable (row M3).
+
 ## [1.3.3] - 2026-09-07
 
 ### Changed

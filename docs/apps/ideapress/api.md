@@ -13,7 +13,7 @@ same standard as the others, but no other application in the suite depends on it
 |---|---|
 | `GET /health` | Components: `database`, `backend` (which one, reachable?), `prompts` |
 | `GET /version` | Application, API and schema versions. **Never authenticated** ([ADR-0026 §5](../../adr/0026-local-http-hardening.md)) |
-| `GET /system/status` | Active stage runs, backend mode, optional telemetry snapshot |
+| `GET /system/status` | Active stage runs, backend mode, pin |
 
 ## 2. Projects
 

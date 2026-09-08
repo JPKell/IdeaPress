@@ -47,7 +47,8 @@ Declared version ranges from `pyproject.toml` — kept from drifting by
 
 `loadledger` and `commissioner` are installed with their `[sql]` extra (not optional in practice:
 both mount unconditionally in `infrastructure/db/models.py`). `sweatmeter` is the optional
-`[telemetry]` extra, for status display only — never a hard dependency.
+`[telemetry]` extra — never a hard dependency — and gates only `doctor`'s VRAM-preflight capability
+flag; IdeaPress shows no machine telemetry (ADR-0115).
 
 ## Documentation
 

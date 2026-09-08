@@ -48,9 +48,6 @@ def templates() -> Environment:
             "product_version": __version__,
             "nav_items": NAV_ITEMS,
             "theme_storage_key": "ideapress-theme",
-            # Telemetry is an optional extra (spec §5, §16): no bar unless sweatmeter is present,
-            # and the application must be complete without it.
-            "show_telemetry_bar": False,
         },
     )
 

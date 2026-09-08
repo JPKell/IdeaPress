@@ -199,7 +199,8 @@ jobs:
       # Packaging standards §10: the optional postgres extra must resolve and install
       # cleanly from the built wheel too, not only from an editable source checkout.
       - run: pip install "$(ls dist/*.whl)[postgres]"
-      # The optional telemetry extra (sweatmeter, status display only) must resolve and import
+      # The optional telemetry extra (sweatmeter, gates only doctor's VRAM-preflight probe;
+      # IdeaPress shows no machine telemetry, ADR-0115) must resolve and import
       # cleanly from the built wheel too — nothing installed it before (M9 re-audit, row L7, item
       # I5).
       - run: pip install "$(ls dist/*.whl)[telemetry]"

@@ -19,7 +19,9 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
     "Typing :: Typed",
 ]
-# sweatmeter is an optional extra ([telemetry]) for status display only, never a hard dependency.
+# sweatmeter is an optional extra ([telemetry]), never a hard dependency: `doctor`'s presence
+# probe for it, gating whether INSUFFICIENT_VRAM is reachable (ADR-0038). IdeaPress shows no
+# machine telemetry (ADR-0115).
 dependencies = [
     # Floor raised to 0.4.2 (2026-09-07, row L7): modelrack 0.7's own floor already requires
     # baseaicore>=0.4.2, so the declared 0.4.1 lowest range could never resolve (found by the
