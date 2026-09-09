@@ -36,7 +36,7 @@ dependencies = [
     # Widened 2026-09-07 (1.3.1): the four applications must co-install (packaging standards §4),
     # and FreeWeight and LoadCoach floor modelrack at 0.7; IdeaPress uses the Ollama and
     # OpenAI-compatible providers, both unchanged in shape across 0.5 -> 0.7 (the gate proves it).
-    "modelrack>=0.7,<0.8",
+    "modelrack>=0.7,<0.9",
     "weightsdb>=0.2,<0.3",
     # Floor 0.2.2 (2026-09-07, row L6): 0.2.0 and 0.2.1 still pinned setspec<0.5, below this
     # application's own setspec floor, so a resolver asked for the lowest mirrorwall could not
