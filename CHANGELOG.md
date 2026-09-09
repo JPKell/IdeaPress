@@ -7,6 +7,16 @@ packaging and release standards §3.
 
 ## [Unreleased]
 
+### Added
+
+- **The unit page's Provenance table has an Egress column** — the row J1 decision each attempt's
+  model call ran under (`attempts[].egress`, carried by `unit_detail` since 1.2 and never rendered):
+  verdict, target, and the reason when denied (row N2).
+- **`research` can be started from the workspace.** A CSRF-protected form, `POST
+  /projects/{id}/research`, beside a sentence naming the hosts a fetch may reach — or stating that
+  none may. The API route (`POST /api/v1/projects/{id}/stages/research/run`) is unchanged; the
+  form is a page route and is not in `docs/openapi.json` (row N2, M1 D10).
+
 ### Changed
 
 - Small tightenings ruff's SIM/PERF families flagged in the exporters, diff, archive, logging and

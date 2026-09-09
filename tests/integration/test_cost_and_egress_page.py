@@ -105,6 +105,20 @@ def test_the_unit_page_answers_what_it_cost_honestly(
     assert attempt["egress"]["verdict"] == "approved"
 
 
+def test_the_unit_page_renders_the_attempt_egress_decision(
+    project_with_a_drafted_unit: tuple[Runtime, str],
+) -> None:
+    """Row N2: the Provenance table shows the decision `unit_detail` has carried since row J1."""
+    from ideapress.web.rendering import render
+
+    runtime, project_id = project_with_a_drafted_unit
+    detail = unit_detail(runtime, project_id=project_id, unit_key="U-01")
+    page = render("units/detail.html", page="projects", page_title="U-01", **detail)
+    provenance = page.split("<h3>Provenance</h3>", 1)[1].split("<h3>History</h3>", 1)[0]
+    assert '<th scope="col">Egress</th>' in provenance
+    assert "approved · ollama" in provenance
+
+
 def test_the_workspace_badge_reads_the_project_lifetime_balance(
     project_with_a_drafted_unit: tuple[Runtime, str],
 ) -> None:

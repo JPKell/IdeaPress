@@ -96,6 +96,27 @@ def resume_unit_form(request: Request, project_id: str, unit_key: str) -> Respon
     )
 
 
+@ui_router.post("/projects/{project_id}/research")
+def research_form(request: Request, project_id: str) -> Response:
+    """Start the ``research`` stage from the workspace, then return to it.
+
+    The one stage that runs before a plan exists (workflows §2, ADR-0116), and the one whose click
+    may reach the network: a fetch goes only to a host named in ``[research] allowed_hosts``, and
+    the page states that list beside the button. CSRF-protected like every form here
+    (ADR-0026 §2).
+
+    Raises:
+        ProjectNotFound: No such project.
+        StageAlreadyRunning: A stage is already running for this project.
+    """
+    from ideapress.services.stage_bodies import start_stage
+
+    start_stage(_runtime(request), project_id=project_id, stage="research")
+    return RedirectResponse(
+        f"/projects/{project_id}/workspace", status_code=status.HTTP_303_SEE_OTHER
+    )
+
+
 @ui_router.post("/projects/{project_id}/plan/edit")
 def edit_plan_form(
     request: Request,

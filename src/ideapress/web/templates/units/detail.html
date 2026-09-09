@@ -137,13 +137,17 @@
 {% if attempts %}
   <div class="table-scroll"><table>
     <caption>Every attempt that produced this unit</caption>
-    <thead><tr><th scope="col">Stage</th><th scope="col">Attempt</th><th scope="col">Outcome</th><th scope="col">Backend</th><th scope="col">Model</th><th scope="col">Prompt</th><th scope="col">Tokens</th><th scope="col">Degradations</th></tr></thead>
+    <thead><tr><th scope="col">Stage</th><th scope="col">Attempt</th><th scope="col">Outcome</th><th scope="col">Backend</th><th scope="col">Model</th><th scope="col">Prompt</th><th scope="col">Tokens</th><th scope="col">Egress</th><th scope="col">Degradations</th></tr></thead>
     <tbody>
     {% for attempt in attempts %}
       <tr><td>{{ attempt.stage }}</td><td>{{ attempt.attempt }}</td><td>{{ attempt.outcome }}</td>
           <td>{{ attempt.backend }}</td><td>{{ attempt.model_canonical_id or "—" }}</td>
           <td>{{ attempt.prompt_id }} {{ attempt.prompt_version }}</td>
           <td>{{ attempt.input_tokens if attempt.input_tokens is not none else "—" }}/{{ attempt.output_tokens if attempt.output_tokens is not none else "—" }}</td>
+          {# The row J1 egress decision this attempt's own model call ran under (governance.egress_decision
+             1.0): its verdict, its target, and — when it was denied — the policy's reason. "—" is an
+             attempt recorded before decisions existed, or an installation with none attached. #}
+          <td>{% if attempt.egress %}{{ attempt.egress.verdict }} · {{ attempt.egress.request.target.name }}{% if attempt.egress.request.target.remote %} (remote){% endif %}{% if attempt.egress.verdict == "denied" %}: {{ attempt.egress.reason }}{% endif %}{% else %}—{% endif %}</td>
           <td>{{ attempt.degradations | join("; ") or "—" }}</td></tr>
     {% endfor %}
     </tbody>

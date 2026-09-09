@@ -122,6 +122,9 @@ def workspace_view(
         # The live view attaches to this when a stage is running, and the page says "reload to see
         # progress" when it is not — both correct with JavaScript disabled (ADR-0020).
         "running_task_id": _running_task_id(runtime, project_id),
+        # What a click on "Run research" may reach: the operator's `[research] allowed_hosts`, so
+        # the page says where a fetch can go before the person starts one (row N2, ADR-0116).
+        "research": {"allowed_hosts": list(runtime.settings.research.allowed_hosts)},
     }
     if detail is not None and compare_version is not None:
         view["diff"] = _diff(

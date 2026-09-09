@@ -45,6 +45,25 @@
 </p>
 {% endif %}
 
+{% if not running_task_id %}
+<section class="research-action" aria-labelledby="research-heading">
+  <h3 id="research-heading">Research</h3>
+  <p>Reads the brief's URLs and the files in this project's <code>sources/</code> directory into
+     cited notes. It runs before the plan and touches no model.
+     {% if research.allowed_hosts %}
+       A fetch may reach only: {{ research.allowed_hosts | join(", ") }}.
+     {% else %}
+       No host is allowed on this installation, so no fetch leaves this machine; URLs in the brief
+       are recorded as refused.
+     {% endif %}
+  </p>
+  <form method="post" action="/projects/{{ project.id }}/research">
+    <input type="hidden" name="{{ csrf_field_name }}" value="{{ csrf_token }}">
+    <button type="submit">Run research</button>
+  </form>
+</section>
+{% endif %}
+
 {% if running_task_id %}
 <section class="stage-live" data-stage-stream="/api/v1/projects/{{ project.id }}/tasks/{{ running_task_id }}/stream"
          aria-labelledby="live-heading">

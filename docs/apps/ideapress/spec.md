@@ -355,6 +355,11 @@ Behavioural rules:
 * Prompts and drafts are the user's content: stored locally, never uploaded, never logged at INFO or
   above.
 * Remote backends require explicit opt-in and are labelled as egress in the UI, per stage.
+* **A browser click may cause a network fetch, and the page says where it can go.** The workspace's
+  "Run research" form starts the one stage that fetches; it reaches only a host named in
+  `[research] allowed_hosts`, the list is printed beside the button, and an empty list means no
+  fetch leaves the machine. Every attempt's egress decision is shown on the unit page's Provenance
+  table (row N2).
 * `include_content` logging is off by default.
 
 ## 15. Performance considerations
