@@ -105,7 +105,7 @@ GET  /settings                     PUT  /settings
 
 ```text
 ideapress serve | health | doctor | version
-ideapress config show|validate|init|path      ideapress db upgrade|status|backup|restore
+ideapress config show|validate|schema|init|path   ideapress db upgrade|status|backup|restore
 ideapress project create|list|show|delete|import|export
 ideapress plan build|show
 ideapress stage run|list|status|cancel

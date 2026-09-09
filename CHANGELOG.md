@@ -7,8 +7,24 @@ packaging and release standards §3.
 
 ## [Unreleased]
 
+## [1.4.1] - 2026-09-09
+
 ### Added
 
+- **`ideapress config schema --json`** — the ADR-0127 rule 1 settings schema document
+  WeightRoomGym renders its settings form from: the pydantic JSON schema, which keys are
+  runtime-changeable (`inference.mode`, the workflow limits, `models.stages.<stage>`) and which
+  are configuration-only, and where every leaf's effective value currently comes from. Built from
+  the same objects `config show` and the generated `docs/configuration.md` already read — no
+  second key list (row WS3).
+- **`ideapress config validate --file <path>`** — validates an arbitrary candidate file through
+  the same parse, validation and security refusals as the application's own configuration,
+  without ever reading or writing the application's own `config.toml` (ADR-0127 rule 2). A
+  missing candidate is a clean usage error. `config validate` with no `--file` keeps its present
+  meaning.
+- The runtime/security key registry moved from `web.routes.settings` to
+  `ideapress.services.settings_registry`, so the web route and `config schema` read the same
+  frozensets rather than two copies of the same list.
 - **The unit page's Provenance table has an Egress column** — the row J1 decision each attempt's
   model call ran under (`attempts[].egress`, carried by `unit_detail` since 1.2 and never rendered):
   verdict, target, and the reason when denied (row N2).
