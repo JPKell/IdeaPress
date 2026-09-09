@@ -81,6 +81,99 @@ def test_config_validate_exits_two_on_a_bad_key(tmp_path: Path) -> None:
     assert result.exit_code == 2
 
 
+def test_config_validate_file_accepts_a_valid_candidate(tmp_path: Path) -> None:
+    """ADR-0127 rule 2: WeightRoomGym's pre-write check."""
+    candidate = tmp_path / "candidate.toml"
+    candidate.write_text("[server]\nport = 9010\n", encoding="utf-8")
+    result = runner.invoke(app, ["config", "validate", "--file", str(candidate)])
+    assert result.exit_code == 0
+    assert "candidate" in result.stdout.lower()
+
+
+def test_config_validate_file_names_an_unknown_key(tmp_path: Path) -> None:
+    candidate = tmp_path / "candidate.toml"
+    candidate.write_text("[server]\nprot = 1\n", encoding="utf-8")
+    result = runner.invoke(app, ["config", "validate", "--file", str(candidate)])
+    assert result.exit_code == 2
+    assert "server.prot" in result.output
+    assert "Traceback" not in result.output
+
+
+def test_config_validate_file_refuses_an_insecure_bind(tmp_path: Path) -> None:
+    candidate = tmp_path / "candidate.toml"
+    candidate.write_text('[server]\nhost = "0.0.0.0"\n', encoding="utf-8")
+    result = runner.invoke(app, ["config", "validate", "--file", str(candidate)])
+    assert result.exit_code == 2
+    assert "allow_lan_exposure" in result.output
+
+
+def test_config_validate_file_reports_a_missing_candidate_cleanly(tmp_path: Path) -> None:
+    missing = tmp_path / "does-not-exist.toml"
+    result = runner.invoke(app, ["config", "validate", "--file", str(missing)])
+    assert result.exit_code == 2
+    assert "does not exist" in result.output
+    assert "Traceback" not in result.output
+
+
+def test_config_validate_file_never_touches_the_applications_own_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    own = tmp_path / "own-config.toml"
+    own.write_text("[server]\nport = 8767\n", encoding="utf-8")
+    monkeypatch.setenv("IDEAPRESS_CONFIG", str(own))
+    before = own.read_bytes()
+
+    candidate = tmp_path / "candidate.toml"
+    candidate.write_text("[server]\nprot = 1\n", encoding="utf-8")
+    result = runner.invoke(app, ["config", "validate", "--file", str(candidate)])
+
+    assert result.exit_code == 2
+    assert own.read_bytes() == before
+
+
+def test_config_schema_json_is_canonical() -> None:
+    import json
+
+    result = runner.invoke(app, ["config", "schema", "--json"])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["application"] == "ideapress"
+    assert payload["schema_version"] == "1.0"
+    keys = {entry["key"] for entry in payload["runtime_changeable"]}
+    assert "workflow.max_revision_rounds" in keys
+    assert result.stdout == json.dumps(payload, indent=2, sort_keys=True) + "\n"
+
+
+def test_config_schema_human_readable_by_default() -> None:
+    result = runner.invoke(app, ["config", "schema"])
+    assert result.exit_code == 0
+    assert "schema_version" in result.stdout
+    assert "runtime_changeable" in result.stdout
+
+
+def test_config_schema_names_a_tolerated_unknown_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = tmp_path / "ideapress.toml"
+    config.write_text("[server]\nprot = 1\n", encoding="utf-8")
+    monkeypatch.setenv("IDEAPRESS_CONFIG", str(config))
+    result = runner.invoke(app, ["config", "schema"])
+    assert result.exit_code == 0
+    assert "server.prot" in result.stdout
+
+
+def test_config_schema_refuses_the_same_insecure_bind_validate_does(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = tmp_path / "ideapress.toml"
+    config.write_text('[server]\nhost = "0.0.0.0"\n', encoding="utf-8")
+    monkeypatch.setenv("IDEAPRESS_CONFIG", str(config))
+    result = runner.invoke(app, ["config", "schema"])
+    assert result.exit_code == 2
+    assert "allow_lan_exposure" in result.output
+    assert "Traceback" not in result.output
+
+
 def test_config_init_writes_a_file_it_then_accepts(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

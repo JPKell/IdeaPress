@@ -1,0 +1,937 @@
+{
+  "application": "ideapress",
+  "config_only": [
+    "budget.partial_pricing",
+    "budget.per_output_money_ceiling",
+    "budget.per_output_token_ceiling",
+    "budget.per_project_money_ceiling",
+    "budget.per_project_token_ceiling",
+    "execution.max_concurrent_stages",
+    "execution.unload_before_model_switch",
+    "inference.data_classification",
+    "inference.fallback_mode",
+    "inference.loadcoach.api_key_env",
+    "inference.loadcoach.base_url",
+    "inference.loadcoach.honour_stage_bindings",
+    "inference.loadcoach.job_stages",
+    "inference.loadcoach.max_data_classification",
+    "inference.loadcoach.timeout_seconds",
+    "inference.ollama.base_url",
+    "inference.ollama.timeout_seconds",
+    "inference.openai_compatible.api_key_env",
+    "inference.openai_compatible.base_url",
+    "inference.openai_compatible.max_data_classification",
+    "inference.openai_compatible.model",
+    "inference.openai_compatible.timeout_seconds",
+    "inference.pin_backend",
+    "logging.format",
+    "logging.include_content",
+    "models.stage_adapters",
+    "pricing.file",
+    "research.allowed_hosts",
+    "research.allowed_tools",
+    "research.max_data_classification",
+    "research.max_fetch_bytes",
+    "research.max_file_bytes",
+    "research.timeout_seconds",
+    "server.max_body_bytes",
+    "storage.auto_migrate",
+    "storage.project_dir",
+    "storage.statement_timeout_ms",
+    "workflow.allow_audit_gated_requirements",
+    "workflow.project_review_context_budget_tokens",
+    "workflow.structured_output_tokens"
+  ],
+  "config_path": "/golden/config/ideapress/config.toml",
+  "env_prefix": "IDEAPRESS_",
+  "json_schema": {
+    "$defs": {
+      "BudgetSettings": {
+        "additionalProperties": false,
+        "description": "``[budget]`` — LoadLedger's two ceilings, and how a partial price counts (D1, D4, ADR-0069).\n\nEvery ceiling is optional and independent: naming neither the money nor the token half of a\nceiling means that ceiling does not exist, and the ledger still accumulates and still renders\n(row J1 exit 1). ``per_output_*`` binds one unit's own attempts (or, for a stage with no unit —\n``plan``, ``project_review`` — the project's pseudo-run); ``per_project_*`` binds every attempt\ntagged with the project, lifetime, and never resets.",
+        "properties": {
+          "partial_pricing": {
+            "default": "floor",
+            "description": "How a money ceiling treats a debit whose estimate did not total (ADR-0069). 'floor': the ceiling may fire late, by the unreported portion. 'strict': such a debit counts as exceeding, so the ceiling never binds late — at the cost of tripping on the first remote response a provider does not fully report.",
+            "enum": [
+              "floor",
+              "strict"
+            ],
+            "title": "Partial Pricing",
+            "type": "string"
+          },
+          "per_output_money_ceiling": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/MoneyAmount"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "per_output_token_ceiling": {
+            "anyOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Per Output Token Ceiling"
+          },
+          "per_project_money_ceiling": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/MoneyAmount"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "per_project_token_ceiling": {
+            "anyOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Per Project Token Ceiling"
+          }
+        },
+        "title": "BudgetSettings",
+        "type": "object"
+      },
+      "ExecutionSettings": {
+        "additionalProperties": false,
+        "description": "How many generations may be in flight, and what happens when the model must change.\n\nOne model runs at a time, never two (ADR-0038). The card this suite targets holds one of the\ntwo default models with room for its context and not both, and Ollama will hold a second\nresident until ``keep_alive`` expires — silently, with no error IdeaPress could raise. These\ntwo keys are the policy; :mod:`ideapress.services.inference` is the one choke point that\napplies it.",
+        "properties": {
+          "max_concurrent_stages": {
+            "default": 1,
+            "description": "Generations in flight at once. Only 1 is accepted: a higher value is refused at startup rather than silently honoured (ADR-0038).",
+            "minimum": 1,
+            "title": "Max Concurrent Stages",
+            "type": "integer"
+          },
+          "unload_before_model_switch": {
+            "default": true,
+            "description": "Unload the resident model before loading a different one. Turning this off lets two models contend for one GPU, which degrades to CPU or OOM without an error.",
+            "title": "Unload Before Model Switch",
+            "type": "boolean"
+          }
+        },
+        "title": "ExecutionSettings",
+        "type": "object"
+      },
+      "InferenceSettings": {
+        "additionalProperties": false,
+        "description": "Which backend runs stages, and what happens when it is not there.",
+        "properties": {
+          "data_classification": {
+            "default": "public",
+            "description": "The data classification of the work this installation sends to a model. One value for every request, because the true statement is about the installation and not about a stage. Sent to LoadCoach, which records max(caller, adapter) (ADR-0065 rule 2). Unset is the lowest level, which joins to the adapter's own value.",
+            "title": "Data Classification",
+            "type": "string"
+          },
+          "fallback_mode": {
+            "default": "",
+            "description": "Optional; empty means no fallback. Ignored when pin_backend.",
+            "title": "Fallback Mode",
+            "type": "string"
+          },
+          "loadcoach": {
+            "$ref": "#/$defs/LoadCoachSettings"
+          },
+          "mode": {
+            "default": "ollama",
+            "enum": [
+              "ollama",
+              "loadcoach",
+              "openai_compatible"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "ollama": {
+            "$ref": "#/$defs/OllamaSettings"
+          },
+          "openai_compatible": {
+            "$ref": "#/$defs/OpenAICompatibleSettings"
+          },
+          "pin_backend": {
+            "default": false,
+            "description": "True = never fall back; fail the stage instead.",
+            "title": "Pin Backend",
+            "type": "boolean"
+          }
+        },
+        "title": "InferenceSettings",
+        "type": "object"
+      },
+      "LoadCoachSettings": {
+        "additionalProperties": false,
+        "description": "The optional LoadCoach backend: queueing, routing by task profile, and feedback.",
+        "properties": {
+          "api_key_env": {
+            "default": "",
+            "description": "Name of the environment variable holding the token. Never the token itself.",
+            "title": "Api Key Env",
+            "type": "string"
+          },
+          "base_url": {
+            "default": "http://127.0.0.1:8766",
+            "title": "Base Url",
+            "type": "string"
+          },
+          "honour_stage_bindings": {
+            "default": false,
+            "description": "Send the stage's `[models.stages]` binding to LoadCoach as a model override. Off by default: LoadCoach chooses the model, which is what it is for. Turning it on pins the model and gives up routing, evidence and reliability for that stage (ADR-0040).",
+            "title": "Honour Stage Bindings",
+            "type": "boolean"
+          },
+          "job_stages": {
+            "default": [
+              "draft",
+              "revise",
+              "repair",
+              "project_review"
+            ],
+            "description": "Stages submitted through the asynchronous `/jobs` queue rather than synchronous `/generate`. The long ones; everything else is interactive and submitted with `class = \"interactive\"` so a person is never queued behind background work.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Job Stages",
+            "type": "array"
+          },
+          "max_data_classification": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "The most sensitive data this backend may receive: public | internal | confidential. Required for Commissioner to approve a remote call through it (row J1, ADR-0054); unset means no ceiling is declared, which a remote target is *denied* under, never assumed public (fail closed — a behaviour change from J1's egress badge, which previously rendered but never gated). Ollama carries no such key: it is never remote.",
+            "title": "Max Data Classification"
+          },
+          "timeout_seconds": {
+            "default": 600,
+            "minimum": 1,
+            "title": "Timeout Seconds",
+            "type": "integer"
+          }
+        },
+        "title": "LoadCoachSettings",
+        "type": "object"
+      },
+      "LoggingSettings": {
+        "additionalProperties": false,
+        "description": "Structured logging. Project content is never logged at INFO or above (spec §14).",
+        "properties": {
+          "format": {
+            "default": "text",
+            "enum": [
+              "text",
+              "json"
+            ],
+            "title": "Format",
+            "type": "string"
+          },
+          "include_content": {
+            "default": false,
+            "description": "Store and log prompt and response text. Off by default: this is the user's private work, and hashes are enough for provenance.",
+            "title": "Include Content",
+            "type": "boolean"
+          },
+          "level": {
+            "default": "INFO",
+            "enum": [
+              "DEBUG",
+              "INFO",
+              "WARNING",
+              "ERROR",
+              "CRITICAL"
+            ],
+            "title": "Level",
+            "type": "string"
+          }
+        },
+        "title": "LoggingSettings",
+        "type": "object"
+      },
+      "ModelsSettings": {
+        "additionalProperties": false,
+        "description": "The `[models]` section: `[models.stages]` and, since 1.1, `[models.stage_adapters]`.",
+        "properties": {
+          "stage_adapters": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Per-stage LoRA adapter pins, sent to LoadCoach as its `adapter` override. Sparse: a stage with no key has no pin, and a key present is a pin in effect — there is no second boolean, and it does not ride `honour_stage_bindings` (ADR-0083). Values are LoadCoach's manifest names; IdeaPress holds no adapter registry.",
+            "title": "Stage Adapters",
+            "type": "object"
+          },
+          "stages": {
+            "$ref": "#/$defs/StageBindings"
+          }
+        },
+        "title": "ModelsSettings",
+        "type": "object"
+      },
+      "MoneyAmount": {
+        "additionalProperties": false,
+        "description": "A configured money amount: a currency code plus whole nanos (billionths of one unit).\n\nKept as a small config-native shape rather than `baseaicore.Money` itself — TOML gives us an\nuntyped ``{currency, nanos}`` table, and this is that table validated. Convert with\n``baseaicore.Money(currency=amount.currency, nanos=amount.nanos)`` at the point of use\n(transcribed from PromptCadence's `config.MoneyAmount`, row J1 D4).",
+        "properties": {
+          "currency": {
+            "default": "USD",
+            "examples": [
+              "USD"
+            ],
+            "title": "Currency",
+            "type": "string"
+          },
+          "nanos": {
+            "default": 0,
+            "examples": [
+              2000000000
+            ],
+            "minimum": 0,
+            "title": "Nanos",
+            "type": "integer"
+          }
+        },
+        "title": "MoneyAmount",
+        "type": "object"
+      },
+      "OllamaSettings": {
+        "additionalProperties": false,
+        "description": "Direct Ollama, the default backend.",
+        "properties": {
+          "base_url": {
+            "default": "http://127.0.0.1:11434",
+            "title": "Base Url",
+            "type": "string"
+          },
+          "timeout_seconds": {
+            "default": 300,
+            "minimum": 1,
+            "title": "Timeout Seconds",
+            "type": "integer"
+          }
+        },
+        "title": "OllamaSettings",
+        "type": "object"
+      },
+      "OpenAICompatibleSettings": {
+        "additionalProperties": false,
+        "description": "Any OpenAI-compatible endpoint. Empty base_url means \"not configured\", not \"localhost\".",
+        "properties": {
+          "api_key_env": {
+            "default": "",
+            "title": "Api Key Env",
+            "type": "string"
+          },
+          "base_url": {
+            "default": "",
+            "title": "Base Url",
+            "type": "string"
+          },
+          "max_data_classification": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "The most sensitive data this endpoint may receive: public | internal | confidential. Unset denies a remote endpoint outright (fail closed, ADR-0054); see `inference.loadcoach.max_data_classification`.",
+            "title": "Max Data Classification"
+          },
+          "model": {
+            "default": "",
+            "description": "The model name this endpoint serves. OpenAI-compatible servers expose one namespace with no provider prefix, so the `[models.stages]` bindings do not apply to it.",
+            "title": "Model",
+            "type": "string"
+          },
+          "timeout_seconds": {
+            "default": 300,
+            "minimum": 1,
+            "title": "Timeout Seconds",
+            "type": "integer"
+          }
+        },
+        "title": "OpenAICompatibleSettings",
+        "type": "object"
+      },
+      "PricingSettings": {
+        "additionalProperties": false,
+        "description": "``[pricing]`` — where a `baseaicore.ModelPricing` catalogue is read from (D3, ADR-0072).\n\nOptional in full: an installation naming no file gets every attempt costed as unpriced, which\nis correct for a pure-Ollama installation and honest for a remote one that has not supplied\nprices yet — never a fabricated ``$0.00`` (ADR-0016).",
+        "properties": {
+          "file": {
+            "default": "",
+            "description": "Path to a JSON price catalogue in the format ADR-0072 defines. Empty means no prices are known; every debit accumulates tokens only and renders '—'.",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "title": "PricingSettings",
+        "type": "object"
+      },
+      "ProvidersSettings": {
+        "additionalProperties": false,
+        "description": "Egress policy. Remote inference is opt-in, per stage, and labelled in the UI.",
+        "properties": {
+          "allow_remote": {
+            "default": false,
+            "title": "Allow Remote",
+            "type": "boolean"
+          }
+        },
+        "title": "ProvidersSettings",
+        "type": "object"
+      },
+      "ResearchSettings": {
+        "additionalProperties": false,
+        "description": "`[research]` — the whole configuration of the `research` stage (ADR-0116).\n\nEvery default is closed. An installation that writes no `[research]` block at all fetches\nnothing, because `allowed_hosts` is empty and an empty host list means `http_fetch` is **not\nregistered** — deliberately not ToolYard's own reading, where an empty list means loopback\nonly. That reading is right for a package and wrong for the application holding the user's\nprivate drafts: it would let a URL in a brief reach a service on the user's own machine.",
+        "properties": {
+          "allowed_hosts": {
+            "default": [],
+            "description": "Hosts `http_fetch` may fetch from, compared case-insensitively. Empty — the default — means the tool is not registered at all, so a fresh installation fetches nothing until an operator names a host.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowed Hosts",
+            "type": "array"
+          },
+          "allowed_tools": {
+            "default": [
+              "http_fetch",
+              "read_file"
+            ],
+            "description": "The executor's allowlist. A shipped tool omitted here is refused `not_allowlisted` as a recorded result, never a startup failure; a name that is not a shipped tool is refused at startup, because it can only be a typo.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowed Tools",
+            "type": "array"
+          },
+          "max_data_classification": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "The most sensitive data a *remote* fetch target may receive: public | internal | confidential. Unset denies every remote host (fail closed, ADR-0054, ADR-0103 decision 2); a loopback host carries no ceiling and is approved. See `inference.loadcoach.max_data_classification`, whose rule this transcribes from the backend target to the fetch target.",
+            "title": "Max Data Classification"
+          },
+          "max_fetch_bytes": {
+            "default": 1048576,
+            "description": "Largest document `http_fetch` will transfer. A body over it stops the transfer rather than truncating, because a note built from half a document cites a source that does not say what the note says.",
+            "minimum": 1024,
+            "title": "Max Fetch Bytes",
+            "type": "integer"
+          },
+          "max_file_bytes": {
+            "default": 1048576,
+            "description": "Largest file `read_file` will load from the project's `sources/` directory. A larger file is refused rather than partly read, for the same reason.",
+            "minimum": 1024,
+            "title": "Max File Bytes",
+            "type": "integer"
+          },
+          "timeout_seconds": {
+            "default": 30.0,
+            "description": "Per tool call. There is no way to express 'no timeout', deliberately.",
+            "exclusiveMinimum": 0.0,
+            "maximum": 600.0,
+            "title": "Timeout Seconds",
+            "type": "number"
+          }
+        },
+        "title": "ResearchSettings",
+        "type": "object"
+      },
+      "ServerSettings": {
+        "additionalProperties": false,
+        "description": "Bind address and HTTP-level limits.",
+        "properties": {
+          "allow_lan_exposure": {
+            "default": false,
+            "description": "Acknowledges a deliberate bind to every interface (0.0.0.0). Without it such a bind refuses to start.",
+            "title": "Allow Lan Exposure",
+            "type": "boolean"
+          },
+          "allowed_hosts": {
+            "default": [],
+            "description": "Host header values accepted on a non-loopback bind, against DNS rebinding. Comma-separated in the environment.",
+            "examples": [
+              [
+                "ideapress.local"
+              ]
+            ],
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowed Hosts",
+            "type": "array"
+          },
+          "host": {
+            "default": "127.0.0.1",
+            "description": "Interface to bind. Loopback by default; anything else requires allowed_hosts (ADR-0026).",
+            "examples": [
+              "127.0.0.1"
+            ],
+            "title": "Host",
+            "type": "string"
+          },
+          "max_body_bytes": {
+            "default": 8388608,
+            "description": "Largest request body accepted, before it is buffered. Briefs can be long.",
+            "minimum": 1024,
+            "title": "Max Body Bytes",
+            "type": "integer"
+          },
+          "port": {
+            "default": 8767,
+            "examples": [
+              8767
+            ],
+            "maximum": 65535,
+            "minimum": 1,
+            "title": "Port",
+            "type": "integer"
+          }
+        },
+        "title": "ServerSettings",
+        "type": "object"
+      },
+      "StageBindings": {
+        "additionalProperties": false,
+        "description": "Stage -> model bindings for standalone mode (`[models.stages]`, spec §12).\n\nExtra keys are forbidden and the model validator checks the key set against workflows §2, so a\nbinding for a stage that does not exist — or a model-using stage with no binding — fails\nstartup validation naming the stage. That check is the reason this class is not a bare dict.",
+        "properties": {
+          "audit_deep": {
+            "default": "ollama/qwen3.5:9b-q8_0",
+            "title": "Audit Deep",
+            "type": "string"
+          },
+          "audit_fast": {
+            "default": "ollama/qwen3.5:9b-q8_0",
+            "title": "Audit Fast",
+            "type": "string"
+          },
+          "critique": {
+            "default": "ollama/qwen3.5:9b-q8_0",
+            "title": "Critique",
+            "type": "string"
+          },
+          "draft": {
+            "default": "ollama/gemma4:12b",
+            "title": "Draft",
+            "type": "string"
+          },
+          "fact_check": {
+            "default": "ollama/qwen3.5:9b-q8_0",
+            "title": "Fact Check",
+            "type": "string"
+          },
+          "outline": {
+            "default": "ollama/qwen3.5:9b-q8_0",
+            "title": "Outline",
+            "type": "string"
+          },
+          "project_review": {
+            "default": "ollama/qwen3.5:9b-q8_0",
+            "title": "Project Review",
+            "type": "string"
+          },
+          "repair": {
+            "default": "ollama/qwen3.5:9b-q8_0",
+            "title": "Repair",
+            "type": "string"
+          },
+          "requirements": {
+            "default": "ollama/qwen3.5:9b-q8_0",
+            "title": "Requirements",
+            "type": "string"
+          },
+          "research_synthesis": {
+            "default": "ollama/qwen3.5:9b-q8_0",
+            "title": "Research Synthesis",
+            "type": "string"
+          },
+          "revise": {
+            "default": "ollama/qwen3.5:9b-q8_0",
+            "title": "Revise",
+            "type": "string"
+          }
+        },
+        "title": "StageBindings",
+        "type": "object"
+      },
+      "StorageSettings": {
+        "additionalProperties": false,
+        "description": "Where the database and the project artifact directory live.",
+        "properties": {
+          "auto_migrate": {
+            "default": true,
+            "description": "Run pending migrations at startup. Defaults true on SQLite; a PostgreSQL URL turns it off, because a failed migration there cannot be rolled back automatically (database standards §5.1).",
+            "title": "Auto Migrate",
+            "type": "boolean"
+          },
+          "database_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "SQLAlchemy URL. Defaults to a SQLite file under the XDG data directory.",
+            "title": "Database Url"
+          },
+          "project_dir": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Directory holding per-project artifacts and exports. Defaults under XDG data.",
+            "title": "Project Dir"
+          },
+          "statement_timeout_ms": {
+            "default": 30000,
+            "minimum": 0,
+            "title": "Statement Timeout Ms",
+            "type": "integer"
+          }
+        },
+        "title": "StorageSettings",
+        "type": "object"
+      },
+      "WorkflowSettings": {
+        "additionalProperties": false,
+        "description": "The bounds every loop in workflows §5 runs under.",
+        "properties": {
+          "allow_audit_gated_requirements": {
+            "default": true,
+            "description": "Whether an audit's explicit per-requirement attestation may satisfy a blocking requirement that has no deterministic check (ADR-0039). Silence never satisfies one either way. False forces a wholly mechanical gate: such a requirement pauses its unit until it gets a deterministic check or is demoted to advisory.",
+            "title": "Allow Audit Gated Requirements",
+            "type": "boolean"
+          },
+          "audit_escalation_threshold": {
+            "default": 0.6,
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Audit Escalation Threshold",
+            "type": "number"
+          },
+          "context_budget_tokens": {
+            "default": 8000,
+            "description": "Token budget for assembled context (workflows §7). Requirements and the unit specification are never dropped to fit it; overflow fails with both numbers.",
+            "minimum": 256,
+            "title": "Context Budget Tokens",
+            "type": "integer"
+          },
+          "diminishing_returns_threshold": {
+            "default": 0.05,
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Diminishing Returns Threshold",
+            "type": "number"
+          },
+          "max_attempts_per_stage": {
+            "default": 3,
+            "maximum": 100,
+            "minimum": 1,
+            "title": "Max Attempts Per Stage",
+            "type": "integer"
+          },
+          "max_revision_rounds": {
+            "default": 3,
+            "maximum": 100,
+            "minimum": 0,
+            "title": "Max Revision Rounds",
+            "type": "integer"
+          },
+          "project_review_context_budget_tokens": {
+            "default": 24000,
+            "description": "Token budget for project_review's whole-document context (workflows §2 stage 15). Nothing here is pinned — units are dropped, latest in reading order first — and the stage refuses with both numbers rather than silently reviewing an empty document.",
+            "minimum": 256,
+            "title": "Project Review Context Budget Tokens",
+            "type": "integer"
+          },
+          "require_clean_validation_to_commit": {
+            "default": true,
+            "title": "Require Clean Validation To Commit",
+            "type": "boolean"
+          },
+          "structured_output_tokens": {
+            "default": 8192,
+            "description": "Output-token budget for the structured stages (requirements, outline, audit_fast, audit_deep, critique, project_review), and — when raised above the 8192 default — the thinking floor for the text-writing stages (draft, repair, revise) as well. Includes the model's reasoning: a thinking model spends output tokens before its first word of answer, and 8192 is the measured floor for the default models (spec §15). Raise this when a unit pauses with an exhausted output budget.",
+            "maximum": 131072,
+            "minimum": 1024,
+            "title": "Structured Output Tokens",
+            "type": "integer"
+          }
+        },
+        "title": "WorkflowSettings",
+        "type": "object"
+      }
+    },
+    "additionalProperties": false,
+    "description": "The complete, validated IdeaPress configuration.\n\nConstructed only by :func:`load_settings`, which resolves the precedence chain first — never\ncall ``Settings(**raw)`` on unmerged input, or the file/env/CLI layering is bypassed.",
+    "properties": {
+      "budget": {
+        "$ref": "#/$defs/BudgetSettings"
+      },
+      "execution": {
+        "$ref": "#/$defs/ExecutionSettings"
+      },
+      "inference": {
+        "$ref": "#/$defs/InferenceSettings"
+      },
+      "logging": {
+        "$ref": "#/$defs/LoggingSettings"
+      },
+      "models": {
+        "$ref": "#/$defs/ModelsSettings"
+      },
+      "pricing": {
+        "$ref": "#/$defs/PricingSettings"
+      },
+      "providers": {
+        "$ref": "#/$defs/ProvidersSettings"
+      },
+      "research": {
+        "$ref": "#/$defs/ResearchSettings"
+      },
+      "server": {
+        "$ref": "#/$defs/ServerSettings"
+      },
+      "storage": {
+        "$ref": "#/$defs/StorageSettings"
+      },
+      "workflow": {
+        "$ref": "#/$defs/WorkflowSettings"
+      }
+    },
+    "title": "Settings",
+    "type": "object"
+  },
+  "problems": [],
+  "runtime_changeable": [
+    {
+      "description": "",
+      "key": "inference.mode",
+      "kind": "string",
+      "maximum": null,
+      "minimum": null
+    },
+    {
+      "description": "",
+      "key": "logging.level",
+      "kind": "string",
+      "maximum": null,
+      "minimum": null
+    },
+    {
+      "description": "",
+      "key": "workflow.audit_escalation_threshold",
+      "kind": "number",
+      "maximum": 1.0,
+      "minimum": 0.0
+    },
+    {
+      "description": "Token budget for assembled context (workflows §7). Requirements and the unit specification are never dropped to fit it; overflow fails with both numbers.",
+      "key": "workflow.context_budget_tokens",
+      "kind": "integer",
+      "maximum": null,
+      "minimum": 256
+    },
+    {
+      "description": "",
+      "key": "workflow.diminishing_returns_threshold",
+      "kind": "number",
+      "maximum": 1.0,
+      "minimum": 0.0
+    },
+    {
+      "description": "",
+      "key": "workflow.max_attempts_per_stage",
+      "kind": "integer",
+      "maximum": 100,
+      "minimum": 1
+    },
+    {
+      "description": "",
+      "key": "workflow.max_revision_rounds",
+      "kind": "integer",
+      "maximum": 100,
+      "minimum": 0
+    },
+    {
+      "description": "",
+      "key": "workflow.require_clean_validation_to_commit",
+      "kind": "boolean",
+      "maximum": null,
+      "minimum": null
+    },
+    {
+      "description": "Model bound to the audit_deep stage.",
+      "key": "models.stages.audit_deep",
+      "kind": "string",
+      "maximum": null,
+      "minimum": null
+    },
+    {
+      "description": "Model bound to the audit_fast stage.",
+      "key": "models.stages.audit_fast",
+      "kind": "string",
+      "maximum": null,
+      "minimum": null
+    },
+    {
+      "description": "Model bound to the critique stage.",
+      "key": "models.stages.critique",
+      "kind": "string",
+      "maximum": null,
+      "minimum": null
+    },
+    {
+      "description": "Model bound to the draft stage.",
+      "key": "models.stages.draft",
+      "kind": "string",
+      "maximum": null,
+      "minimum": null
+    },
+    {
+      "description": "Model bound to the fact_check stage.",
+      "key": "models.stages.fact_check",
+      "kind": "string",
+      "maximum": null,
+      "minimum": null
+    },
+    {
+      "description": "Model bound to the outline stage.",
+      "key": "models.stages.outline",
+      "kind": "string",
+      "maximum": null,
+      "minimum": null
+    },
+    {
+      "description": "Model bound to the project_review stage.",
+      "key": "models.stages.project_review",
+      "kind": "string",
+      "maximum": null,
+      "minimum": null
+    },
+    {
+      "description": "Model bound to the repair stage.",
+      "key": "models.stages.repair",
+      "kind": "string",
+      "maximum": null,
+      "minimum": null
+    },
+    {
+      "description": "Model bound to the requirements stage.",
+      "key": "models.stages.requirements",
+      "kind": "string",
+      "maximum": null,
+      "minimum": null
+    },
+    {
+      "description": "Model bound to the research_synthesis stage.",
+      "key": "models.stages.research_synthesis",
+      "kind": "string",
+      "maximum": null,
+      "minimum": null
+    },
+    {
+      "description": "Model bound to the revise stage.",
+      "key": "models.stages.revise",
+      "kind": "string",
+      "maximum": null,
+      "minimum": null
+    }
+  ],
+  "schema_version": "1.0",
+  "security_keys": [
+    "providers.allow_remote",
+    "server.allow_lan_exposure",
+    "server.allowed_hosts",
+    "server.host",
+    "server.port",
+    "storage.database_url"
+  ],
+  "sources": {
+    "budget.partial_pricing": "default",
+    "budget.per_output_money_ceiling": "default",
+    "budget.per_output_token_ceiling": "default",
+    "budget.per_project_money_ceiling": "default",
+    "budget.per_project_token_ceiling": "default",
+    "execution.max_concurrent_stages": "default",
+    "execution.unload_before_model_switch": "default",
+    "inference.data_classification": "default",
+    "inference.fallback_mode": "default",
+    "inference.loadcoach": "default",
+    "inference.mode": "default",
+    "inference.ollama": "default",
+    "inference.openai_compatible": "default",
+    "inference.pin_backend": "default",
+    "logging.format": "default",
+    "logging.include_content": "default",
+    "logging.level": "default",
+    "models.stage_adapters": "default",
+    "models.stages": "default",
+    "pricing.file": "default",
+    "providers.allow_remote": "default",
+    "research.allowed_hosts": "default",
+    "research.allowed_tools": "default",
+    "research.max_data_classification": "default",
+    "research.max_fetch_bytes": "default",
+    "research.max_file_bytes": "default",
+    "research.timeout_seconds": "default",
+    "server.allow_lan_exposure": "default",
+    "server.allowed_hosts": "default",
+    "server.host": "default",
+    "server.max_body_bytes": "default",
+    "server.port": "default",
+    "storage.auto_migrate": "default",
+    "storage.database_url": "default",
+    "storage.project_dir": "default",
+    "storage.statement_timeout_ms": "default",
+    "workflow.allow_audit_gated_requirements": "default",
+    "workflow.audit_escalation_threshold": "default",
+    "workflow.context_budget_tokens": "default",
+    "workflow.diminishing_returns_threshold": "default",
+    "workflow.max_attempts_per_stage": "default",
+    "workflow.max_revision_rounds": "default",
+    "workflow.project_review_context_budget_tokens": "default",
+    "workflow.require_clean_validation_to_commit": "default",
+    "workflow.structured_output_tokens": "default"
+  },
+  "version": "1.4.1"
+}

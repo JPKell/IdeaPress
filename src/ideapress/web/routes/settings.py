@@ -11,7 +11,7 @@ into exposing itself.
 
 from __future__ import annotations
 
-from typing import Any, Final
+from typing import Any
 
 from fastapi import APIRouter, Request
 from mirrorwall import json_response
@@ -20,37 +20,11 @@ from starlette.responses import JSONResponse
 
 from ideapress.errors import ValidationFailed
 from ideapress.infrastructure.db.models import Setting as SettingRow
+from ideapress.services.settings_registry import CONFIG_ONLY_KEYS, RUNTIME_KEYS, is_runtime_key
 
 __all__ = ["CONFIG_ONLY_KEYS", "RUNTIME_KEYS", "router"]
 
 router = APIRouter(tags=["settings"])
-
-CONFIG_ONLY_KEYS: Final[frozenset[str]] = frozenset(
-    {
-        "server.host",
-        "server.port",
-        "server.allow_lan_exposure",
-        "server.allowed_hosts",
-        "storage.database_url",
-        "providers.allow_remote",
-    }
-)
-"""Refused over HTTP, always, with the key named (api.md §6)."""
-
-RUNTIME_KEYS: Final[frozenset[str]] = frozenset(
-    {
-        "inference.mode",
-        "workflow.max_revision_rounds",
-        "workflow.diminishing_returns_threshold",
-        "workflow.max_attempts_per_stage",
-        "workflow.audit_escalation_threshold",
-        "workflow.require_clean_validation_to_commit",
-        "workflow.context_budget_tokens",
-        "logging.level",
-    }
-)
-"""Changeable while the process runs. Stage model bindings are `models.stages.<stage>`, checked
-against the stage vocabulary rather than listed here."""
 
 
 class SettingsUpdate(BaseModel):
@@ -59,14 +33,6 @@ class SettingsUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     values: dict[str, Any] = Field(default_factory=dict)
-
-
-def _is_runtime_key(key: str) -> bool:
-    from ideapress.domain.stages import MODEL_STAGES
-
-    if key in RUNTIME_KEYS:
-        return True
-    return key.startswith("models.stages.") and key.split(".", 2)[2] in MODEL_STAGES
 
 
 @router.get("/settings")
@@ -128,7 +94,7 @@ def put_settings(request: Request, body: SettingsUpdate) -> JSONResponse:
             "configuration edit and a restart."
         )
         raise ValidationFailed(message, details={"config_only": refused, "status": 403})
-    unknown = sorted(key for key in body.values if not _is_runtime_key(key))
+    unknown = sorted(key for key in body.values if not is_runtime_key(key))
     if unknown:
         message = (
             f"{', '.join(unknown)} is not a runtime setting. Runtime settings are: "

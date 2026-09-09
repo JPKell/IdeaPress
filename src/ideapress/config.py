@@ -56,6 +56,7 @@ __all__ = [
     "config_dir",
     "data_dir",
     "load_settings",
+    "load_settings_tolerant",
     "resolve_config_path",
     "state_dir",
 ]
@@ -1085,6 +1086,80 @@ def load_settings(
     return LoadedSettings(
         settings=settings, config_path=resolved_path, config_file_used=file_used, sources=sources
     )
+
+
+def load_settings_tolerant(
+    *, config_path: str | Path | None = None
+) -> tuple[LoadedSettings, list[str]]:
+    """Resolve configuration like :func:`load_settings`, but tolerate an unknown key.
+
+    A tool that describes *why* a configuration file will not load (ADR-0127 rule 1's schema
+    document) cannot itself refuse to load it over the same problem it is reporting. Every other
+    kind of problem — a bad type, an out-of-range value, an unsafe bind, a `[models.stages]`
+    mismatch — still raises exactly as :func:`load_settings` does; only an unrecognized key path
+    is stripped and reported instead.
+
+    Args:
+        config_path: An explicit ``--config`` path. See :func:`resolve_config_path` for the
+            fallback order when this is ``None``.
+
+    Returns:
+        The validated :class:`LoadedSettings` (defaults standing in for anything stripped) and
+        the list of unknown-key problems found — empty when the file has none.
+
+    Raises:
+        ConfigurationError: A problem other than an unknown key: the file is not valid TOML, a
+            value fails a field's type or range, `[models.stages]` disagrees with workflows §2, or
+            a bind or egress combination is unsafe (:class:`InsecureBindingError`, a subclass).
+    """
+    resolved_path = resolve_config_path(config_path)
+    file_data: dict[str, Any] = {}
+    file_used = False
+    if resolved_path.is_file():
+        try:
+            with resolved_path.open("rb") as handle:
+                file_data = tomllib.load(handle)
+        except tomllib.TOMLDecodeError as exc:
+            raise ConfigurationError(
+                f"Configuration file {resolved_path} is not valid TOML: {exc}",
+                details={"file": str(resolved_path)},
+            ) from exc
+        file_used = True
+
+    env_data = _read_env(ENV_PREFIX)
+    merged = _deep_merge(file_data, env_data)
+
+    problems: list[str] = []
+    known_keys = _known_dotted_keys()
+    while True:
+        try:
+            settings = Settings.model_validate(merged)
+        except PydanticValidationError as exc:
+            errors = exc.errors()
+            if any(error["type"] != "extra_forbidden" for error in errors):
+                raise _translate_validation_error(exc, resolved_path) from exc
+            for error in errors:
+                loc = [str(part) for part in error["loc"]]
+                node = merged
+                for part in loc[:-1]:
+                    node = node[part]
+                del node[loc[-1]]
+                dotted = ".".join(loc)
+                suggestion = difflib.get_close_matches(dotted, known_keys, n=1)
+                hint = f" (did you mean '{suggestion[0]}'?)" if suggestion else ""
+                problems.append(f"unknown configuration key '{dotted}'{hint}")
+            continue
+        break
+
+    check_stage_vocabulary(settings.models.stages)
+    _validate_security(settings)
+    _validate_egress(settings)
+
+    sources = _track_sources(file_data, env_data, {})
+    loaded = LoadedSettings(
+        settings=settings, config_path=resolved_path, config_file_used=file_used, sources=sources
+    )
+    return loaded, problems
 
 
 EXAMPLE_CONFIG_TOML: Final = """\

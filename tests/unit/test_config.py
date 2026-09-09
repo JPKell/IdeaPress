@@ -16,6 +16,7 @@ from ideapress.config import (
     InsecureBindingError,
     data_dir,
     load_settings,
+    load_settings_tolerant,
     resolve_config_path,
 )
 
@@ -86,6 +87,43 @@ def test_unsafe_bind_is_refused(tmp_path: Path, body: str, expected_field: str) 
     with pytest.raises(InsecureBindingError) as caught:
         load_settings(config_path=config)
     assert expected_field in caught.value.message
+
+
+def test_tolerant_load_strips_an_unknown_key_and_reports_it(tmp_path: Path) -> None:
+    config = _write(tmp_path / "ideapress.toml", "[server]\nport = 9001\nprot = 1\n")
+    loaded, problems = load_settings_tolerant(config_path=config)
+    assert loaded.settings.server.port == 9001
+    assert len(problems) == 1
+    assert "server.prot" in problems[0]
+    assert "server.port" in problems[0], "the typo suggestion survives the tolerant path too"
+
+
+def test_tolerant_load_strips_every_unknown_section(tmp_path: Path) -> None:
+    config = _write(tmp_path / "ideapress.toml", "[nonsense]\nfoo = 1\n[server]\nport = 9002\n")
+    loaded, problems = load_settings_tolerant(config_path=config)
+    assert loaded.settings.server.port == 9002
+    assert any("nonsense" in problem for problem in problems)
+
+
+def test_tolerant_load_still_raises_on_a_genuine_validation_error(tmp_path: Path) -> None:
+    config = _write(tmp_path / "ideapress.toml", "[execution]\nmax_concurrent_stages = 2\n")
+    with pytest.raises(ConfigurationError):
+        load_settings_tolerant(config_path=config)
+
+
+def test_tolerant_load_still_raises_on_an_unsafe_bind(tmp_path: Path) -> None:
+    config = _write(tmp_path / "ideapress.toml", '[server]\nhost = "0.0.0.0"\n')
+    with pytest.raises(InsecureBindingError):
+        load_settings_tolerant(config_path=config)
+
+
+def test_tolerant_load_agrees_with_load_settings_on_a_clean_file(tmp_path: Path) -> None:
+    config = _write(tmp_path / "ideapress.toml", "[server]\nport = 9003\n")
+    plain = load_settings(config_path=config)
+    tolerant, problems = load_settings_tolerant(config_path=config)
+    assert problems == []
+    assert tolerant.settings == plain.settings
+    assert tolerant.sources == plain.sources
 
 
 def test_lan_bind_is_accepted_once_acknowledged(tmp_path: Path) -> None:
