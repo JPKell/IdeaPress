@@ -66,7 +66,7 @@ reduction seam, [ADR-0104](../../adr/0104-an-adopted-reductions-seam-and-error-v
 Optional extra: `sweatmeter` — a presence probe only. IdeaPress shows no machine telemetry
 ([ADR-0115](../../adr/0115-ideapress-shows-no-machine-telemetry.md)); installing it makes
 `INSUFFICIENT_VRAM` (§13) reachable, nothing more.
-**Third party:** `fastapi`, `uvicorn[standard]`, `typer`, `pydantic`, `pydantic-settings`,
+**Third party:** `fastapi`, `uvicorn[standard]`, `typer`, `pydantic`,
 `sqlalchemy`, `alembic`, `jinja2`, `python-multipart` (HTML form posts, which
 [ADR-0020](../../adr/0020-ui-rendering-strategy.md) makes the primary UI mechanism), `httpx`
 (LoadCoach adapter).
