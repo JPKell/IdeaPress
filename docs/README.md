@@ -23,3 +23,5 @@ These are mirrors of the suite documentation and are kept byte-identical with it
 - [API reference](apps/ideapress/api.md)
 - [Development plan](apps/ideapress/development-plan.md) — the phases, and what each is judged on
 - [Risks](apps/ideapress/risks.md)
+
+* [MEMORY_SAFETY.md](MEMORY_SAFETY.md) — keeping Ollama and `llama-server` from taking the host down: the cgroup caps, `--fit`, per-model KV-cache precision, the max-fit ceiling (mirrored).
