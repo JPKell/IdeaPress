@@ -25,3 +25,4 @@ These are mirrors of the suite documentation and are kept byte-identical with it
 - [Risks](apps/ideapress/risks.md)
 
 * [MEMORY_SAFETY.md](MEMORY_SAFETY.md) — keeping Ollama and `llama-server` from taking the host down: the cgroup caps, `--fit`, per-model KV-cache precision, the max-fit ceiling (mirrored).
+* [LAN_ACCESS.md](LAN_ACCESS.md) — reaching the four apps from other machines: loopback apps behind one Caddy (TLS + password), and how to trust its certificate on each client OS (mirrored).
