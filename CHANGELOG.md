@@ -20,6 +20,21 @@ packaging and release standards §3.
   `ideapress prompts list|show --shipped` print the pack as installed, and `prompts list --json`
   gains `sha256` and `source`. WeightRoomGym's prompt editor writes these overrides.
 
+### Changed
+
+- **`GET`/`PUT /settings` answer the suite's runtime-settings document** (row WI1, api.md §6).
+  `PUT` takes a flat `{key: value}` object — the old `{"values": {…}}` wrapper is refused as an
+  unknown key — and both verbs answer `settings` (the effective values), `definitions` (per key:
+  `type`, `description`, `minimum`, `maximum`, `configured`, `stored`, `source`, `shadowed_by`) and
+  `config_only`: the document LoadCoach and PromptCadence answer and WeightRoomGym's Settings page
+  reads (ADR-0127 rule 4), which refused every IdeaPress runtime key until now. A value is
+  validated by its own field before it is stored, and a refused one is named.
+
+### Fixed
+
+- A configuration-only key sent to `PUT /settings` is `403 FORBIDDEN` naming it, as api.md §6 has
+  always said; it answered `422 VALIDATION_FAILED`.
+
 ## [1.5.0] - 2026-09-09
 
 ### Changed

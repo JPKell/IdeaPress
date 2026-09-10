@@ -85,19 +85,6 @@
         "title": "ReviseRequest",
         "type": "object"
       },
-      "SettingsUpdate": {
-        "additionalProperties": false,
-        "description": "``PUT /settings`` body: dotted keys to new values.",
-        "properties": {
-          "values": {
-            "additionalProperties": true,
-            "title": "Values",
-            "type": "object"
-          }
-        },
-        "title": "SettingsUpdate",
-        "type": "object"
-      },
       "StageRunRequest": {
         "additionalProperties": false,
         "description": "``POST /projects/{id}/stages/{stage}/run`` body.",
@@ -1160,7 +1147,7 @@
     },
     "/api/v1/settings": {
       "get": {
-        "description": "Report the settings, marking which may be changed while the process runs.",
+        "description": "Every runtime-changeable key's effective value, its definition, and the config-only keys.\n\nAnswered over the **configured** settings, so ``configured`` stays what the operator configured\nand ``source`` says whether a stored row or configuration decides each value.",
         "operationId": "get_settings_api_v1_settings_get",
         "responses": {
           "200": {
@@ -1178,13 +1165,15 @@
         ]
       },
       "put": {
-        "description": "Change runtime settings.\n\nRaises:\n    ValidationFailed: A key is configuration-only, or is not a setting at all. **Nothing is\n        written when any key is refused**: a partial update would leave the caller unable to\n        say what took effect, and a caller who mistyped one key of six should not have the\n        other five applied.",
+        "description": "Store one or more runtime-changeable keys, and answer with the whole document.\n\nRaises:\n    SettingConfigOnly: A configuration-only key, named (``403``). Nothing is written.\n    ValidationFailed: An unknown key, or a value its field refuses, named (``422``). Nothing is\n        written.",
         "operationId": "put_settings_api_v1_settings_put",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/SettingsUpdate"
+                "additionalProperties": true,
+                "title": "Body",
+                "type": "object"
               }
             }
           },

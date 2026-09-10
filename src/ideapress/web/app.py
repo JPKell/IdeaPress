@@ -83,6 +83,8 @@ _STATUS_BY_CODE: Final[dict[str, int]] = {
     "CONFLICT": status.HTTP_409_CONFLICT,
     "MISDIRECTED_REQUEST": 421,
     "CSRF_FAILED": status.HTTP_403_FORBIDDEN,
+    # A configuration-only key sent to `PUT /settings` (api.md §6).
+    "FORBIDDEN": status.HTTP_403_FORBIDDEN,
     "DATABASE_ERROR": status.HTTP_500_INTERNAL_SERVER_ERROR,
     "DATABASE_UNAVAILABLE": status.HTTP_503_SERVICE_UNAVAILABLE,
     "MIGRATION_REQUIRED": status.HTTP_503_SERVICE_UNAVAILABLE,

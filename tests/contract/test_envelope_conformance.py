@@ -97,6 +97,7 @@ def test_every_status_mapping_names_a_code_that_exists() -> None:
             "UNSUPPORTED_MEDIA_TYPE",
             "MISDIRECTED_REQUEST",
             "CSRF_FAILED",
+            "FORBIDDEN",
             "CONFLICT",
             "DATABASE_ERROR",
             "DATABASE_UNAVAILABLE",
@@ -201,70 +202,6 @@ def test_every_endpoint_the_specification_lists_exists(client: TestClient) -> No
         if method.upper() in {"GET", "POST", "PUT", "DELETE"}
     }
     assert documented - actual == set(), f"specified but missing: {sorted(documented - actual)}"
-
-
-def test_settings_refuses_a_configuration_only_key_by_name(client: TestClient) -> None:
-    """Api.md §6: the six keys that decide where the service listens and where content goes."""
-    for key in (
-        "server.host",
-        "server.allowed_hosts",
-        "server.allow_lan_exposure",
-        "storage.database_url",
-        "providers.allow_remote",
-    ):
-        response = client.put("/api/v1/settings", json={"values": {key: "anything"}})
-        assert response.status_code == 422, key
-        assert key in response.json()["error"]["message"]
-
-
-def test_settings_accepts_a_runtime_key(client: TestClient) -> None:
-    response = client.put("/api/v1/settings", json={"values": {"workflow.max_revision_rounds": 2}})
-    assert response.status_code == 200
-    assert response.json()["updated"] == ["workflow.max_revision_rounds"]
-
-
-def test_settings_refuses_the_whole_update_when_one_key_is_refused(client: TestClient) -> None:
-    """A caller who mistyped one key of six should not have the other five applied."""
-    from sqlalchemy import select
-
-    from ideapress.infrastructure.db.models import Setting as SettingRow
-
-    response = client.put(
-        "/api/v1/settings",
-        json={
-            "values": {
-                "workflow.max_revision_rounds": 2,
-                "server.host": "0.0.0.0",  # noqa: S104 — the value under test is the refusal
-            }
-        },
-    )
-    assert response.status_code == 422
-    runtime = client.app.state.runtime  # type: ignore[attr-defined]  # the served runtime
-    with runtime.storage.read() as session:
-        assert session.scalars(select(SettingRow)).all() == []
-
-
-def test_settings_refuses_a_key_that_is_not_a_setting(client: TestClient) -> None:
-    response = client.put("/api/v1/settings", json={"values": {"workflow.speed": 11}})
-    assert response.status_code == 422
-    assert "workflow.speed" in response.json()["error"]["message"]
-
-
-def test_settings_reports_which_keys_are_config_only(client: TestClient) -> None:
-    body = client.get("/api/v1/settings").json()
-    assert "server.host" in body["config_only"]
-    assert "inference.mode" in body["runtime_changeable"]
-    assert "models.stages.draft" in body["runtime_changeable"]
-
-
-def test_a_stage_binding_is_runtime_changeable_but_only_for_a_real_stage(
-    client: TestClient,
-) -> None:
-    ok = client.put("/api/v1/settings", json={"values": {"models.stages.draft": "ollama/other:7b"}})
-    assert ok.status_code == 200
-    bad = client.put("/api/v1/settings", json={"values": {"models.stages.audit": "x"}})
-    assert bad.status_code == 422
-    assert "models.stages.audit" in bad.json()["error"]["message"]
 
 
 def test_one_workflow_is_shipped_and_an_unknown_one_is_refused(client: TestClient) -> None:

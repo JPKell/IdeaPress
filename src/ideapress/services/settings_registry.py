@@ -13,7 +13,7 @@ from typing import Final
 
 from ideapress.domain.stages import MODEL_STAGES
 
-__all__ = ["CONFIG_ONLY_KEYS", "RUNTIME_KEYS", "is_runtime_key"]
+__all__ = ["ALL_RUNTIME_KEYS", "CONFIG_ONLY_KEYS", "RUNTIME_KEYS", "is_runtime_key"]
 
 CONFIG_ONLY_KEYS: Final[frozenset[str]] = frozenset(
     {
@@ -39,8 +39,13 @@ RUNTIME_KEYS: Final[frozenset[str]] = frozenset(
         "logging.level",
     }
 )
-"""Changeable while the process runs. Stage model bindings are `models.stages.<stage>`, checked
-against the stage vocabulary rather than listed here."""
+"""Changeable while the process runs. Stage model bindings are `models.stages.<stage>`, derived
+from the stage vocabulary rather than listed here."""
+
+ALL_RUNTIME_KEYS: Final[frozenset[str]] = RUNTIME_KEYS | frozenset(
+    f"models.stages.{stage}" for stage in MODEL_STAGES
+)
+""":data:`RUNTIME_KEYS` plus one `models.stages.<stage>` per model-using stage."""
 
 
 def is_runtime_key(key: str) -> bool:
@@ -53,6 +58,4 @@ def is_runtime_key(key: str) -> bool:
         ``True`` for a key in :data:`RUNTIME_KEYS`, or ``models.stages.<stage>`` for a stage in
         :data:`ideapress.domain.stages.MODEL_STAGES`.
     """
-    if key in RUNTIME_KEYS:
-        return True
-    return key.startswith("models.stages.") and key.split(".", 2)[2] in MODEL_STAGES
+    return key in ALL_RUNTIME_KEYS

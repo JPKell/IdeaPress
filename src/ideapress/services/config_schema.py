@@ -71,6 +71,26 @@ def _runtime_entry(
     }
 
 
+def runtime_changeable_entries() -> list[dict[str, Any]]:
+    """The document's `runtime_changeable` list, which `GET /settings` reads its key types from.
+
+    Returns:
+        One entry per runtime-changeable key: the registry's keys sorted, then one
+        `models.stages.<stage>` per model-using stage, sorted by stage.
+    """
+    json_schema = Settings.model_json_schema()
+    return [
+        _runtime_entry(key, json_schema, fallback_description="") for key in sorted(RUNTIME_KEYS)
+    ] + [
+        _runtime_entry(
+            f"models.stages.{stage}",
+            json_schema,
+            fallback_description=f"Model bound to the {stage} stage.",
+        )
+        for stage in sorted(MODEL_STAGES)
+    ]
+
+
 def build_schema_document(*, config_path: str | Path | None = None) -> dict[str, Any]:
     """Build the ADR-0127 rule 1 settings schema document.
 
@@ -92,15 +112,9 @@ def build_schema_document(*, config_path: str | Path | None = None) -> dict[str,
     from ideapress.__about__ import __version__
 
     json_schema = Settings.model_json_schema()
-    stage_keys = {stage: f"models.stages.{stage}" for stage in MODEL_STAGES}
-    runtime_changeable = [
-        _runtime_entry(key, json_schema, fallback_description="") for key in sorted(RUNTIME_KEYS)
-    ] + [
-        _runtime_entry(key, json_schema, fallback_description=f"Model bound to the {stage} stage.")
-        for stage, key in sorted(stage_keys.items())
-    ]
+    runtime_changeable = runtime_changeable_entries()
     security_keys = sorted(CONFIG_ONLY_KEYS)
-    runtime_key_set = RUNTIME_KEYS | set(stage_keys.values())
+    runtime_key_set = {entry["key"] for entry in runtime_changeable}
     config_only = sorted(set(_all_leaf_keys()) - runtime_key_set - CONFIG_ONLY_KEYS)
 
     loaded, problems = load_settings_tolerant(config_path=config_path)
