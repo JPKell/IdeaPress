@@ -933,5 +933,5 @@
     "workflow.require_clean_validation_to_commit": "default",
     "workflow.structured_output_tokens": "default"
   },
-  "version": "1.4.1"
+  "version": "1.5.0"
 }

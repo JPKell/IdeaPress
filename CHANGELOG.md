@@ -7,6 +7,18 @@ packaging and release standards §3.
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-09-09
+
+### Changed
+
+- **BREAKING (CLI JSON): `ideapress config show --json` names the effective-configuration block
+  `values`, not `settings`** — the name FreeWeight, LoadCoach, PromptCadence and WeightRoomGym
+  already use (ADR-0131). `config_path`, `config_file_used` and
+  `sources` are unchanged. A script reading `.settings` reads `.values` instead.
+- Released as a **minor**, not a major, by the operator's explicit decision recorded in ADR-0131:
+  there are no users of this output yet, and its one consumer (WeightRoomGym) reads both names.
+  This is a deliberate, recorded exception to packaging and release standards §3.2.
+
 ## [1.4.1] - 2026-09-09
 
 ### Added
