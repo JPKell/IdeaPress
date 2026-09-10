@@ -87,9 +87,10 @@ def show(
                 f"  {attempt['stage']:<10} #{attempt['attempt']} {attempt['outcome']:<16} "
                 f"{attempt['backend']}  {attempt['model_canonical_id'] or '—'}"
             )
+            overridden = attempt.get("prompt_source") == "user_override"
             typer.echo(
                 f"      prompt {attempt['prompt_id']} {attempt['prompt_version']} "
-                f"{attempt['prompt_sha256']}"
+                f"{attempt['prompt_sha256']}" + ("  (user_override)" if overridden else "")
             )
             # An em dash, never 0: a backend that reported no count observed nothing (ADR-0016).
             tokens_in = attempt["input_tokens"]

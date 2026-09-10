@@ -7,6 +7,19 @@ packaging and release standards §3.
 
 ## [Unreleased]
 
+### Added
+
+- **Operator prompt overrides** (row W9, prompt standards §6). A record at
+  `$XDG_CONFIG_HOME/ideapress/prompts/<prompt_id>.json` replaces the shipped record of the same
+  `prompt_id` when the pack loads, and every attempt that rendered it is marked
+  `prompt_source: user_override` — on the attempt row (migration `0011`, which back-fills `pack` for
+  every earlier attempt with a prompt: no earlier build could load an override), in the stage and
+  unit reports, in `ideapress unit show`, and in the `prompts` health component's `overridden` list.
+  The pack is read once per process, so restart IdeaPress for an override to take effect; an
+  override that does not load stops startup, as a malformed shipped record does.
+  `ideapress prompts list|show --shipped` print the pack as installed, and `prompts list --json`
+  gains `sha256` and `source`. WeightRoomGym's prompt editor writes these overrides.
+
 ## [1.5.0] - 2026-09-09
 
 ### Changed

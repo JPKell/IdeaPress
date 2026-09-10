@@ -57,6 +57,7 @@ __all__ = [
     "data_dir",
     "load_settings",
     "load_settings_tolerant",
+    "prompt_override_dir",
     "resolve_config_path",
     "state_dir",
 ]
@@ -826,6 +827,17 @@ def config_dir() -> Path:
     base = os.environ.get("XDG_CONFIG_HOME")
     root = Path(base).expanduser() if base else Path.home() / ".config"
     return root / "ideapress"
+
+
+def prompt_override_dir() -> Path:
+    """Return ``$XDG_CONFIG_HOME/ideapress/prompts``, the operator's prompt override directory.
+
+    Prompt standards §6's one override location, and derived rather than configured, as FreeWeight's
+    is: an override already makes an attempt incomparable with one that rendered the shipped
+    record, and a configurable location would be one more thing a reader of that attempt has to
+    know before they could tell which prompt produced it.
+    """
+    return config_dir() / "prompts"
 
 
 def data_dir() -> Path:

@@ -298,6 +298,8 @@ class Attempt(Base):
     prompt_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
     prompt_version: Mapped[str | None] = mapped_column(String(20), nullable=True)
     prompt_sha256: Mapped[str | None] = mapped_column(String(71), nullable=True)
+    # Prompt standards §6 (migration 0011): `pack` or `user_override`; NULL for no prompt.
+    prompt_source: Mapped[str | None] = mapped_column(String(20), nullable=True)
     rendered_prompt_sha256: Mapped[str | None] = mapped_column(String(71), nullable=True)
     prompt_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     response_text: Mapped[str | None] = mapped_column(Text, nullable=True)

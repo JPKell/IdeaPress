@@ -80,6 +80,7 @@ def task_report(
                     "model_canonical_id": attempt.model_canonical_id,
                     "prompt_id": attempt.prompt_id,
                     "prompt_version": attempt.prompt_version,
+                    "prompt_source": attempt.prompt_source,
                     "input_tokens": attempt.input_tokens,
                     "output_tokens": attempt.output_tokens,
                     "provider_ms": attempt.provider_ms,

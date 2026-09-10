@@ -227,6 +227,7 @@ def unit_detail(runtime: Runtime, *, project_id: str, unit_key: str) -> dict[str
                 "prompt_id": attempt.prompt_id,
                 "prompt_version": attempt.prompt_version,
                 "prompt_sha256": attempt.prompt_sha256,
+                "prompt_source": attempt.prompt_source,
                 "response_hash": attempt.response_hash,
                 "input_tokens": attempt.input_tokens,
                 "output_tokens": attempt.output_tokens,

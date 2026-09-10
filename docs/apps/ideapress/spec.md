@@ -426,6 +426,11 @@ is why it takes no hard dependency on `sweatmeter` regardless.
 * A project records the workflow version it was created with; a workflow upgrade never rewrites
   committed units.
 * Prompt versions recorded per attempt; changing a prompt does not alter existing units.
+* **An operator's prompt override** (prompt standards §6, row W9) — a whole record at
+  `$XDG_CONFIG_HOME/ideapress/prompts/<prompt_id>.json` — replaces the shipped record of the same
+  `prompt_id` when IdeaPress starts, and every attempt that rendered it records
+  `prompt_source: user_override` beside its prompt version and hash. `prompts list|show --shipped`
+  print the pack as installed. A per-*project* override is still a future extension (§21).
 * Export format changes are versioned; re-export of an old project is byte-stable for its recorded
   version.
 * **What 1.1 adds, and what it does not break.** `[models.stage_adapters]` and

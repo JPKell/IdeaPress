@@ -36,6 +36,7 @@ from ideapress.infrastructure.db.models import Unit as UnitRow
 from ideapress.observability.logging import correlation
 from ideapress.services.budget import pseudo_run_id
 from ideapress.services.egress import backend_target
+from ideapress.services.prompts import prompt_source
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -194,6 +195,9 @@ def record_attempt(
             prompt_id=prompt_id,
             prompt_version=prompt_version,
             prompt_sha256=prompt_sha256,
+            # Prompt standards §6: `user_override` on every attempt that rendered an override,
+            # read off the same loaded pack the stage rendered from — no call site passes it.
+            prompt_source=prompt_source(prompt_id, prompt_version),
             outcome=outcome,
             error_code=error_code,
             error_text=error_text,

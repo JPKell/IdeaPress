@@ -3,32 +3,59 @@
 ADR-0012 and ADR-0028: the records are IdeaPress's, the machinery is `setspec.prompts`. `build`
 regenerates the manifest, which is the one operation that must exist locally — a record edited
 without it fails to load, by design.
+
+`list` and `show` print what a stage renders — the pack with the operator's overrides applied
+(prompt standards §6) — and `--shipped` prints the pack as installed, which is what an override is
+diffed against.
 """
 
 from __future__ import annotations
 
 import json as json_module
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 
 import typer
+
+if TYPE_CHECKING:
+    from setspec.prompts import PromptLibrary
 
 __all__ = ["app"]
 
 app = typer.Typer(no_args_is_help=True, help="Inspect prompt records and their hashes.")
 
+_SHIPPED_HELP = "The pack as installed, before any override in $XDG_CONFIG_HOME/ideapress/prompts."
+
+
+def _pack(*, shipped: bool) -> PromptLibrary:
+    """The effective or the shipped pack, or exit 3 when it does not load."""
+    from setspec.prompts import PromptPackInvalid
+
+    from ideapress.services.prompts import library, shipped_library
+
+    try:
+        return shipped_library() if shipped else library()
+    except PromptPackInvalid as exc:
+        typer.secho(str(exc), err=True, fg=typer.colors.RED)
+        raise typer.Exit(3) from exc
+
 
 @app.command(name="list")
 def list_prompts(
+    shipped: Annotated[bool, typer.Option("--shipped", help=_SHIPPED_HELP)] = False,
     json_output: Annotated[
         bool, typer.Option("--json", help="Print JSON instead of text.")
     ] = False,
 ) -> None:
-    """List every prompt record with its version and hash. Mode: local."""
-    from ideapress.services.prompts import library
-
-    pack = library()
+    """List every prompt record with its version, hash and source. Mode: local."""
+    pack = _pack(shipped=shipped)
     records = [
-        {"prompt_id": r.prompt_id, "version": r.version, "purpose": r.purpose}
+        {
+            "prompt_id": r.prompt_id,
+            "version": r.version,
+            "purpose": r.purpose,
+            "sha256": r.sha256,
+            "source": r.source,
+        }
         for r in sorted(pack.all_records(), key=lambda r: r.prompt_id)
     ]
     if json_output:
@@ -36,12 +63,14 @@ def list_prompts(
         return
     typer.echo(f"{pack.pack_id} {pack.pack_version}")
     for record in records:
-        typer.echo(f"  {record['prompt_id']:<38} {record['version']}")
+        marker = "  (user_override)" if record["source"] == "user_override" else ""
+        typer.echo(f"  {record['prompt_id']:<38} {record['version']}{marker}")
 
 
 @app.command(name="show")
 def show(
     prompt_id: Annotated[str, typer.Argument(help="The prompt's id.")],
+    shipped: Annotated[bool, typer.Option("--shipped", help=_SHIPPED_HELP)] = False,
     json_output: Annotated[
         bool, typer.Option("--json", help="Print JSON instead of text.")
     ] = False,
@@ -49,17 +78,15 @@ def show(
     """Show one prompt record in full. Mode: local."""
     from setspec.prompts import PromptNotFound
 
-    from ideapress.services.prompts import library
-
     try:
-        record = library().get(prompt_id)
+        record = _pack(shipped=shipped).get(prompt_id)
     except PromptNotFound as exc:
         typer.secho(str(exc), err=True, fg=typer.colors.RED)
         raise typer.Exit(1) from exc
     if json_output:
         typer.echo(json_module.dumps(record.body, indent=2, sort_keys=True))
         return
-    typer.echo(f"{record.prompt_id} {record.version}")
+    typer.echo(f"{record.prompt_id} {record.version}  source: {record.source}")
     typer.echo(f"purpose: {record.purpose}")
     typer.echo(f"\nsystem:\n{record.system}")
     typer.echo(f"\ntemplate:\n{record.template}")

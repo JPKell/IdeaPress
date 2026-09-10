@@ -101,6 +101,8 @@ stage TEXT · attempt INT · round INT                    -- revision round, 0 f
 backend TEXT · backend_mode TEXT
 model_provider_kind · model_provider_name · model_digest NULL · model_canonical_id NULL
 prompt_id · prompt_version · prompt_sha256 · rendered_prompt_sha256
+prompt_source TEXT NULL                                 -- pack | user_override (prompt standards
+                                                        -- §6, 0011); NULL = no prompt rendered
 prompt_text TEXT NULL · response_text TEXT NULL         -- only when content storage is enabled
 response_hash · structured_output_json NULL
 input_tokens NULL · output_tokens NULL · thinking_tokens NULL  -- NULL = the backend
