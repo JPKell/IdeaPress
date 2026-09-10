@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -56,6 +57,16 @@ def test_config_show_names_the_layer_behind_every_value() -> None:
     assert result.exit_code == 0
     assert "[default]" in result.stdout
     assert "server.port" in result.stdout
+
+
+def test_config_show_json_names_the_block_values_like_every_other_application() -> None:
+    """ADR-0131: the effective configuration is `values`, as in the other four `config show`."""
+    result = runner.invoke(app, ["config", "show", "--json"])
+    assert result.exit_code == 0
+    body = json.loads(result.stdout)
+    assert "values" in body
+    assert "settings" not in body
+    assert "server" in body["values"]
 
 
 def test_config_show_exits_two_cleanly_on_an_invalid_config(tmp_path: Path) -> None:

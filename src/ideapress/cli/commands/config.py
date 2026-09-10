@@ -59,7 +59,10 @@ def show(
                 {
                     "config_path": str(loaded.config_path),
                     "config_file_used": loaded.config_file_used,
-                    "settings": dumped,
+                    # `values`, the name the other four applications' `config show --json` use
+                    # (ADR-0131). Renamed from `settings` in 1.5.0 as a deliberate minor-release
+                    # break; WeightRoomGym reads both for one console major.
+                    "values": dumped,
                     "sources": loaded.sources,
                 },
                 indent=2,
