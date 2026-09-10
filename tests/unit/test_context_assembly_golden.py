@@ -1,5 +1,5 @@
 """Golden fixtures for domain.context_assembly, captured against the implementation
-before J2 (docs/history/j2-ideapress-cutctx.prompt.md) replaced its reduction with a
+before J2 (docs/history/prompts/j2-ideapress-cutctx.prompt.md) replaced its reduction with a
 CutCtx `DropOldestPolicy` chain behind the unchanged `assemble_context` seam.
 
 Generated once by running the *old* implementation and hardcoding its exact output —

@@ -32,7 +32,7 @@ def _pinned_paths(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.mark.usefixtures("_pinned_paths")
 def test_schema_document_matches_golden() -> None:
-    """Regenerate with the snippet in `docs/history/WS3_HANDOFF.md` if this fails on purpose."""
+    """Regenerate from `docs/history/handoffs/WS3_HANDOFF.md`'s snippet if this fails on purpose."""
     document = build_schema_document()
     expected = json.loads(GOLDEN.read_text(encoding="utf-8"))
     assert document == expected

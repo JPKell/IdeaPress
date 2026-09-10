@@ -321,7 +321,7 @@ def test_a_dropped_assembly_carries_the_context_compacted_report() -> None:
 # --- Row K3: project_review's context, routed through `assemble_review_context` (ADR-0104's
 # same seam, applied to a caller with no undroppable content). REVIEW_GOLDEN was captured from
 # `render_units` before this row touched it and is never edited once K3 lands: a case that needs
-# editing here is a stop, not a rebase (docs/history/K3_HANDOFF.md).
+# editing here is a stop, not a rebase (docs/history/handoffs/K3_HANDOFF.md).
 
 REVIEW_UNITS = {
     "U-01": "First section text about the introduction.",

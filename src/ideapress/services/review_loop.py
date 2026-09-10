@@ -442,7 +442,8 @@ def run_review_loop(
             break
 
         runtime.runner.checkpoint(task)
-        # Deliberately no neighbouring_units/research_notes (row K3, docs/history/K3_HANDOFF.md;
+        # Deliberately no neighbouring_units/research_notes (row K3,
+        # docs/history/handoffs/K3_HANDOFF.md;
         # unchanged by row M1, which made research notes real): `stages.revise.improve` asks the
         # model to "change as little else as possible", the opposite of what broader cross-unit
         # context invites, so this stays the narrow context a targeted fix needs. From 1.4 the
