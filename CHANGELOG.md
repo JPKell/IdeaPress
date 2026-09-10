@@ -43,6 +43,12 @@ packaging and release standards §3.
 
 - A configuration-only key sent to `PUT /settings` is `403 FORBIDDEN` naming it, as api.md §6 has
   always said; it answered `422 VALIDATION_FAILED`.
+- **A draft that fails before a unit's first attempt no longer strands the unit** (row WI1). A
+  stage failing after the unit moved to `drafting` — `MODEL_NOT_CONFIGURED` when the bound model
+  is not installed — left it there, and running the stage again was refused ("cannot move from
+  'drafting' to 'drafting'"). Every draft run, not only `--resume`, now first resets a unit an
+  ended run left mid-flight to `paused` (the M7 reset, with its liveness refusal), and emits
+  `unit.reset`.
 
 ## [1.5.0] - 2026-09-09
 

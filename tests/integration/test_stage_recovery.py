@@ -424,3 +424,26 @@ def test_a_stored_stage_binding_is_the_model_the_next_stage_asks_for(runtime: Ru
     error_code, error_text = _last_draft_run(runtime, project_id)
     assert error_code == "MODEL_NOT_CONFIGURED"
     assert "not-installed" in (error_text or "")
+
+
+def test_a_draft_that_fails_before_its_first_attempt_does_not_strand_the_unit(
+    runtime: Runtime,
+) -> None:
+    """Row WI1: the W9 demonstration's case, re-run without ``--resume``.
+
+    The draft binding named a model the backend does not have, so the stage failed
+    ``MODEL_NOT_CONFIGURED`` after the unit had moved to ``drafting`` and before any attempt; the
+    next run of the stage was refused ("cannot move from 'drafting' to 'drafting'"). A re-run now
+    takes the unit the failed run left behind, through the same reset ``--resume`` uses.
+    """
+    project_id = _planned(runtime, DRAFT_ONE, NO_FINDINGS, ACCEPTABLE)
+    _store(runtime, {"models.stages.draft": "ollama/not-installed:1b"})
+    assert _draft(runtime, project_id, units=["U-01"]) == "failed"
+    assert _last_draft_run(runtime, project_id)[0] == "MODEL_NOT_CONFIGURED"
+    assert _states(runtime, project_id)["U-01"] == "drafting", "the failed run's own leftover"
+
+    _store(runtime, {"models.stages.draft": None})
+    assert _draft(runtime, project_id, units=["U-01"]) == "completed"
+    assert _states(runtime, project_id)["U-01"] == "committed"
+    reset = [e for e in _events(runtime, project_id) if e.event_type == "unit.reset"]
+    assert [(e.data["unit_key"], e.data["previous_state"]) for e in reset] == [("U-01", "drafting")]

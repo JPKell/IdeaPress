@@ -480,13 +480,13 @@ def draft_body(
         project_id: Which project.
         unit_keys: The units to work on, in plan order.
         resume: Skip units that already have a committed version — workflows §9's
-            ``--resume`` continuing from the first incomplete unit. Also moves any unit a dead
-            run left mid-flight back to ``paused`` before re-entering it
-            (:func:`~ideapress.services.units.reset_orphaned_units`), so a crash mid-review
-            cannot wedge the project.
+            ``--resume`` continuing from the first incomplete unit.
 
     Returns:
-        The callable the runner executes.
+        The callable the runner executes. Every run it makes, resumed or not, first moves any unit
+        an earlier run left mid-flight back to ``paused``
+        (:func:`~ideapress.services.units.reset_orphaned_units`), so neither a crash mid-review
+        nor a stage that failed before a unit's first attempt can wedge the project.
     """
 
     def body(task: StageTask) -> None:
@@ -496,18 +496,19 @@ def draft_body(
         def emit(event_type: str, message: str, data: dict[str, Any]) -> None:
             sink.emit(database, task.run_id, event_type=event_type, message=message, data=data)
 
-        if resume:
-            # A crash can leave a unit mid-flight ('drafting'…'revising'), from which no arrow
-            # leads back into the loop. Before reading states, move each orphan to 'paused' — but
-            # only when the run that owned it is demonstrably gone (M7 finding 1b).
-            for unit_key, previous in reset_orphaned_units(
-                database, project_id=project_id, active_run_id=task.run_id
-            ):
-                emit(
-                    "unit.reset",
-                    f"{unit_key}: an earlier run left it in '{previous}'; reset to paused",
-                    {"unit_key": unit_key, "previous_state": previous},
-                )
+        # A crash — or a stage that failed before a unit's first attempt, such as a binding naming
+        # a model the backend lacks (row WI1) — can leave a unit mid-flight ('drafting'…
+        # 'revising'), from which no arrow leads back into the loop. Before reading states, move
+        # each orphan to 'paused', resumed run or not — but only when the run that owned it is
+        # demonstrably gone (M7 finding 1b).
+        for unit_key, previous in reset_orphaned_units(
+            database, project_id=project_id, active_run_id=task.run_id
+        ):
+            emit(
+                "unit.reset",
+                f"{unit_key}: an earlier run left it in '{previous}'; reset to paused",
+                {"unit_key": unit_key, "previous_state": previous},
+            )
 
         with database.read() as session:
             plan = load_plan(session, project_id)
