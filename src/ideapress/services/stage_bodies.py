@@ -49,6 +49,8 @@ def start_plan(runtime: Runtime, *, project_id: str) -> StageTask:
         )
         raise StagePreconditionFailed(message, details={"project_id": project_id})
 
+    runtime.refresh_settings()  # a stored runtime setting takes effect as a stage starts
+
     def body(task: StageTask) -> None:
         runner = runtime.runner
         sink = runtime.events
@@ -188,6 +190,7 @@ def start_stage(
         )
         raise StagePreconditionFailed(message, details={"stage": stage})
 
+    runtime.refresh_settings()  # a stored runtime setting takes effect as a stage starts
     return runtime.runner.start(
         project_id=project_id,
         stage=stage,

@@ -29,6 +29,15 @@ packaging and release standards §3.
   `config_only`: the document LoadCoach and PromptCadence answer and WeightRoomGym's Settings page
   reads (ADR-0127 rule 4), which refused every IdeaPress runtime key until now. A value is
   validated by its own field before it is stored, and a refused one is named.
+- **A stored runtime setting now takes effect** (row WI1). Until now the `settings` rows were
+  written and nothing read them. They are resolved with configuration standards §7's precedence
+  (`defaults → file → database → env → CLI`; ADR-0100 rule 5) and applied to the process as each
+  stage starts, which every definition states as `applies: "next_stage"`; the configured settings
+  are never mutated. `null` for a key through `PUT /settings` removes its row and hands it back
+  to configuration.
+- **`inference.mode` and `logging.level` are no longer runtime-changeable.** The backend is built
+  and logging configured once per process, so a stored row for either would be ignored until a
+  restart (ADR-0100 rule 1). Set them in `config.toml`; `PUT /settings` refuses them as unknown.
 
 ### Fixed
 

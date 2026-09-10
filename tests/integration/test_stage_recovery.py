@@ -364,3 +364,63 @@ def test_the_reset_touches_nothing_that_is_not_mid_flight(runtime: Runtime) -> N
     project_id = _planned(runtime, DRAFT_ONE, NO_FINDINGS, ACCEPTABLE, DRAFT_TWO)
     assert reset_orphaned_units(runtime.storage, project_id=project_id) == ()
     assert _states(runtime, project_id) == {"U-01": "planned", "U-02": "planned"}
+
+
+def _store(runtime: Runtime, changes: dict[str, Any]) -> None:
+    """Store runtime settings as ``PUT /settings`` does."""
+    from datetime import UTC, datetime
+
+    from ideapress.services.settings import write_runtime_settings
+
+    write_runtime_settings(
+        runtime.storage, changes, settings=runtime.configured, now=datetime.now(UTC)
+    )
+
+
+def _last_draft_run(runtime: Runtime, project_id: str) -> tuple[str | None, str | None]:
+    """The newest draft run's ``(error_code, error_text)``."""
+    from sqlalchemy import select
+
+    from ideapress.infrastructure.db.models import StageRun as StageRunRow
+
+    with runtime.storage.read() as session:
+        run = session.scalars(
+            select(StageRunRow)
+            .where(StageRunRow.project_id == project_id, StageRunRow.stage == "draft")
+            .order_by(StageRunRow.started_at.desc())
+        ).first()
+        assert run is not None
+        return run.error_code, run.error_text
+
+
+def test_a_stored_setting_reaches_the_process_when_the_next_stage_starts(
+    runtime: Runtime,
+) -> None:
+    """Row WI1: never before a stage starts, and the configured settings are never mutated."""
+    project_id = _planned(
+        runtime, DRAFT_ONE, NO_FINDINGS, ACCEPTABLE, DRAFT_TWO, NO_FINDINGS, ACCEPTABLE
+    )
+
+    _store(runtime, {"workflow.max_revision_rounds": 1})
+    assert runtime.settings.workflow.max_revision_rounds == 3, "no key claims to be live"
+
+    assert _draft(runtime, project_id) == "completed"
+    assert runtime.settings.workflow.max_revision_rounds == 1
+    assert runtime.configured.workflow.max_revision_rounds == 3
+
+    _store(runtime, {"workflow.max_revision_rounds": None})
+    assert runtime.settings.workflow.max_revision_rounds == 1
+    assert _draft(runtime, project_id, resume=True) == "completed", "every unit is committed"
+    assert runtime.settings.workflow.max_revision_rounds == 3, "a cleared row hands the key back"
+
+
+def test_a_stored_stage_binding_is_the_model_the_next_stage_asks_for(runtime: Runtime) -> None:
+    """Row WI1: the row reaches the gateway, which resolves every model call's binding."""
+    project_id = _planned(runtime, DRAFT_ONE, NO_FINDINGS, ACCEPTABLE)
+
+    _store(runtime, {"models.stages.draft": "ollama/not-installed:1b"})
+    assert _draft(runtime, project_id, units=["U-01"]) == "failed"
+
+    error_code, error_text = _last_draft_run(runtime, project_id)
+    assert error_code == "MODEL_NOT_CONFIGURED"
+    assert "not-installed" in (error_text or "")

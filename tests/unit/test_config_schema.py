@@ -85,8 +85,8 @@ def test_bounded_runtime_keys_carry_their_pydantic_bounds() -> None:
     assert by_key["workflow.max_revision_rounds"]["maximum"] == 100
     assert by_key["workflow.context_budget_tokens"]["minimum"] == 256
     assert by_key["workflow.context_budget_tokens"]["maximum"] is None
-    assert by_key["logging.level"]["kind"] == "string"
-    assert by_key["logging.level"]["minimum"] is None
+    assert by_key["models.stages.draft"]["kind"] == "string"
+    assert by_key["models.stages.draft"]["minimum"] is None
     assert by_key["workflow.require_clean_validation_to_commit"]["kind"] == "boolean"
 
 

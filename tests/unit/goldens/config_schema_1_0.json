@@ -16,6 +16,7 @@
     "inference.loadcoach.job_stages",
     "inference.loadcoach.max_data_classification",
     "inference.loadcoach.timeout_seconds",
+    "inference.mode",
     "inference.ollama.base_url",
     "inference.ollama.timeout_seconds",
     "inference.openai_compatible.api_key_env",
@@ -26,6 +27,7 @@
     "inference.pin_backend",
     "logging.format",
     "logging.include_content",
+    "logging.level",
     "models.stage_adapters",
     "pricing.file",
     "research.allowed_hosts",
@@ -743,20 +745,6 @@
   },
   "problems": [],
   "runtime_changeable": [
-    {
-      "description": "",
-      "key": "inference.mode",
-      "kind": "string",
-      "maximum": null,
-      "minimum": null
-    },
-    {
-      "description": "",
-      "key": "logging.level",
-      "kind": "string",
-      "maximum": null,
-      "minimum": null
-    },
     {
       "description": "",
       "key": "workflow.audit_escalation_threshold",

@@ -29,6 +29,7 @@ from ideapress.services.inference import InferenceGateway
 from ideapress.services.pricing import PricingCatalog
 from ideapress.services.projects import ProjectService
 from ideapress.services.prompts import prompts_health_component
+from ideapress.services.settings import apply_runtime_settings, read_runtime_settings
 from ideapress.services.stages import StageRunner
 
 if TYPE_CHECKING:
@@ -57,12 +58,17 @@ class Runtime:
         "_projects",
         "_runner",
         "_sink",
+        "configured",
         "settings",
         "startup_error",
     )
 
     def __init__(self, settings: Settings) -> None:
         """Open what this process needs, recording rather than raising on a storage failure."""
+        # ADR-0100: the configured settings stay what was configured. Every handle below gets a
+        # copy, which `refresh_settings` brings up to date with the stored runtime settings.
+        self.configured = settings
+        settings = settings.model_copy(deep=True)
         self.settings = settings
         self._database: Database | None = None
         self._projects: ProjectService | None = None
@@ -145,6 +151,21 @@ class Runtime:
     def database(self) -> Database | None:
         """The handle, or ``None`` when storage could not be opened."""
         return self._database
+
+    def refresh_settings(self) -> None:
+        """Apply the stored runtime settings to this process's settings (api.md §6).
+
+        Called as each stage starts, which is when a stored value takes effect: every
+        runtime-changeable key is read by a stage and by nothing else. Resolved over
+        :attr:`configured` with configuration standards §7's precedence, so a cleared row hands its
+        key back to configuration and a variable in the environment still wins. Does nothing when
+        storage never opened, since no stage can start then either.
+        """
+        if self._database is None:
+            return
+        apply_runtime_settings(
+            self.settings, read_runtime_settings(self._database, settings=self.configured)
+        )
 
     @property
     def storage(self) -> Database:

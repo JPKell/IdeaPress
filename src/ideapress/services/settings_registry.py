@@ -1,6 +1,6 @@
 """ideapress.services.settings_registry — which settings a running process may change.
 
-Api.md §6 draws the line: `inference.mode`, the stage model bindings and the workflow limits are
+Api.md §6 draws the line: the stage model bindings and the workflow limits are
 runtime-changeable while bind address, exposure, `server.allowed_hosts`, tokens, the database URL
 and `providers.allow_remote` are configuration-only. This module is the one place that line is
 drawn in code — the web route (`PUT /settings`) and `config schema` both read it, so neither can
@@ -29,18 +29,21 @@ CONFIG_ONLY_KEYS: Final[frozenset[str]] = frozenset(
 
 RUNTIME_KEYS: Final[frozenset[str]] = frozenset(
     {
-        "inference.mode",
         "workflow.max_revision_rounds",
         "workflow.diminishing_returns_threshold",
         "workflow.max_attempts_per_stage",
         "workflow.audit_escalation_threshold",
         "workflow.require_clean_validation_to_commit",
         "workflow.context_budget_tokens",
-        "logging.level",
     }
 )
 """Changeable while the process runs. Stage model bindings are `models.stages.<stage>`, derived
-from the stage vocabulary rather than listed here."""
+from the stage vocabulary rather than listed here.
+
+Every key here is read by a stage, which is what lets a stored value take effect at the next stage
+start. `inference.mode` and `logging.level` left the set at row WI1: the backend is built and
+logging configured once per process, and a key nothing re-reads is not runtime-changeable
+(ADR-0100 rule 1) — in the file, WeightRoomGym shows the restart it needs (ADR-0127 rule 5)."""
 
 ALL_RUNTIME_KEYS: Final[frozenset[str]] = RUNTIME_KEYS | frozenset(
     f"models.stages.{stage}" for stage in MODEL_STAGES

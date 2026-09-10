@@ -12,16 +12,23 @@ stored row is ignored while the environment pins its key, and the document says 
 ``stored``, ``source`` and ``shadowed_by`` — so a row that does nothing is visible rather than
 applied or dropped in silence. ``ideapress serve`` applies its flags as environment variables
 before the loader runs, so the environment check covers the CLI layer too.
+
+**A stored value takes effect when the next stage starts**, and every definition says so
+(``applies: "next_stage"``). Each runtime-changeable key is read by a stage and by nothing else —
+the workflow limits by the unit and review loops, a binding by the gateway on every model call — so
+:meth:`~ideapress.services.runtime.Runtime.refresh_settings` applies the resolved values as each
+stage starts, in whichever process starts it. Nothing applies one sooner. The configured settings
+are never mutated: the runtime's handles work on a copy (ADR-0100).
 """
 
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar, Final
 
 from baseaicore import SuiteError
 from pydantic import ValidationError as PydanticValidationError
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from weightsdb import upsert
 
 from ideapress.config import ENV_PREFIX
@@ -46,13 +53,19 @@ if TYPE_CHECKING:
     from ideapress.services.database import Database
 
 __all__ = [
+    "APPLIES",
     "SettingConfigOnly",
+    "apply_runtime_settings",
     "configured_value",
     "read_runtime_settings",
     "runtime_settings_document",
     "shadowing_source",
     "write_runtime_settings",
 ]
+
+
+APPLIES: Final = "next_stage"
+"""When a stored value takes effect, for every runtime-changeable key: as the next stage starts."""
 
 
 class SettingConfigOnly(SuiteError):
@@ -185,14 +198,17 @@ def write_runtime_settings(
 
     Args:
         database: The application's database handle.
-        changes: ``key -> value``, flat, as ``PUT /settings`` receives it.
+        changes: ``key -> value``, flat, as ``PUT /settings`` receives it. ``None`` removes the
+            key's row, handing the key back to configuration; for a key with no row it changes
+            nothing.
         settings: The configured settings.
         now: The instant recorded on each row.
 
     Returns:
         What :func:`read_runtime_settings` returns — which differs from what was written when the
         environment shadows a key the caller stored. The row is kept either way: unsetting the
-        variable makes it effective.
+        variable makes it effective. The running process applies none of it until a stage
+        starts (:data:`APPLIES`).
 
     Raises:
         SettingConfigOnly: A configuration-only key (``403``), naming every one sent.
@@ -217,9 +233,16 @@ def write_runtime_settings(
             f"{', '.join(sorted(MODEL_STAGES))}."
         )
         raise ValidationFailed(message, details={"unknown": unknown})
-    validated = {key: _coerce(settings, key, value) for key, value in sorted(changes.items())}
-    if validated:
+    cleared = sorted(key for key, value in changes.items() if value is None)
+    validated = {
+        key: _coerce(settings, key, value)
+        for key, value in sorted(changes.items())
+        if value is not None
+    }
+    if validated or cleared:
         with database.write() as session:
+            if cleared:
+                session.execute(delete(Setting).where(Setting.key.in_(cleared)))
             for key, value in validated.items():
                 upsert(
                     session,
@@ -245,8 +268,8 @@ def runtime_settings_document(database: Database, *, settings: Settings) -> dict
         ``settings`` (effective values), ``definitions`` (per key: ``type``, ``description``,
         ``minimum`` and ``maximum`` — the entry ``config schema`` publishes — ``configured``, the
         ``stored`` row or ``None``, ``source`` — ``"database"`` when a row decides the value, else
-        ``"configuration"`` — and ``shadowed_by``, the variable beating a stored row), and
-        ``config_only`` (the keys refused by name).
+        ``"configuration"`` — ``shadowed_by``, the variable beating a stored row, and ``applies``,
+        when a stored value takes effect), and ``config_only`` (the keys refused by name).
     """
     effective, stored, decided_by_row = _resolve(database, settings)
     entries = {entry["key"]: entry for entry in runtime_changeable_entries()}
@@ -262,9 +285,29 @@ def runtime_settings_document(database: Database, *, settings: Settings) -> dict
             "stored": stored.get(key),
             "source": "database" if key in decided_by_row else "configuration",
             "shadowed_by": shadowing_source(key) if key in stored else None,
+            "applies": APPLIES,
         }
     return {
         "settings": effective,
         "definitions": definitions,
         "config_only": sorted(CONFIG_ONLY_KEYS),
     }
+
+
+def apply_runtime_settings(target: Settings, effective: Mapping[str, Any]) -> None:
+    """Write every effective value onto ``target``, in place, by dotted path.
+
+    In place and not a copy, deliberately: the gateway holds the process's ``[models.stages]``
+    object and the stage bodies read the runtime's settings, so a replacement would leave the
+    gateway resolving the bindings the operator had changed. ``target`` is therefore never the
+    configured settings, which stay what was configured (ADR-0100).
+
+    Args:
+        target: The process's own copy of the settings.
+        effective: What :func:`read_runtime_settings` returned. A key outside the registry is
+            ignored rather than written, so a stale mapping cannot reach a field by name.
+    """
+    for key, value in effective.items():
+        if key in ALL_RUNTIME_KEYS:
+            parent, field = _leaf(target, key)
+            setattr(parent, field, value)
