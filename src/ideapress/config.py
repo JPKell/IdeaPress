@@ -1024,22 +1024,40 @@ def _validate_egress(settings: Settings) -> None:
 def _track_sources(
     file_data: dict[str, Any], env_data: dict[str, Any], cli_data: dict[str, Any]
 ) -> dict[str, str]:
-    """Report, for every leaf field, which layer produced its effective value."""
+    """Report, for every leaf field, which layer produced its effective value.
+
+    A field that is itself a section (`[models.stages]`, `[inference.ollama]`) is reported whole
+    *and* per leaf, so a form can label `models.stages.draft` with the layer that set that one
+    binding rather than with the table it sits in (row WI1).
+    """
     sources: dict[str, str] = {}
+
+    def layer(path: tuple[str, ...]) -> str:
+        def holds(data: dict[str, Any]) -> bool:
+            node: Any = data
+            for part in path:
+                if not isinstance(node, dict) or part not in node:
+                    return False
+                node = node[part]
+            return True
+
+        if holds(cli_data):
+            return "cli"
+        if holds(env_data):
+            return f"env {ENV_PREFIX}{'__'.join(part.upper() for part in path)}"
+        return "file" if holds(file_data) else "default"
+
+    def walk(model: type[BaseModel], parts: tuple[str, ...]) -> None:
+        for name, field in model.model_fields.items():
+            here = (*parts, name)
+            sources[".".join(here)] = layer(here)
+            if isinstance(field.annotation, type) and issubclass(field.annotation, BaseModel):
+                walk(field.annotation, here)
+
     for section_name, section_field in Settings.model_fields.items():
         section_model = section_field.annotation
-        if not (isinstance(section_model, type) and issubclass(section_model, BaseModel)):
-            continue
-        for field_name in section_model.model_fields:
-            path = f"{section_name}.{field_name}"
-            if field_name in cli_data.get(section_name, {}):
-                sources[path] = "cli"
-            elif field_name in env_data.get(section_name, {}):
-                sources[path] = f"env {ENV_PREFIX}{section_name.upper()}__{field_name.upper()}"
-            elif field_name in file_data.get(section_name, {}):
-                sources[path] = "file"
-            else:
-                sources[path] = "default"
+        if isinstance(section_model, type) and issubclass(section_model, BaseModel):
+            walk(section_model, (section_name,))
     return sources
 
 

@@ -24,6 +24,7 @@ are never mutated: the runtime's handles work on a copy (ADR-0100).
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Final
 
 from baseaicore import SuiteError
@@ -57,6 +58,7 @@ __all__ = [
     "SettingConfigOnly",
     "apply_runtime_settings",
     "configured_value",
+    "database_source_overlay",
     "read_runtime_settings",
     "runtime_settings_document",
     "shadowing_source",
@@ -292,6 +294,56 @@ def runtime_settings_document(database: Database, *, settings: Settings) -> dict
         "definitions": definitions,
         "config_only": sorted(CONFIG_ONLY_KEYS),
     }
+
+
+def database_source_overlay(settings: Settings) -> dict[str, tuple[Any, str]]:
+    """The runtime-changeable values the ``settings`` table decides, and how to label them.
+
+    Configuration standards §7 asks ``config show`` to mark a database-sourced value, and the
+    schema document's ``sources`` is ``config show``'s layer (ADR-0127 rule 1), which WeightRoomGym
+    labels its Settings fields from. This opens the configured database to find them and **never
+    raises**: an absent, unmigrated or unreadable database has nothing to overlay, and describing a
+    fresh installation must work. A SQLite file that does not exist is not opened at all, because
+    connecting would create it.
+
+    Args:
+        settings: The configured settings.
+
+    Returns:
+        ``path -> (value, source)``: ``"database"`` for a key a row decides, with the row's value;
+        ``"env …; database row … shadowed"`` for a row the environment beats, with the configured
+        value. Empty when no database can be read.
+    """
+    from sqlalchemy.engine import make_url
+    from sqlalchemy.exc import SQLAlchemyError
+
+    from ideapress.services.database import Database
+
+    database_url = settings.storage.database_url
+    if database_url is None:  # pragma: no cover — StorageSettings always fills this in
+        return {}
+    url = make_url(database_url)
+    if (
+        url.drivername.startswith("sqlite")
+        and url.database not in (None, "", ":memory:")
+        and not Path(str(url.database)).is_file()
+    ):
+        return {}
+    database = Database.from_url(database_url)
+    try:
+        document = runtime_settings_document(database, settings=settings)
+    except (SQLAlchemyError, SuiteError, OSError):
+        return {}
+    finally:
+        database.close()
+    overlay: dict[str, tuple[Any, str]] = {}
+    for key, definition in document["definitions"].items():
+        if definition["source"] == "database":
+            overlay[key] = (document["settings"][key], "database")
+        elif definition["shadowed_by"] is not None:
+            label = f"{definition['shadowed_by']}; database row {definition['stored']!r} shadowed"
+            overlay[key] = (document["settings"][key], label)
+    return overlay
 
 
 def apply_runtime_settings(target: Settings, effective: Mapping[str, Any]) -> None:

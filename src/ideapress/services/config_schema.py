@@ -118,6 +118,12 @@ def build_schema_document(*, config_path: str | Path | None = None) -> dict[str,
     config_only = sorted(set(_all_leaf_keys()) - runtime_key_set - CONFIG_ONLY_KEYS)
 
     loaded, problems = load_settings_tolerant(config_path=config_path)
+    # Imported here: the settings service reads this module's `runtime_changeable_entries`.
+    from ideapress.services.settings import database_source_overlay
+
+    sources = dict(loaded.sources)
+    for path, (_value, source) in database_source_overlay(loaded.settings).items():
+        sources[path] = source
 
     return {
         "schema_version": "1.0",
@@ -129,6 +135,6 @@ def build_schema_document(*, config_path: str | Path | None = None) -> dict[str,
         "runtime_changeable": runtime_changeable,
         "security_keys": security_keys,
         "config_only": config_only,
-        "sources": loaded.sources,
+        "sources": sources,
         "problems": problems,
     }

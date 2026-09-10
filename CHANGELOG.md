@@ -49,6 +49,12 @@ packaging and release standards §3.
   'drafting' to 'drafting'"). Every draft run, not only `--resume`, now first resets a unit an
   ended run left mid-flight to `paused` (the M7 reset, with its liveness refusal), and emits
   `unit.reset`.
+- **WeightRoomGym labelled IdeaPress's stage bindings `default`** (row WI1). `config show` and
+  `config schema --json` now report the layer behind every nested leaf (`models.stages.draft`,
+  `inference.ollama.base_url`), not only `section.field`, and mark a value a stored row decides
+  as `database` — or name the environment variable shadowing the row — as configuration
+  standards §7 asks. `config show` prints the stored value it marks. Neither command creates a
+  database that does not exist.
 
 ## [1.5.0] - 2026-09-09
 

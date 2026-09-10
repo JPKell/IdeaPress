@@ -41,11 +41,15 @@ def show(
 ) -> None:
     """Print the effective configuration and where each value came from. Mode: local.
 
+    A value a stored runtime setting decides is printed as stored and marked ``database``, and a
+    row the environment shadows is named beside the variable (configuration standards §7).
+
     An invalid configuration exits 2 with the refusal's own message — the same handling as
     ``config validate`` and ``serve``, because a person who mistyped a key is owed the key's
     name, not a traceback (M7 finding 4).
     """
     from ideapress.config import ConfigurationError, load_settings
+    from ideapress.services.settings import database_source_overlay
 
     try:
         loaded = load_settings(config_path=config)
@@ -53,6 +57,14 @@ def show(
         typer.secho(exc.message, err=True, fg=typer.colors.RED)
         raise typer.Exit(2) from exc
     dumped = loaded.settings.model_dump(mode="json")
+    sources = dict(loaded.sources)
+    for path, (value, source) in database_source_overlay(loaded.settings).items():
+        sources[path] = source
+        *parents, leaf = path.split(".")
+        node = dumped
+        for part in parents:
+            node = node[part]
+        node[leaf] = value
     if json_output:
         typer.echo(
             json_module.dumps(
@@ -63,7 +75,7 @@ def show(
                     # (ADR-0131). Renamed from `settings` in 1.5.0 as a deliberate minor-release
                     # break; WeightRoomGym reads both for one console major.
                     "values": dumped,
-                    "sources": loaded.sources,
+                    "sources": sources,
                 },
                 indent=2,
                 sort_keys=True,
@@ -72,7 +84,7 @@ def show(
         return
     typer.echo(f"# {loaded.config_path} ({'read' if loaded.config_file_used else 'not present'})")
     for path, value in _flatten(dumped):
-        source = loaded.sources.get(path, "default")
+        source = sources.get(path, "default")
         typer.echo(f"{path:<48} {value!r:<40} [{source}]")
 
 
