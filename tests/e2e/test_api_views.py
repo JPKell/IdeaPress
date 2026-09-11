@@ -208,3 +208,87 @@ def test_project_detail_carries_the_plan_summary_unit_states_and_stage_history(
     assert draft["task_id"]
     assert draft["stream_url"].endswith(f"/tasks/{draft['task_id']}/stream")
     assert body["running_task_id"] is None
+
+
+# --- The plan: read it, and edit it under the gate the page's editor is under ---------------------
+
+
+def test_the_plan_reads_every_requirement_with_its_source_and_the_unit_plan(
+    client: TestClient,
+) -> None:
+    project_id = _planned(client)
+    body = client.get(f"/api/v1/projects/{project_id}/plan").json()
+
+    assert [(r["key"], r["blocking"], r["mechanical"]) for r in body["requirements"]] == [
+        ("R-001", True, True),
+        ("R-002", False, False),
+    ]
+    first = body["requirements"][0]
+    assert first["quote"] == "inference runs entirely on the reader's own machine"
+    assert first["units"] == ["U-01", "U-02"]
+    assert [(u["key"], u["title"], u["state"]) for u in body["units"]] == [
+        ("U-01", "Where the work happens", "planned"),
+        ("U-02", "What it costs", "planned"),
+    ]
+    assert "planned" in body["editable_states"]
+    assert "project" not in body
+
+
+def test_the_plan_of_a_missing_project_is_a_named_404(client: TestClient) -> None:
+    response = client.get("/api/v1/projects/01ZZZZZZZZZZZZZZZZZZZZZZZZ/plan")
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "PROJECT_NOT_FOUND"
+
+
+def test_a_plan_edit_is_applied_and_answered_with_the_plan_as_stored(client: TestClient) -> None:
+    project_id = _planned(client)
+    edits = f"/api/v1/projects/{project_id}/plan/edits"
+
+    goal = client.post(
+        edits, json={"operation": "goal", "unit_keys": ["U-02"], "text": "Name the cost."}
+    )
+    assert goal.status_code == 200, goal.text
+    assert goal.json()["units"][1]["goal"] == "Name the cost."
+    assert client.get(f"/api/v1/projects/{project_id}/plan").json() == goal.json()
+
+    moved = client.post(edits, json={"operation": "reorder", "unit_keys": ["U-02"], "position": 1})
+    assert moved.status_code == 200, moved.text
+    assert [u["title"] for u in moved.json()["units"]] == [
+        "What it costs",
+        "Where the work happens",
+    ]
+
+
+def test_an_edit_that_orphans_a_blocking_requirement_is_refused_and_changes_nothing(
+    client: TestClient,
+) -> None:
+    project_id = _planned(client)
+    edits = f"/api/v1/projects/{project_id}/plan/edits"
+    narrowed = client.post(
+        edits,
+        json={"operation": "reassign", "unit_keys": ["U-02"], "requirement_keys": ["R-002"]},
+    )
+    assert narrowed.status_code == 200, narrowed.text
+    before = client.get(f"/api/v1/projects/{project_id}/plan").json()
+
+    refused = client.post(
+        edits,
+        json={"operation": "reassign", "unit_keys": [" U-01 "], "requirement_keys": ["R-002", ""]},
+    )
+    assert refused.status_code == 400
+    error = refused.json()["error"]
+    assert error["code"] == "VALIDATION_ERROR"
+    assert error["details"]["unassigned_requirement_keys"] == ["R-001"]
+    assert client.get(f"/api/v1/projects/{project_id}/plan").json() == before
+
+
+def test_a_structural_edit_over_committed_work_is_refused_naming_the_unit(
+    client: TestClient,
+) -> None:
+    project_id = _drafted(client)
+    refused = client.post(
+        f"/api/v1/projects/{project_id}/plan/edits",
+        json={"operation": "reorder", "unit_keys": ["U-02"], "position": 1},
+    )
+    assert refused.status_code == 400
+    assert refused.json()["error"]["details"]["protected_unit_keys"] == ["U-01"]

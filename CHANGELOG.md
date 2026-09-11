@@ -54,6 +54,11 @@ packaging and release standards §3.
   project's stage history or find its running task. `GET /projects` pages by `cursor` and answers
   `page.next_cursor`; a cursor it did not issue is `400 VALIDATION_ERROR` naming `cursor`, and
   `offset` still works. WeightRoomGym's IdeaPress pages read both.
+- **The plan over the API** (row WP5): `GET /projects/{id}/plan` answers what the plan page shows
+  (every requirement with its source quote, checks and units; the unit plan), and
+  `POST /projects/{id}/plan/edits` applies one edit under the page editor's own rules. A
+  refused edit is `400 VALIDATION_ERROR` naming the orphaned requirement or the protected unit,
+  and changes nothing. Until now both lived only on the HTML page.
 - **Operator prompt overrides** (row W9, prompt standards §6). A record at
   `$XDG_CONFIG_HOME/ideapress/prompts/<prompt_id>.json` replaces the shipped record of the same
   `prompt_id` when the pack loads, and every attempt that rendered it is marked

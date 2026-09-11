@@ -25,6 +25,8 @@ same standard as the others, but no other application in the suite depends on it
 | `PUT /projects/{id}` | Update brief, author material or configuration; recompiles requirements on demand, never silently |
 | `DELETE /projects/{id}` | Preview-then-confirm; archives to an export before deleting when asked |
 | `POST /projects/{id}/plan` | Runs requirement compilation and outline; returns the task |
+| `GET /projects/{id}/plan` | The compiled requirements, each with `key`, `text`, `blocking`, `source` and `quote` (the material it rests on), `checks`, `mechanical` (whether a deterministic check settles it) and `units`; and the unit plan in reading order: `key`, `title`, `goal`, `requirements`, `state`, `target_words`. `editable_states` names the unit states a structural edit may touch |
+| `POST /projects/{id}/plan/edits` | One edit: `{"operation": "reorder"\|"split"\|"merge"\|"reassign"\|"goal", "unit_keys": […], "requirement_keys": […], "text": "…", "position": n}`. The whole plan is re-checked and the answer is the plan as stored, as `GET` answers it. An edit that would leave a blocking requirement with no unit (`details.unassigned_requirement_keys`), or would renumber a unit holding committed or in-flight text (`details.protected_unit_keys`), is `400 VALIDATION_ERROR` and changes nothing |
 | `GET /projects/{id}/export` · `POST /projects/{id}/export` | `?format=markdown|html|json`; POST writes to the project directory and returns the artifact |
 
 ## 3. Stages and tasks

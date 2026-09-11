@@ -286,6 +286,7 @@ def create_app(settings: Settings, *, runtime_builder: Any | None = None) -> Fas
     app.include_router(backend_routes.router, prefix="/api/v1")
     app.include_router(backend_routes.ui_router)
     app.include_router(stage_routes.router, prefix="/api/v1")
+    app.include_router(plan_routes.router, prefix="/api/v1")
     app.include_router(plan_routes.ui_router)
     app.include_router(workspace_routes.ui_router)
     app.include_router(unit_routes.router, prefix="/api/v1")

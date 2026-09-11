@@ -71,6 +71,53 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "PlanEditRequest": {
+        "additionalProperties": false,
+        "description": "``POST /projects/{id}/plan/edits`` body: one edit, as the plan page's forms send it.",
+        "properties": {
+          "operation": {
+            "description": "reorder, split, merge, reassign or goal",
+            "title": "Operation",
+            "type": "string"
+          },
+          "position": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Position"
+          },
+          "requirement_keys": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Requirement Keys",
+            "type": "array"
+          },
+          "text": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Text",
+            "type": "string"
+          },
+          "unit_keys": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Unit Keys",
+            "type": "array"
+          }
+        },
+        "required": [
+          "operation"
+        ],
+        "title": "PlanEditRequest",
+        "type": "object"
+      },
       "ReviseRequest": {
         "additionalProperties": false,
         "description": "``POST /projects/{id}/units/{unit_id}/revise`` body.",
@@ -710,6 +757,45 @@
       }
     },
     "/api/v1/projects/{project_id}/plan": {
+      "get": {
+        "description": "The compiled requirements, each with its source quote and checks, and the unit plan.\n\nRaises:\n    ProjectNotFound: No such project.",
+        "operationId": "get_plan_api_v1_projects__project_id__plan_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Plan",
+        "tags": [
+          "plan"
+        ]
+      },
       "post": {
         "description": "Compile requirements and build the unit plan. Returns the task.\n\nRaises:\n    ProjectNotFound: No such project.\n    StageAlreadyRunning: A stage is already running for this project.",
         "operationId": "post_plan_api_v1_projects__project_id__plan_post",
@@ -747,6 +833,57 @@
         "summary": "Post Plan",
         "tags": [
           "stages"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/plan/edits": {
+      "post": {
+        "description": "Apply one plan edit, re-check the whole plan, and answer the plan as stored.\n\nRaises:\n    ValidationError: ``400``, and the plan is unchanged: the edit is malformed, it would leave\n        a blocking requirement with no unit (``details.unassigned_requirement_keys``), or it\n        would renumber a unit holding committed or in-flight text\n        (``details.protected_unit_keys``).\n    ProjectNotFound: No such project.",
+        "operationId": "post_plan_edit_api_v1_projects__project_id__plan_edits_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlanEditRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Plan Edit",
+        "tags": [
+          "plan"
         ]
       }
     },
