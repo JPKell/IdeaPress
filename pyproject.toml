@@ -120,7 +120,7 @@ packages = ["src/ideapress"]
 line-length = 100
 target-version = "py312"
 src = ["src", "tests"]
-# `docs/` is a byte-identical mirror of `~/ai/suite/docs`, and ruff formats fenced Python inside
+# `docs/` is a byte-identical mirror of `~/ai/suite/WeightRoom/docs`, and ruff formats fenced Python inside
 # Markdown. Without this, `ruff format` rewrites the aligned `LOADCOACH_TASK_MAP` literal in
 # `workflows.md` and the mirror silently diverges from canonical — mechanising exactly the
 # downstream-first drift that corrupted eight repos' mirrors (SUITE_REVIEW F-3). Workspace
