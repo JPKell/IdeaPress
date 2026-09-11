@@ -12,10 +12,10 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 import pytest
+from baseaicore import ValidationError
 from sqlalchemy import select
 
 from ideapress.config import load_settings
-from ideapress.errors import ValidationFailed
 from ideapress.infrastructure.db.models import Setting as SettingRow
 from ideapress.services.runtime import Runtime, build_runtime
 from ideapress.services.settings import (
@@ -124,7 +124,7 @@ def test_null_is_refused_like_any_value_for_a_refused_key(runtime: Runtime) -> N
 
     with pytest.raises(SettingConfigOnly):
         _write(runtime, {KEY: None, "server.host": None})
-    with pytest.raises(ValidationFailed, match="workflow.speed"):
+    with pytest.raises(ValidationError, match="workflow.speed"):
         _write(runtime, {KEY: None, "workflow.speed": None})
     assert _document(runtime)["definitions"][KEY]["stored"] == 2, "nothing was cleared"
 
@@ -151,7 +151,7 @@ def test_a_key_only_a_restart_reads_is_not_runtime_changeable(
     be a change the running process ignores until a restart nobody was told to perform; in the
     file, WeightRoomGym shows the restart it needs (ADR-0127 rule 5).
     """
-    with pytest.raises(ValidationFailed, match=key):
+    with pytest.raises(ValidationError, match=key):
         _write(runtime, {key: value})
     assert key not in _document(runtime)["settings"]
 

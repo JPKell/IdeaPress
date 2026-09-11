@@ -106,6 +106,9 @@ def diagnose() -> list[Diagnosis]:
 
     runtime = build_runtime(loaded.settings)
     try:
+        # The bindings and limits a stage would run on, stored runtime settings applied
+        # (api.md §6) — not `config.toml` alone.
+        runtime.refresh_settings()
         for component in runtime.health_checkers:
             health = component()
             level: Literal["ok", "warn", "fail"] = (
@@ -120,8 +123,8 @@ def diagnose() -> list[Diagnosis]:
                     name=health.name, level=level, detail=health.detail or health.status.value
                 )
             )
-        findings.extend(_configuration_findings(loaded.settings))
-        findings.extend(_backend_findings(runtime, loaded.settings))
+        findings.extend(_configuration_findings(runtime.settings))
+        findings.extend(_backend_findings(runtime, runtime.settings))
     finally:
         runtime.close()
     return findings

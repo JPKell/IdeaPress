@@ -28,7 +28,9 @@ packaging and release standards §3.
   `type`, `description`, `minimum`, `maximum`, `configured`, `stored`, `source`, `shadowed_by`) and
   `config_only`: the document LoadCoach and PromptCadence answer and WeightRoomGym's Settings page
   reads (ADR-0127 rule 4), which refused every IdeaPress runtime key until now. A value is
-  validated by its own field before it is stored, and a refused one is named.
+  validated by its own field before it is stored, and a refused one is named. An unknown key or a
+  refused value is `400 VALIDATION_ERROR`, as in LoadCoach and PromptCadence (it was
+  `422 VALIDATION_FAILED`, the code IdeaPress keeps for failed deterministic checks).
 - **A stored runtime setting now takes effect** (row WI1). Until now the `settings` rows were
   written and nothing read them. They are resolved with configuration standards §7's precedence
   (`defaults → file → database → env → CLI`; ADR-0100 rule 5) and applied to the process as each
@@ -55,6 +57,9 @@ packaging and release standards §3.
   as `database` — or name the environment variable shadowing the row — as configuration
   standards §7 asks. `config show` prints the stored value it marks. Neither command creates a
   database that does not exist.
+- **`ideapress doctor` checks the stage bindings a stage would use** (row WI1): a binding stored
+  through `PUT /settings` is applied before the check, rather than the check reading
+  `config.toml` alone.
 
 ## [1.5.0] - 2026-09-09
 

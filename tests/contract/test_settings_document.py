@@ -93,7 +93,8 @@ def test_a_flat_put_is_stored_and_answers_the_document(client: TestClient) -> No
 def test_the_old_values_wrapper_is_refused_as_an_unknown_key(client: TestClient) -> None:
     response = client.put("/api/v1/settings", json={"values": {"workflow.max_revision_rounds": 2}})
 
-    assert response.status_code == 422
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "VALIDATION_ERROR"
     assert "values" in response.json()["error"]["message"]
     assert _rows(client) == []
 
@@ -131,14 +132,15 @@ def test_a_request_naming_one_refused_key_writes_nothing(
     client: TestClient, body: dict[str, Any]
 ) -> None:
     """A caller who mistyped one key of six should not have the other five applied."""
-    assert client.put("/api/v1/settings", json=body).status_code in {403, 422}
+    assert client.put("/api/v1/settings", json=body).status_code in {403, 400}
     assert _rows(client) == []
 
 
 def test_an_unknown_key_is_refused_naming_it(client: TestClient) -> None:
     response = client.put("/api/v1/settings", json={"workflow.speed": 11})
 
-    assert response.status_code == 422
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "VALIDATION_ERROR"
     assert "workflow.speed" in response.json()["error"]["message"]
 
 
@@ -148,7 +150,8 @@ def test_a_value_the_field_refuses_is_refused_naming_the_key(
 ) -> None:
     response = client.put("/api/v1/settings", json={"workflow.max_revision_rounds": value})
 
-    assert response.status_code == 422
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "VALIDATION_ERROR"
     assert "workflow.max_revision_rounds" in response.json()["error"]["message"]
     assert _rows(client) == []
 
@@ -159,5 +162,5 @@ def test_a_stage_binding_is_runtime_changeable_only_for_a_real_stage(client: Tes
     assert ok.json()["settings"]["models.stages.draft"] == "ollama/other:7b"
 
     bad = client.put("/api/v1/settings", json={"models.stages.audit": "x"})
-    assert bad.status_code == 422
+    assert bad.status_code == 400
     assert "models.stages.audit" in bad.json()["error"]["message"]

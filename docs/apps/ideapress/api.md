@@ -91,7 +91,8 @@ rule 4). Row WI1 brought IdeaPress to that shape.
   key's row**, handing the key back to configuration. Bind address, exposure,
   `server.allowed_hosts`, tokens, database URL and `providers.allow_remote` are config-only and
   return `403 FORBIDDEN` naming the key; an unknown key or a refused value is
-  `422 VALIDATION_FAILED` naming it; a request naming any refused key writes nothing.
+  `400 VALIDATION_ERROR` naming it, as in LoadCoach and PromptCadence; a request naming any
+  refused key writes nothing.
 * **Precedence** is [configuration standards §7](../../standards/configuration-standards.md)'s:
   `defaults → file → database → env → CLI`. A stored row is ignored while
   `IDEAPRESS_<SECTION>__<FIELD>` (for a binding, `IDEAPRESS_MODELS__STAGES__<STAGE>`) pins its key;

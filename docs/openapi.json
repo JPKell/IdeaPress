@@ -1165,7 +1165,7 @@
         ]
       },
       "put": {
-        "description": "Store one or more runtime-changeable keys, and answer with the whole document.\n\nRaises:\n    SettingConfigOnly: A configuration-only key, named (``403``). Nothing is written.\n    ValidationFailed: An unknown key, or a value its field refuses, named (``422``). Nothing is\n        written.",
+        "description": "Store one or more runtime-changeable keys, and answer with the whole document.\n\nRaises:\n    SettingConfigOnly: A configuration-only key, named (``403``). Nothing is written.\n    ValidationError: An unknown key, or a value its field refuses, named (``400``). Nothing is\n        written.",
         "operationId": "put_settings_api_v1_settings_put",
         "requestBody": {
           "content": {

@@ -27,14 +27,13 @@ import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Final
 
-from baseaicore import SuiteError
+from baseaicore import SuiteError, ValidationError
 from pydantic import ValidationError as PydanticValidationError
 from sqlalchemy import delete, select
 from weightsdb import upsert
 
 from ideapress.config import ENV_PREFIX
 from ideapress.domain.stages import MODEL_STAGES
-from ideapress.errors import ValidationFailed
 from ideapress.infrastructure.db.models import Setting
 from ideapress.services.config_schema import runtime_changeable_entries
 from ideapress.services.settings_registry import (
@@ -106,7 +105,7 @@ def _coerce(settings: Settings, key: str, value: object) -> Any:
     ``PUT /settings`` cannot store a value the file could not hold.
 
     Raises:
-        ValidationFailed: The field refuses ``value``, naming the key and pydantic's reason.
+        ValidationError: The field refuses ``value``, naming the key and pydantic's reason.
     """
     parent, field = _leaf(settings, key)
     try:
@@ -114,7 +113,7 @@ def _coerce(settings: Settings, key: str, value: object) -> Any:
     except PydanticValidationError as exc:
         problem = "; ".join(str(error["msg"]) for error in exc.errors())
         message = f"{key} cannot be {value!r}: {problem}."
-        raise ValidationFailed(
+        raise ValidationError(
             message, details={"fields": [{"path": key, "problem": problem}]}
         ) from exc
     return getattr(checked, field)
@@ -162,7 +161,7 @@ def _resolve(
         if key in stored and shadowing_source(key) is None:
             try:
                 effective[key] = _coerce(settings, key, stored[key])
-            except ValidationFailed:
+            except ValidationError:
                 pass  # a row this build cannot read falls back to configuration
             else:
                 decided_by_row.add(key)
@@ -214,7 +213,7 @@ def write_runtime_settings(
 
     Raises:
         SettingConfigOnly: A configuration-only key (``403``), naming every one sent.
-        ValidationFailed: A key that is not a runtime setting, or a value its field refuses, each
+        ValidationError: A key that is not a runtime setting, or a value its field refuses, each
             named. **Nothing is written when any key is refused**: a partial update would leave
             the caller unable to say what took effect, and a caller who mistyped one key of six
             should not have the other five applied.
@@ -234,7 +233,7 @@ def write_runtime_settings(
             f"{', '.join(sorted(RUNTIME_KEYS))}, and models.stages.<stage> for "
             f"{', '.join(sorted(MODEL_STAGES))}."
         )
-        raise ValidationFailed(message, details={"unknown": unknown})
+        raise ValidationError(message, details={"unknown": unknown})
     cleared = sorted(key for key, value in changes.items() if value is None)
     validated = {
         key: _coerce(settings, key, value)
