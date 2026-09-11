@@ -11,8 +11,9 @@ registered in the same table, so the runner never grows a branch per stage.
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final, NoReturn
 
+from baseaicore import ValidationError
 from sqlalchemy import select
 
 from ideapress.errors import StagePreconditionFailed
@@ -22,8 +23,9 @@ from ideapress.services.plan import build_plan, store_plan
 from ideapress.services.stages import record_attempt
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Mapping, Sequence
 
+    from ideapress.config import Settings
     from ideapress.domain.stages import StageId
     from ideapress.services.runtime import Runtime
     from ideapress.services.stages import StageTask
@@ -138,6 +140,70 @@ def start_plan(runtime: Runtime, *, project_id: str) -> StageTask:
     return runtime.runner.start(project_id=project_id, stage="outline", body=body, units_total=0)
 
 
+OVERRIDES_READ: Final[dict[str, frozenset[str]]] = {
+    "draft": frozenset({"max_revision_rounds", "model_hint"}),
+    "revise": frozenset({"instructions", "max_revision_rounds", "model_hint"}),
+    "project_review": frozenset({"model_hint"}),
+}
+"""Which ``overrides`` keys each stage's run reads (row WP5).
+
+``model_hint`` is read by the gateway for every model call of the run; ``max_revision_rounds`` by
+the review loop; ``instructions`` by a revision. Until this row every key was recorded on the run
+and none was read, so the table is also the list of what stopped being a silent no-op."""
+
+INSTRUCTIONS_MAX_CHARS: Final = 4000
+
+
+def _refuse(path: str, problem: str) -> NoReturn:
+    message = f"{path}: {problem}"
+    raise ValidationError(message, details={"fields": [{"path": path, "problem": problem}]})
+
+
+def check_overrides(settings: Settings, stage: str, overrides: Mapping[str, Any]) -> dict[str, Any]:
+    """Refuse any override a stage's run would not apply, and return the rest as they apply.
+
+    Args:
+        settings: The settings a value is checked against.
+        stage: The stage the run is for.
+        overrides: The request's ``overrides``.
+
+    Returns:
+        The overrides the run applies. A ``null`` value is no override (api.md §3's example sends
+        ``"model_hint": null``), blank instructions are none, and ``max_revision_rounds`` is
+        coerced as ``workflow.max_revision_rounds`` in ``config.toml`` would be.
+
+    Raises:
+        ValidationError: Naming ``overrides.<key>``: a key this stage's run reads nothing of, a
+            ``max_revision_rounds`` outside the setting's own bounds, a ``model_hint`` that is not
+            a non-empty string, or ``instructions`` that are not text of at most 4 000 characters.
+    """
+    from ideapress.services.settings import _coerce
+
+    read = OVERRIDES_READ.get(stage, frozenset())
+    checked: dict[str, Any] = {}
+    for key, value in overrides.items():
+        path = f"overrides.{key}"
+        if key not in read:
+            reads = ", ".join(sorted(read)) or "none"
+            _refuse(path, f"the {stage} stage reads no {key!r} override (it reads: {reads})")
+        if value is None:
+            continue
+        if key == "max_revision_rounds":
+            try:
+                checked[key] = _coerce(settings, "workflow.max_revision_rounds", value)
+            except ValidationError as exc:
+                _refuse(path, exc.message)
+        elif key == "model_hint":
+            if not isinstance(value, str) or not value.strip():
+                _refuse(path, "a model hint names a model, as provider/name")
+            checked[key] = value.strip()
+        elif not isinstance(value, str) or len(value) > INSTRUCTIONS_MAX_CHARS:
+            _refuse(path, f"instructions are text of at most {INSTRUCTIONS_MAX_CHARS} characters")
+        elif value.strip():
+            checked[key] = value.strip()
+    return checked
+
+
 def start_stage(
     runtime: Runtime,
     *,
@@ -145,7 +211,7 @@ def start_stage(
     stage: StageId,
     units: Sequence[str] | None = None,
     resume: bool = False,
-    overrides: dict[str, Any] | None = None,
+    overrides: Mapping[str, Any] | None = None,
 ) -> StageTask:
     """Start one unit-level stage over a project's units.
 
@@ -155,16 +221,19 @@ def start_stage(
         stage: Which stage.
         units: Restrict to these unit keys; all planned units when ``None``.
         resume: Continue from the first incomplete unit rather than starting over.
-        overrides: Per-run limits, recorded on the run.
+        overrides: Per-run overrides (:data:`OVERRIDES_READ`), checked before anything starts,
+            recorded on the run and applied to it alone.
 
     Returns:
         The running task.
 
     Raises:
+        ValidationError: An override this stage's run would not apply (:func:`check_overrides`).
         StagePreconditionFailed: The stage has no body yet, or the project has no plan.
     """
     from ideapress.services.stage_registry import STAGE_BODIES
 
+    checked = check_overrides(runtime.settings, stage, overrides or {})
     runtime.projects.get(project_id)
     database = runtime.storage
     with database.read() as session:
@@ -194,7 +263,9 @@ def start_stage(
     return runtime.runner.start(
         project_id=project_id,
         stage=stage,
-        body=factory(runtime, project_id=project_id, unit_keys=selected, resume=resume),
-        options=dict(overrides or {}),
+        body=factory(
+            runtime, project_id=project_id, unit_keys=selected, resume=resume, overrides=checked
+        ),
+        options=checked,
         units_total=len(selected),
     )

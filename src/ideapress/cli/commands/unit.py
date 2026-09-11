@@ -181,7 +181,7 @@ def revise(
             task = start_stage(
                 runtime,
                 project_id=project_id,
-                stage="draft",
+                stage="revise",
                 units=[unit_key],
                 overrides={"instructions": instructions} if instructions else {},
             )

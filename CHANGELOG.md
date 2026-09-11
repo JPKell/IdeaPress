@@ -21,6 +21,19 @@ packaging and release standards §3.
 
 ### Fixed
 
+- **Revising a unit works** (row WP5). `POST /units/{key}/revise` and `ideapress unit revise`
+  started a *draft* run, whose first move (`committed → drafting`) is no arrow in data model §3,
+  so every revision of a committed unit ended `stage.failed`; its instructions were recorded and
+  never read. Revise is now its own stage body: `committed` (or `paused` with a committed version)
+  → `revising`, the instructions carried to `stages.revise.improve` as a finding in one round that
+  counts against `max_revision_rounds`, then the draft path's review, coverage and commit — a new
+  version, or a pause with the version kept when the round raises validation failures. A review
+  that changes nothing returns the unit to `committed` without a second version
+  (`unit.unchanged`); a unit with nothing to revise is `unit.skipped`.
+- **A stage run's `overrides` apply** (row WP5). `model_hint` names the model for every call of
+  the run, `max_revision_rounds` bounds its review loop, `instructions` reach a revision; each for
+  that run alone. They were recorded on the run and read by nothing. A key the stage does not read,
+  or a value outside the setting's bounds, is now `400 VALIDATION_ERROR` naming `overrides.<key>`.
 - **The workspace's own stylesheet and scripts are served.** `workspace.css`, `workspace.js`
   and `diff.js` were rendered through MirrorWall's `asset_url`, which placed them under
   `/static/mirrorwall/` where nothing served them — so the running-stage section never updated

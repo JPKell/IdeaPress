@@ -73,24 +73,30 @@ def post_revise(
     """Revise one unit, bounded by the same limits as any other revision.
 
     A committed unit is immutable, so this creates a **new version** rather than editing one
-    (data model §3's `committed -> revising` arrow). The instructions are the user's, and they are
-    carried into the context as findings — they do not change the bounds, which stay Python's.
+    (data model §3's `committed -> revising` arrow, and `paused -> revising` for a unit a revision
+    paused). The instructions are the user's, and they reach the reviser as a finding — they do not
+    change the bounds, which stay Python's. Until row WP5 this started a *draft* run, whose first
+    move (`committed -> drafting`) is no arrow, so every revision failed its stage.
 
     Raises:
         UnitNotFound: No such unit.
-        StagePreconditionFailed: The unit has no committed version to revise.
+        StagePreconditionFailed: The unit has no committed version, or is neither `committed` nor
+            `paused`.
         StageAlreadyRunning: A stage is already running for this project.
     """
     from ideapress.services.stage_bodies import start_stage
 
     runtime = request.app.state.runtime
     detail = _reports(request).unit_detail(runtime, project_id=project_id, unit_key=unit_key)
-    if detail["version"] is None:
+    if detail["version"] is None or detail["state"] not in ("committed", "paused"):
         from ideapress.errors import StagePreconditionFailed
 
+        state = detail["state"]
         message = (
             f"Unit {unit_key} has no committed version to revise. Draft it first; a revision "
             "creates a new version of something that exists."
+            if detail["version"] is None
+            else f"Unit {unit_key} is {state!r}; only a committed or paused unit is revised."
         )
         raise StagePreconditionFailed(
             message, details={"unit_key": unit_key, "state": detail["state"]}
@@ -98,7 +104,7 @@ def post_revise(
     task = start_stage(
         runtime,
         project_id=project_id,
-        stage="draft",
+        stage="revise",
         units=[unit_key],
         overrides={"instructions": body.instructions} if body.instructions else {},
     )

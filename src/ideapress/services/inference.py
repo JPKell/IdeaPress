@@ -123,17 +123,22 @@ class InferenceGateway:
     _resident: str | None = field(default=None, init=False, repr=False)
     _switch_lock: threading.Lock = field(init=False, repr=False)
     _run_id: str = field(default="", init=False, repr=False)
+    _model_hint: str | None = field(default=None, init=False, repr=False)
 
     def __post_init__(self) -> None:
         """Build the semaphore that makes one-at-a-time a fact rather than a default."""
         self._lock = threading.Semaphore(self.execution.max_concurrent_stages)
         self._switch_lock = threading.Lock()
 
-    def begin_run(self, run_id: str) -> None:
+    def begin_run(self, run_id: str, *, model_hint: str | None = None) -> None:
         """Tell the gateway which stage run the requests that follow belong to.
 
         Args:
             run_id: The stage run's identifier, or ``""`` to clear it.
+            model_hint: The run's ``overrides.model_hint``, or ``None`` (row WP5). Every request of
+                the run that carries no hint of its own is given this one, so it wins over the
+                stage's binding exactly as a caller's hint does (:meth:`_prepare`): draft, audits,
+                critique and revise alike. The next run's call replaces it.
 
         Every request forwarded from here on carries this as `correlation.request_id` unless the
         caller set one, which does two things. It gives the backend an `X-Request-ID` to propagate
@@ -149,6 +154,7 @@ class InferenceGateway:
         the suite ran stages concurrently. If that cap is ever lifted, this must move.
         """
         self._run_id = run_id
+        self._model_hint = model_hint
 
     @property
     def resident_model(self) -> str | None:
@@ -156,7 +162,9 @@ class InferenceGateway:
         return self._resident
 
     def _with_correlation(self, request: StageRequest) -> StageRequest:
-        """Stamp the current run id onto a request that does not carry one of its own."""
+        """Stamp the current run's id, and its model hint, onto a request lacking its own."""
+        if self._model_hint and not request.model_hint:
+            request = replace(request, model_hint=self._model_hint)
         if not self._run_id or request.correlation.request_id:
             return request
         return replace(request, correlation=replace(request.correlation, request_id=self._run_id))

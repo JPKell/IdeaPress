@@ -35,6 +35,18 @@ same standard as the others, but no other application in the suite depends on it
 {"units": ["U-03"], "resume": true, "overrides": {"model_hint": null, "max_revision_rounds": 2}}
 ```
 
+`overrides` apply to that run alone, are recorded on it, and are checked before it starts (row
+WP5; until then every key was recorded and none applied):
+
+| Key | Stages | What it does |
+|---|---|---|
+| `model_hint` | `draft`, `revise`, `project_review` | The model every call of the run uses, over each stage's `[models.stages]` binding (a hint to a routing backend, ADR-0040) |
+| `max_revision_rounds` | `draft`, `revise` | The review loop's round limit for the run, within `workflow.max_revision_rounds`'s own bounds (0–100) |
+| `instructions` | `revise` | The author's words for the reviser, at most 4 000 characters |
+
+A key the stage does not read, or a value outside those bounds, is `400 VALIDATION_ERROR` naming
+`overrides.<key>`, and nothing starts. `null` is no override.
+
 Returns `202` with a task:
 
 ```json
@@ -45,7 +57,7 @@ Returns `202` with a task:
 | Endpoint | Notes |
 |---|---|
 | `GET /projects/{id}/tasks/{task_id}` | Task state, per-unit progress, attempts, degradations |
-| `GET /projects/{id}/tasks/{task_id}/stream` | SSE: `stage.started`, `unit.started`, `attempt.started`, `token` (when streaming), `validation.completed`, `audit.completed`, `fact_check.completed`, `revision.started`, `unit.committed`, `unit.paused`, `stage.completed`, `stage.failed`. Every frame carries the SetSpec event envelope except `token`, which is bare ([ADR-0025 §3](../../adr/0025-envelope-boundaries.md)) |
+| `GET /projects/{id}/tasks/{task_id}/stream` | SSE: `stage.started`, `unit.started`, `attempt.started`, `token` (when streaming), `validation.completed`, `audit.completed`, `fact_check.completed`, `revision.started`, `unit.committed`, `unit.unchanged`, `unit.skipped`, `unit.paused`, `stage.completed`, `stage.failed`. Every frame carries the SetSpec event envelope except `token`, which is bare ([ADR-0025 §3](../../adr/0025-envelope-boundaries.md)) |
 | `POST /projects/{id}/tasks/{task_id}/cancel` | Honoured at the next model-call boundary |
 
 Only one stage task runs per project at a time; a second returns 409 `STAGE_ALREADY_RUNNING`.
@@ -57,7 +69,7 @@ Only one stage task runs per project at a time; a second returns 409 `STAGE_ALRE
 | `GET /projects/{id}/units` | Unit list with state, version, requirement coverage, last validation |
 | `GET /projects/{id}/units/{unit_id}` | Current content plus full provenance |
 | `GET /projects/{id}/units/{unit_id}/history` | Every version with its attempts, validations, audits and critique verdicts |
-| `POST /projects/{id}/units/{unit_id}/revise` | Targeted revision with optional instructions; bounded by the same limits |
+| `POST /projects/{id}/units/{unit_id}/revise` | `{"instructions": "…"}` (optional) → `202` with a `revise` task. The unit must be `committed`, or `paused` with a committed version (data model §3's two `→ revising` arrows); otherwise `409 STAGE_PRECONDITION_FAILED`. The instructions reach the reviser as one finding, against the committed text, in a round that counts against `max_revision_rounds`. The result commits as a **new version**. The unit pauses with its version kept when that round raises validation failures. A review that changes nothing leaves the version current (`unit.unchanged`). The same run is `POST …/stages/revise/run` with `overrides.instructions` |
 
 ## 5. Workflows and backends
 

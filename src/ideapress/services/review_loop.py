@@ -180,6 +180,8 @@ def run_review_loop(
     validation: ValidationReport,
     attempt_id: str | None,
     emit: Callable[[str, str, dict[str, Any]], None],
+    max_rounds: int | None = None,
+    first_round: int = 0,
 ) -> ReviewOutcome:
     """Audit, critique and revise a validated unit, within its bounds.
 
@@ -191,6 +193,9 @@ def run_review_loop(
         validation: Its validation report.
         attempt_id: The attempt that produced it.
         emit: Event emitter.
+        max_rounds: The run's ``max_revision_rounds`` override; ``None`` reads the setting.
+        first_round: Rounds already spent before this loop — ``1`` after a revision's instruction
+            round, which counts against the limit like any other (row WP5).
 
     Returns:
         The text that survived, with the stop reason recorded.
@@ -204,7 +209,8 @@ def run_review_loop(
     settings = runtime.settings
     database = runtime.storage
     gateway = runtime.runner.gateway
-    max_rounds = settings.workflow.max_revision_rounds
+    if max_rounds is None:
+        max_rounds = settings.workflow.max_revision_rounds
     threshold = settings.workflow.diminishing_returns_threshold
     escalation_threshold = settings.workflow.audit_escalation_threshold
     structured_output_tokens = settings.workflow.structured_output_tokens
@@ -213,7 +219,7 @@ def run_review_loop(
     verdicts: list[str] = []
     escalations = 0
     rejected = 0
-    rounds = 0
+    rounds = first_round
     before: RoundMeasurement | None = None
     after: RoundMeasurement | None = None
     stop_reason = "critique_satisfied"

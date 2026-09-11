@@ -1087,7 +1087,7 @@
     },
     "/api/v1/projects/{project_id}/units/{unit_key}/revise": {
       "post": {
-        "description": "Revise one unit, bounded by the same limits as any other revision.\n\nA committed unit is immutable, so this creates a **new version** rather than editing one\n(data model \u00a73's `committed -> revising` arrow). The instructions are the user's, and they are\ncarried into the context as findings \u2014 they do not change the bounds, which stay Python's.\n\nRaises:\n    UnitNotFound: No such unit.\n    StagePreconditionFailed: The unit has no committed version to revise.\n    StageAlreadyRunning: A stage is already running for this project.",
+        "description": "Revise one unit, bounded by the same limits as any other revision.\n\nA committed unit is immutable, so this creates a **new version** rather than editing one\n(data model \u00a73's `committed -> revising` arrow, and `paused -> revising` for a unit a revision\npaused). The instructions are the user's, and they reach the reviser as a finding \u2014 they do not\nchange the bounds, which stay Python's. Until row WP5 this started a *draft* run, whose first\nmove (`committed -> drafting`) is no arrow, so every revision failed its stage.\n\nRaises:\n    UnitNotFound: No such unit.\n    StagePreconditionFailed: The unit has no committed version, or is neither `committed` nor\n        `paused`.\n    StageAlreadyRunning: A stage is already running for this project.",
         "operationId": "post_revise_api_v1_projects__project_id__units__unit_key__revise_post",
         "parameters": [
           {

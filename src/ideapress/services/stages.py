@@ -116,6 +116,8 @@ class StageTask:
     stage: str
     thread: threading.Thread | None = None
     cancel: threading.Event = field(default_factory=threading.Event)
+    options: dict[str, Any] = field(default_factory=dict)
+    """The run's checked overrides (``stage_bodies.check_overrides``), as recorded on its row."""
 
     def request_cancel(self) -> None:
         """Ask the stage to stop at its next model-call boundary."""
@@ -462,7 +464,9 @@ class StageRunner:
                 session.flush()
                 run_id = run.id
 
-            task = StageTask(run_id=run_id, project_id=project_id, stage=stage)
+            task = StageTask(
+                run_id=run_id, project_id=project_id, stage=stage, options=dict(options or {})
+            )
             self._tasks[project_id] = task
 
         self._sink.emit(
@@ -481,7 +485,7 @@ class StageRunner:
         # request, which gives the backend an `X-Request-ID` and — for a routing backend that
         # replays by idempotency key — is what makes a retry new work rather than a replay of the
         # previous run's answer, including a replay of its *failure*.
-        self.gateway.begin_run(task.run_id)
+        self.gateway.begin_run(task.run_id, model_hint=task.options.get("model_hint"))
         with correlation(project_id=task.project_id, stage=task.stage):
             try:
                 body(task)
