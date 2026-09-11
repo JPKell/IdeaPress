@@ -292,3 +292,60 @@ def test_a_structural_edit_over_committed_work_is_refused_naming_the_unit(
     )
     assert refused.status_code == 400
     assert refused.json()["error"]["details"]["protected_unit_keys"] == ["U-01"]
+
+
+# --- Research: where a fetch may go, and every call with its egress decision ----------------------
+
+
+def test_research_lists_where_a_fetch_may_go_and_every_call_with_its_egress_decision(
+    client: TestClient,
+) -> None:
+    import httpx
+
+    from ideapress.config import ResearchSettings
+    from ideapress.services.research import research_body
+
+    runtime = _runtime(client)
+    runtime.settings.research = ResearchSettings(
+        allowed_hosts=("docs.example",), max_data_classification="public"
+    )
+    brief = "Background: https://docs.example/paper and https://blocked.example/x — read both."
+    created = client.post("/api/v1/projects", json={"title": "Paper", "brief": brief})
+    project_id = created.json()["id"]
+    transport = httpx.MockTransport(
+        lambda _request: httpx.Response(
+            200, text="A fetched paragraph.", headers={"content-type": "text/plain"}
+        )
+    )
+    task = runtime.runner.start(
+        project_id=project_id,
+        stage="research",
+        body=research_body(
+            runtime,
+            project_id=project_id,
+            resolver=lambda _host: ["93.184.216.34"],
+            transport=transport,
+        ),
+    )
+    assert _wait(runtime, task.run_id) == "completed"
+
+    body = client.get(f"/api/v1/projects/{project_id}/research").json()
+    assert body["allowed_hosts"] == ["docs.example"]
+    assert [note["citation"] for note in body["notes"]] == ["https://docs.example/paper"]
+    calls = body["tool_calls"]
+    assert [(c["tool"], c["status"], c["reason"]) for c in calls] == [
+        ("http_fetch", "ok", None),
+        ("http_fetch", "refused", "host_not_allowed"),
+    ]
+    for call in calls:
+        decision = call["egress_decision"]
+        assert decision is not None, "every fetch was decided before it ran"
+        assert decision["request"]["source_ref"] == call["invocation_id"]
+    assert calls[0]["egress_decision"]["verdict"] == "approved"
+
+
+def test_a_project_that_never_researched_has_an_empty_record(client: TestClient) -> None:
+    project_id = client.post("/api/v1/projects", json={"title": "Plain"}).json()["id"]
+    body = client.get(f"/api/v1/projects/{project_id}/research").json()
+    assert (body["notes"], body["tool_calls"]) == ([], [])
+    assert client.get("/api/v1/projects/01ZZZZZZZZZZZZZZZZZZZZZZZZ/research").status_code == 404

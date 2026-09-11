@@ -173,6 +173,7 @@ def test_every_endpoint_the_specification_lists_exists(client: TestClient) -> No
         "GET /projects/{id}",
         "GET /projects/{id}/export",
         "GET /projects/{id}/plan",
+        "GET /projects/{id}/research",
         "GET /projects/{id}/tasks/{task_id}",
         "GET /projects/{id}/tasks/{task_id}/stream",
         "GET /projects/{id}/units",

@@ -887,6 +887,47 @@
         ]
       }
     },
+    "/api/v1/projects/{project_id}/research": {
+      "get": {
+        "description": "Where a fetch may go, and every note and tool call the research stage left (row WP5).\n\nThe stage starts at ``POST /projects/{id}/stages/research/run``. This is what it may reach\nbefore anyone starts it (spec \u00a714: a click that may fetch says where it can go) and what it\nrecorded afterwards, each call with the egress decision it ran under.\n\nRaises:\n    ProjectNotFound: No such project.",
+        "operationId": "get_research_api_v1_projects__project_id__research_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Research",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
     "/api/v1/projects/{project_id}/stages/{stage}/run": {
       "post": {
         "description": "Start one stage over the project's units.\n\nRaises:\n    StagePreconditionFailed: ``stage`` is not a stage in workflows \u00a72, or the project is not in\n        a state that stage can run from.\n    StageAlreadyRunning: A stage is already running for this project.",

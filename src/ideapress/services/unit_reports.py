@@ -46,9 +46,23 @@ def research_report(runtime: Runtime, *, project_id: str) -> dict[str, Any]:
         their length rather than their text — a unit page that inlined every fetched document
         would be unreadable, and the text is what the draft context already carried. Tool calls
         carry ToolYard's status, reason and detail, so a refusal is diagnosable from the page the
-        way it is from the row (toolyard §11.2). Both lists are empty for every project that never
-        ran the stage, which renders as the existing empty state.
+        way it is from the row (toolyard §11.2), and — since row WP5 — their ``invocation_id`` and
+        the ``egress_decision`` recorded before the call ran (SetSpec
+        ``governance.egress_decision``, joined by ``request.source_ref``), or ``None`` for a read
+        from ``sources/``, which leaves no machine. Both lists are empty for every project that
+        never ran the stage, which renders as the existing empty state.
     """
+    from ideapress.services.budget import pseudo_run_id
+
+    egress = runtime.storage.egress
+    decisions = (
+        {
+            decision.request.source_ref: decision_view(decision)
+            for decision in egress.decisions(run_id=pseudo_run_id(project_id))
+        }
+        if egress is not None
+        else {}
+    )
     with runtime.storage.read() as session:
         notes = session.scalars(
             select(SourceRow)
@@ -80,6 +94,8 @@ def research_report(runtime: Runtime, *, project_id: str) -> dict[str, Any]:
                 "duration_ms": call.duration_ms,
                 "egress": call.egress,
                 "started_at": call.started_at.isoformat(),
+                "invocation_id": call.invocation_id,
+                "egress_decision": decisions.get(call.invocation_id),
             }
             for call in calls
         ],

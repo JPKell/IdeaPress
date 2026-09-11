@@ -170,6 +170,31 @@ def get_project(request: Request, project_id: str) -> JSONResponse:
     return json_response({**_as_payload(project), **overview})
 
 
+@router.get("/projects/{project_id}/research")
+def get_research(request: Request, project_id: str) -> JSONResponse:
+    """Where a fetch may go, and every note and tool call the research stage left (row WP5).
+
+    The stage starts at ``POST /projects/{id}/stages/research/run``. This is what it may reach
+    before anyone starts it (spec §14: a click that may fetch says where it can go) and what it
+    recorded afterwards, each call with the egress decision it ran under.
+
+    Raises:
+        ProjectNotFound: No such project.
+    """
+    from ideapress.services.unit_reports import research_report
+
+    _service(request).get(project_id)
+    runtime = request.app.state.runtime
+    research = runtime.settings.research
+    return json_response(
+        {
+            "allowed_hosts": list(research.allowed_hosts),
+            "allowed_tools": list(research.allowed_tools),
+            **research_report(runtime, project_id=project_id),
+        }
+    )
+
+
 @router.put("/projects/{project_id}")
 def update_project(request: Request, project_id: str, body: UpdateProjectRequest) -> JSONResponse:
     """Update the brief, author material, title or status. Never recompiles requirements."""
