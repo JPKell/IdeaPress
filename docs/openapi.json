@@ -321,7 +321,7 @@
     },
     "/api/v1/projects": {
       "get": {
-        "description": "List projects, most recently updated first. Archived projects are hidden by default.",
+        "description": "List projects, most recently updated first. Archived projects are hidden by default.\n\n``cursor`` is the previous page's ``next_cursor`` (API standards \u00a76) and wins over ``offset``,\nwhich stays for callers that already send it.\n\nRaises:\n    ValidationError: ``cursor`` is not one this endpoint issued; ``400`` naming ``cursor``.",
         "operationId": "list_projects_api_v1_projects_get",
         "parameters": [
           {
@@ -387,6 +387,22 @@
               "minimum": 0,
               "title": "Offset",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
             }
           }
         ],
@@ -505,7 +521,7 @@
         ]
       },
       "get": {
-        "description": "Return one project.\n\nRaises:\n    ProjectNotFound: Rendered as 404 by the shared handler.",
+        "description": "Return one project, its plan summary, its unit states and its stage history (api.md \u00a72).\n\nRaises:\n    ProjectNotFound: Rendered as 404 by the shared handler.",
         "operationId": "get_project_api_v1_projects__project_id__get",
         "parameters": [
           {

@@ -20,8 +20,8 @@ same standard as the others, but no other application in the suite depends on it
 | Endpoint | Notes |
 |---|---|
 | `POST /projects` | `{title, content_type, workflow_id, brief, author_material}` → project |
-| `GET /projects` | Filter by status and content type; cursor pagination |
-| `GET /projects/{id}` | Project, plan summary, unit states, stage history |
+| `GET /projects` | `?status`, `?content_type`, `?include_archived`, `?limit` (1–200); newest activity first. `?cursor` is the previous page's `page.next_cursor`; a cursor this endpoint did not issue is `400 VALIDATION_ERROR` naming `cursor`. `?offset` is still accepted |
+| `GET /projects/{id}` | The project, plus `plan` (`units`, `requirements`, `blocking` counts; `null` before a plan exists), `units` (§4's unit list), `stages` (the newest 50 stage runs, newest first, each with its state, counts, `error_code`/`error_text`, the `options` it ran with and its `stream_url`) and `running_task_id` (`null` when nothing runs) |
 | `PUT /projects/{id}` | Update brief, author material or configuration; recompiles requirements on demand, never silently |
 | `DELETE /projects/{id}` | Preview-then-confirm; archives to an export before deleting when asked |
 | `POST /projects/{id}/plan` | Runs requirement compilation and outline; returns the task |

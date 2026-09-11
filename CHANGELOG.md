@@ -47,6 +47,13 @@ packaging and release standards §3.
 
 ### Added
 
+- **`GET /projects/{id}` carries what api.md §2 always said it did** (row WP5): `plan` (unit,
+  requirement and blocking counts, `null` before a plan), `units` (the unit list), `stages` (the
+  newest 50 stage runs, newest first, each with its options and `stream_url`) and
+  `running_task_id`. Until now it answered the project alone, so nothing on the API could list a
+  project's stage history or find its running task. `GET /projects` pages by `cursor` and answers
+  `page.next_cursor`; a cursor it did not issue is `400 VALIDATION_ERROR` naming `cursor`, and
+  `offset` still works. WeightRoomGym's IdeaPress pages read both.
 - **Operator prompt overrides** (row W9, prompt standards §6). A record at
   `$XDG_CONFIG_HOME/ideapress/prompts/<prompt_id>.json` replaces the shipped record of the same
   `prompt_id` when the pack loads, and every attempt that rendered it is marked

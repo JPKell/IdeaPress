@@ -19,7 +19,74 @@ from ideapress.services.plan import load_plan, load_requirements
 if TYPE_CHECKING:
     from ideapress.services.runtime import Runtime
 
-__all__ = ["plan_report", "task_report", "unit_states"]
+__all__ = ["STAGE_HISTORY_LIMIT", "plan_report", "project_overview", "task_report", "unit_states"]
+
+STAGE_HISTORY_LIMIT = 50
+"""How many of a project's stage runs ``GET /projects/{id}`` lists, newest first."""
+
+
+def project_overview(runtime: Runtime, *, project_id: str) -> dict[str, Any]:
+    """What ``GET /projects/{id}`` carries beside the project itself (api.md §2; row WP5).
+
+    Args:
+        runtime: The process's handles.
+        project_id: Which project.
+
+    Returns:
+        ``plan``: ``{"units", "requirements", "blocking"}`` counts, or ``None`` before a plan
+        exists. ``units``: :func:`~ideapress.services.unit_reports.unit_list`, in reading order.
+        ``stages``: the newest :data:`STAGE_HISTORY_LIMIT` stage runs, newest first, each a task
+        summary with the options it ran with and its ``stream_url``. ``running_task_id``: the run
+        this process is executing for the project, or ``None``.
+
+    Raises:
+        ProjectNotFound: No such project.
+    """
+    from ideapress.services.unit_reports import unit_list
+
+    runtime.projects.get(project_id)
+    units = unit_list(runtime, project_id=project_id)
+    with runtime.storage.read() as session:
+        requirements = load_requirements(session, project_id)
+        runs = session.scalars(
+            select(StageRunRow)
+            .where(StageRunRow.project_id == project_id)
+            .order_by(StageRunRow.started_at.desc(), StageRunRow.id.desc())
+            .limit(STAGE_HISTORY_LIMIT)
+        ).all()
+        stages = [
+            {
+                "task_id": run.id,
+                "stage": run.stage,
+                "state": run.state,
+                "units_total": run.units_total,
+                "units_completed": run.units_completed,
+                "units_paused": run.units_paused,
+                "started_at": run.started_at.isoformat(),
+                "completed_at": run.completed_at.isoformat() if run.completed_at else None,
+                "error_code": run.error_code,
+                "error_text": run.error_text,
+                "options": dict(run.options_json),
+                "stream_url": f"/api/v1/projects/{project_id}/tasks/{run.id}/stream",
+            }
+            for run in runs
+        ]
+    active = runtime.runner.active_task(project_id)
+    running = (
+        active.run_id
+        if active is not None and not runtime.runner.is_finished(active.run_id)
+        else None
+    )
+    plan = (
+        {
+            "units": len(units),
+            "requirements": len(requirements),
+            "blocking": sum(1 for requirement in requirements if requirement.blocking),
+        }
+        if units or requirements
+        else None
+    )
+    return {"plan": plan, "units": units, "stages": stages, "running_task_id": running}
 
 
 def unit_states(runtime: Runtime, project_id: str) -> dict[str, str]:

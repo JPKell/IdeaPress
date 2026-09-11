@@ -7,8 +7,11 @@ macros — never ``| safe`` (risk S1).
 
 from __future__ import annotations
 
+import base64
+import json
 from typing import TYPE_CHECKING, Annotated, Any
 
+from baseaicore import ValidationError
 from fastapi import APIRouter, Form, Query, Request, status
 from mirrorwall import json_response, paginated_response
 from pydantic import BaseModel, ConfigDict, Field
@@ -99,28 +102,72 @@ def list_projects(
     include_archived: Annotated[bool, Query()] = False,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
+    cursor: Annotated[str | None, Query()] = None,
 ) -> JSONResponse:
-    """List projects, most recently updated first. Archived projects are hidden by default."""
+    """List projects, most recently updated first. Archived projects are hidden by default.
+
+    ``cursor`` is the previous page's ``next_cursor`` (API standards §6) and wins over ``offset``,
+    which stays for callers that already send it.
+
+    Raises:
+        ValidationError: ``cursor`` is not one this endpoint issued; ``400`` naming ``cursor``.
+    """
+    start = _offset_of(cursor) if cursor else offset
     projects = _service(request).list(
         status=project_status,
         content_type=content_type,
         include_archived=include_archived,
         limit=limit + 1,
-        offset=offset,
+        offset=start,
     )
     has_more = len(projects) > limit
     page = [_as_payload(project) for project in projects[:limit]]
-    return paginated_response(page, limit=limit, has_more=has_more)
+    return paginated_response(
+        page,
+        limit=limit,
+        has_more=has_more,
+        next_cursor=_cursor_at(start + limit) if has_more else None,
+    )
+
+
+def _cursor_at(offset: int) -> str:
+    """The opaque cursor for the page that starts at ``offset``: API standards §6's own shape."""
+    # ponytail: an offset cursor, so a project updated between two page reads can cross a page
+    # edge; key it on (updated_at, id) if the list is ever paged under concurrent edits.
+    return base64.urlsafe_b64encode(json.dumps({"offset": offset}).encode()).decode()
+
+
+def _offset_of(cursor: str) -> int:
+    """The offset a cursor from :func:`_cursor_at` names.
+
+    Raises:
+        ValidationError: The cursor is not one this endpoint issued — refused by name rather than
+            read as the first page, which would hand a paging loop that page forever.
+    """
+    try:
+        offset = json.loads(base64.urlsafe_b64decode(cursor.encode()))["offset"]
+    except (ValueError, TypeError, KeyError):
+        offset = None
+    if not isinstance(offset, int) or isinstance(offset, bool) or offset < 0:
+        message = "cursor is not one this endpoint issued; start again without it."
+        raise ValidationError(
+            message, details={"fields": [{"path": "cursor", "problem": "not an issued cursor"}]}
+        )
+    return offset
 
 
 @router.get("/projects/{project_id}")
 def get_project(request: Request, project_id: str) -> JSONResponse:
-    """Return one project.
+    """Return one project, its plan summary, its unit states and its stage history (api.md §2).
 
     Raises:
         ProjectNotFound: Rendered as 404 by the shared handler.
     """
-    return json_response(_as_payload(_service(request).get(project_id)))
+    from ideapress.services.stage_reports import project_overview
+
+    project = _service(request).get(project_id)
+    overview = project_overview(request.app.state.runtime, project_id=project_id)
+    return json_response({**_as_payload(project), **overview})
 
 
 @router.put("/projects/{project_id}")
