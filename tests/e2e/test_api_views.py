@@ -399,3 +399,39 @@ def test_the_workspace_of_a_missing_project_is_a_named_404(client: TestClient) -
     response = client.get("/api/v1/projects/01ZZZZZZZZZZZZZZZZZZZZZZZZ/workspace")
     assert response.status_code == 404
     assert response.json()["error"]["code"] == "PROJECT_NOT_FOUND"
+
+
+# --- History: every version with the run that produced it -----------------------------------------
+
+
+def test_history_carries_the_attempts_validations_and_verdicts_behind_each_version(
+    client: TestClient,
+) -> None:
+    runtime = _runtime(client)
+    project_id = _drafted(client)
+    _with(runtime, REVISED, NO_FINDINGS, ACCEPTABLE)
+    task = client.post(
+        f"/api/v1/projects/{project_id}/units/U-01/revise",
+        json={"instructions": "Say that no network is involved."},
+    ).json()
+    assert _wait(runtime, task["task_id"]) == "completed"
+
+    versions = client.get(f"/api/v1/projects/{project_id}/units/U-01/history").json()["versions"]
+    assert [version["version"] for version in versions] == [2, 1]
+    newest, first = versions
+    assert [a["stage"] for a in first["attempts"]] == ["draft", "audit_fast", "critique"]
+    assert [a["stage"] for a in newest["attempts"]] == ["revise", "audit_fast", "critique"]
+    assert newest["stage_run_id"] != first["stage_run_id"]
+    produced = first["attempts"][0]["attempt_id"]
+    assert first["validations"]
+    assert {check["attempt_id"] for check in first["validations"]} == {produced}
+    assert [critique["verdict"] for critique in newest["critiques"]] == ["acceptable"]
+    assert newest["findings"] == []
+    assert first["coverage"], "the coverage each version committed with is still there"
+
+
+def test_the_history_of_an_unknown_unit_is_a_named_404(client: TestClient) -> None:
+    project_id = _planned(client)
+    response = client.get(f"/api/v1/projects/{project_id}/units/U-09/history")
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "UNIT_NOT_FOUND"

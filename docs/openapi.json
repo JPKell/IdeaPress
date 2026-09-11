@@ -1231,7 +1231,7 @@
     },
     "/api/v1/projects/{project_id}/units/{unit_key}/history": {
       "get": {
-        "description": "Every version with its coverage.",
+        "description": "Every version, newest first, with its coverage and what produced it (api.md \u00a74).\n\nEach version carries the attempts, validations, audit findings and critique verdicts of the\nstage run that produced it (``unit_reports.unit_versions``, row WP5).\n\nRaises:\n    UnitNotFound: No such unit.",
         "operationId": "get_unit_history_api_v1_projects__project_id__units__unit_key__history_get",
         "parameters": [
           {

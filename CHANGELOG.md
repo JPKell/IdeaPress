@@ -67,6 +67,11 @@ packaging and release standards §3.
   answers the workspace page's own view — the navigator, one unit's content and provenance, its
   pause reason with IdeaPress's remedy, the coverage summary, a diff between two versions, the
   backend's recorded egress, the project's cost, the running stage and where research may fetch.
+- **A unit's history says what produced each version** (row WP5). api.md §4 promised every version
+  "with its attempts, validations, audits and critique verdicts"; `GET …/units/{key}/history`
+  answered coverage only. Each version now carries its `stage_run_id` and that run's attempts,
+  validations, findings and critiques. Attempts in the unit detail gain `attempt_id`, and its
+  validations gain the `attempt_id` they were recorded against.
 - **Operator prompt overrides** (row W9, prompt standards §6). A record at
   `$XDG_CONFIG_HOME/ideapress/prompts/<prompt_id>.json` replaces the shipped record of the same
   `prompt_id` when the pack loads, and every attempt that rendered it is marked

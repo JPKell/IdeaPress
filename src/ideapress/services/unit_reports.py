@@ -25,7 +25,159 @@ from ideapress.services.units import load_unit, unit_history
 if TYPE_CHECKING:
     from ideapress.services.runtime import Runtime
 
-__all__ = ["research_report", "unit_detail", "unit_list"]
+__all__ = ["research_report", "unit_detail", "unit_list", "unit_versions"]
+
+
+def _attempt_view(attempt: AttemptRow, egress: dict[str, Any] | None = None) -> dict[str, Any]:
+    """One attempt's provenance, as the unit detail and the version history both report it."""
+    return {
+        "attempt_id": attempt.id,
+        "stage": attempt.stage,
+        "attempt": attempt.attempt,
+        "round": attempt.round,
+        "outcome": attempt.outcome,
+        "backend": attempt.backend,
+        "model_canonical_id": attempt.model_canonical_id,
+        "prompt_id": attempt.prompt_id,
+        "prompt_version": attempt.prompt_version,
+        "prompt_sha256": attempt.prompt_sha256,
+        "prompt_source": attempt.prompt_source,
+        "response_hash": attempt.response_hash,
+        "input_tokens": attempt.input_tokens,
+        "output_tokens": attempt.output_tokens,
+        "provider_ms": attempt.provider_ms,
+        "degradations": list(attempt.degradations_json),
+        "rejection_reason": attempt.rejection_reason,
+        # LoadCoach only, and `None` everywhere else: the routing decision that chose this model,
+        # so a person asking "why this model?" can reach the answer from the attempt rather than
+        # from another application's logs (P7 AC2).
+        "routing": dict(attempt.routing_json) if attempt.routing_json else None,
+        "idempotency_key": attempt.idempotency_key,
+        # The row J1 egress decision this attempt's own model call was evaluated under, joined by
+        # reference (D7, D8) — `None` on data written before that row, on an installation with
+        # nothing attached, and in the version history, which leaves egress to the unit detail.
+        "egress": egress,
+    }
+
+
+def _validation_view(row: ValidationRow) -> dict[str, Any]:
+    return {
+        "attempt_id": row.attempt_id,
+        "kind": row.check_kind,
+        "key": row.check_key,
+        "passed": row.passed,
+        "blocking": row.blocking,
+        "detail": row.detail_json.get("detail", ""),
+    }
+
+
+def _finding_view(row: AuditFindingRow, round_number: int) -> dict[str, Any]:
+    return {
+        "key": row.finding_key,
+        "category": row.category,
+        "severity": row.severity,
+        "problem": row.problem_text,
+        "evidence": row.evidence_text or "",
+        "fix": row.required_fix_text or "",
+        "uncertain": row.uncertain,
+        "escalated": row.escalated,
+        "stage": row.source_stage,
+        "round": round_number,
+    }
+
+
+def _critique_view(row: CritiqueRow) -> dict[str, Any]:
+    return {
+        "round": row.round,
+        "verdict": row.verdict,
+        "rationale": row.rationale_text,
+        "improvement_delta": row.improvement_delta,
+        "stop_reason": row.stop_reason,
+    }
+
+
+def unit_versions(runtime: Runtime, *, project_id: str, unit_key: str) -> list[dict[str, Any]]:
+    """Every version of a unit, newest first, with what produced each (api.md §4; row WP5).
+
+    Args:
+        runtime: The process's handles.
+        project_id: Which project.
+        unit_key: Which unit.
+
+    Returns:
+        :func:`~ideapress.services.units.unit_history`'s entries, each with ``stage_run_id`` and,
+        from that run, ``attempts`` (drafts, repairs, audits, critiques and revisions, oldest
+        first), ``validations`` (each with its ``attempt_id``), ``findings`` (with their round)
+        and ``critiques`` (verdict, rationale, improvement and stop reason). A version with no
+        recorded producing attempt — one an archive import brought back — has ``None`` and empty
+        lists. Attempts of a run that committed nothing belong to no version; the unit detail
+        lists them.
+
+    Raises:
+        UnitNotFound: No such unit.
+    """
+    with runtime.storage.read() as session:
+        unit = load_unit(session, project_id, unit_key)
+        history = unit_history(session, project_id, unit_key)
+        produced_by = {
+            row.version: row.created_from_attempt_id
+            for row in session.scalars(
+                select(UnitVersionRow).where(UnitVersionRow.unit_id == unit.id)
+            ).all()
+        }
+        attempts = session.scalars(
+            select(AttemptRow).where(AttemptRow.unit_id == unit.id).order_by(AttemptRow.created_at)
+        ).all()
+        by_id = {attempt.id: attempt for attempt in attempts}
+        ids = list(by_id)
+        validations = (
+            session.scalars(select(ValidationRow).where(ValidationRow.attempt_id.in_(ids))).all()
+            if ids
+            else []
+        )
+        findings = (
+            session.scalars(
+                select(AuditFindingRow)
+                .where(AuditFindingRow.attempt_id.in_(ids))
+                .order_by(AuditFindingRow.created_at)
+            ).all()
+            if ids
+            else []
+        )
+        critiques = (
+            session.scalars(
+                select(CritiqueRow)
+                .where(CritiqueRow.attempt_id.in_(ids))
+                .order_by(CritiqueRow.round)
+            ).all()
+            if ids
+            else []
+        )
+        versions: list[dict[str, Any]] = []
+        for entry in history:
+            source = by_id.get(produced_by.get(entry["version"]) or "")
+            run = {
+                a.id
+                for a in attempts
+                if source is not None and a.stage_run_id == source.stage_run_id
+            }
+            versions.append(
+                {
+                    **entry,
+                    "stage_run_id": source.stage_run_id if source is not None else None,
+                    "attempts": [_attempt_view(a) for a in attempts if a.id in run],
+                    "validations": [
+                        _validation_view(v) for v in validations if v.attempt_id in run
+                    ],
+                    "findings": [
+                        _finding_view(f, by_id[f.attempt_id].round)
+                        for f in findings
+                        if f.attempt_id in run
+                    ],
+                    "critiques": [_critique_view(c) for c in critiques if c.attempt_id in run],
+                }
+            )
+        return versions
 
 
 def research_report(runtime: Runtime, *, project_id: str) -> dict[str, Any]:
@@ -222,71 +374,14 @@ def unit_detail(runtime: Runtime, *, project_id: str, unit_key: str) -> dict[str
             }
             for key in unit.requirement_keys_json
         ],
-        "validation": [
-            {
-                "kind": row.check_kind,
-                "key": row.check_key,
-                "passed": row.passed,
-                "blocking": row.blocking,
-                "detail": row.detail_json.get("detail", ""),
-            }
-            for row in validations
-        ],
+        "validation": [_validation_view(row) for row in validations],
         "attempts": [
-            {
-                "stage": attempt.stage,
-                "attempt": attempt.attempt,
-                "round": attempt.round,
-                "outcome": attempt.outcome,
-                "backend": attempt.backend,
-                "model_canonical_id": attempt.model_canonical_id,
-                "prompt_id": attempt.prompt_id,
-                "prompt_version": attempt.prompt_version,
-                "prompt_sha256": attempt.prompt_sha256,
-                "prompt_source": attempt.prompt_source,
-                "response_hash": attempt.response_hash,
-                "input_tokens": attempt.input_tokens,
-                "output_tokens": attempt.output_tokens,
-                "provider_ms": attempt.provider_ms,
-                "degradations": list(attempt.degradations_json),
-                "rejection_reason": attempt.rejection_reason,
-                # LoadCoach only, and `None` everywhere else: the routing decision that chose this
-                # model, so a person asking "why this model?" can reach the answer from the
-                # attempt rather than from another application's logs (P7 AC2).
-                "routing": dict(attempt.routing_json) if attempt.routing_json else None,
-                "idempotency_key": attempt.idempotency_key,
-                # The row J1 egress decision this attempt's own model call was evaluated under,
-                # joined by reference (D7, D8) — `None` on data written before this row, or on an
-                # installation with nothing attached.
-                "egress": egress_by_attempt.get(attempt.id),
-            }
-            for attempt in attempts
+            _attempt_view(attempt, egress_by_attempt.get(attempt.id)) for attempt in attempts
         ],
         "history": history,
         "coverage": history[0]["coverage"] if history else [],
         "findings": [
-            {
-                "key": row.finding_key,
-                "category": row.category,
-                "severity": row.severity,
-                "problem": row.problem_text,
-                "evidence": row.evidence_text or "",
-                "fix": row.required_fix_text or "",
-                "uncertain": row.uncertain,
-                "escalated": row.escalated,
-                "stage": row.source_stage,
-                "round": rounds_by_attempt.get(row.attempt_id, 0),
-            }
-            for row in findings
+            _finding_view(row, rounds_by_attempt.get(row.attempt_id, 0)) for row in findings
         ],
-        "critiques": [
-            {
-                "round": row.round,
-                "verdict": row.verdict,
-                "rationale": row.rationale_text,
-                "improvement_delta": row.improvement_delta,
-                "stop_reason": row.stop_reason,
-            }
-            for row in critiques
-        ],
+        "critiques": [_critique_view(row) for row in critiques],
     }

@@ -51,11 +51,18 @@ def get_unit(request: Request, project_id: str, unit_key: str) -> JSONResponse:
 
 @router.get("/projects/{project_id}/units/{unit_key}/history")
 def get_unit_history(request: Request, project_id: str, unit_key: str) -> JSONResponse:
-    """Every version with its coverage."""
-    from ideapress.services.units import unit_history
+    """Every version, newest first, with its coverage and what produced it (api.md §4).
 
-    with request.app.state.runtime.storage.read() as session:
-        return json_response({"versions": unit_history(session, project_id, unit_key)})
+    Each version carries the attempts, validations, audit findings and critique verdicts of the
+    stage run that produced it (``unit_reports.unit_versions``, row WP5).
+
+    Raises:
+        UnitNotFound: No such unit.
+    """
+    versions = _reports(request).unit_versions(
+        request.app.state.runtime, project_id=project_id, unit_key=unit_key
+    )
+    return json_response({"versions": versions})
 
 
 class ReviseRequest(BaseModel):
