@@ -491,3 +491,19 @@ def test_an_archive_that_cannot_be_written_deletes_nothing(client: TestClient) -
     assert response.json()["error"]["code"] == "EXPORT_FAILED"
     assert "Nothing was deleted" in response.json()["error"]["message"]
     assert client.get(f"/api/v1/projects/{project_id}").status_code == 200
+
+
+# --- The unit list: requirement coverage and the last validation ----------------------------------
+
+
+def test_the_unit_list_carries_coverage_and_the_last_validation(client: TestClient) -> None:
+    project_id = _drafted(client)
+    first, second = client.get(f"/api/v1/projects/{project_id}/units").json()["units"]
+
+    assert first["coverage"]["total"] == 2
+    assert 0 <= first["coverage"]["satisfied"] <= 2
+    last = first["last_validation"]
+    assert last["stage"] == "draft"
+    assert (last["passed"], last["blocking_failures"]) == (True, 0)
+    assert last["failures"] >= 0
+    assert (second["coverage"], second["last_validation"]) == (None, None)

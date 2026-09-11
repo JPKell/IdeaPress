@@ -12,6 +12,7 @@ from sqlalchemy import select
 
 from ideapress.infrastructure.db.models import Attempt as AttemptRow
 from ideapress.infrastructure.db.models import AuditFinding as AuditFindingRow
+from ideapress.infrastructure.db.models import Coverage as CoverageRow
 from ideapress.infrastructure.db.models import Critique as CritiqueRow
 from ideapress.infrastructure.db.models import Source as SourceRow
 from ideapress.infrastructure.db.models import ToolCallRecord as ToolCallRow
@@ -255,7 +256,14 @@ def research_report(runtime: Runtime, *, project_id: str) -> dict[str, Any]:
 
 
 def unit_list(runtime: Runtime, *, project_id: str) -> list[dict[str, Any]]:
-    """Every unit with its state, current version and coverage summary."""
+    """Every unit with its state, current version, requirement coverage and last validation.
+
+    ``coverage`` is ``{"satisfied", "total"}`` over the current version's recorded coverage, or
+    ``None`` before a version exists. ``last_validation`` is the newest attempt that recorded
+    checks — ``{"attempt_id", "stage", "at", "passed", "failures", "blocking_failures"}``, each
+    check counted once at its latest result (a review round records again on the same attempt),
+    ``passed`` meaning no blocking check failed — or ``None`` before any (api.md §4; row WP5).
+    """
     with runtime.storage.read() as session:
         rows = session.scalars(
             select(UnitRow).where(UnitRow.project_id == project_id).order_by(UnitRow.ordinal)
@@ -267,6 +275,31 @@ def unit_list(runtime: Runtime, *, project_id: str) -> list[dict[str, Any]]:
                 if row.current_version_id
                 else None
             )
+            covered = (
+                session.scalars(
+                    select(CoverageRow).where(CoverageRow.unit_version_id == version.id)
+                ).all()
+                if version
+                else []
+            )
+            last = session.scalars(
+                select(AttemptRow)
+                .where(
+                    AttemptRow.unit_id == row.id,
+                    AttemptRow.id.in_(select(ValidationRow.attempt_id)),
+                )
+                .order_by(AttemptRow.created_at.desc())
+                .limit(1)
+            ).first()
+            latest: dict[tuple[str, str], ValidationRow] = {}
+            if last is not None:
+                for check in session.scalars(
+                    select(ValidationRow)
+                    .where(ValidationRow.attempt_id == last.id)
+                    .order_by(ValidationRow.created_at)
+                ).all():
+                    latest[(check.check_kind, check.check_key)] = check
+            failed = [check for check in latest.values() if not check.passed]
             out.append(
                 {
                     "unit_key": row.unit_key,
@@ -279,6 +312,26 @@ def unit_list(runtime: Runtime, *, project_id: str) -> list[dict[str, Any]]:
                     "version": version.version if version else None,
                     "word_count": version.word_count if version else None,
                     "content_hash": version.content_hash if version else None,
+                    "coverage": (
+                        {
+                            "satisfied": sum(1 for entry in covered if entry.satisfied),
+                            "total": len(covered),
+                        }
+                        if version
+                        else None
+                    ),
+                    "last_validation": (
+                        {
+                            "attempt_id": last.id,
+                            "stage": last.stage,
+                            "at": last.created_at.isoformat(),
+                            "passed": not any(check.blocking for check in failed),
+                            "failures": len(failed),
+                            "blocking_failures": sum(1 for check in failed if check.blocking),
+                        }
+                        if last is not None
+                        else None
+                    ),
                 }
             )
         return out

@@ -72,6 +72,10 @@ packaging and release standards §3.
   answered coverage only. Each version now carries its `stage_run_id` and that run's attempts,
   validations, findings and critiques. Attempts in the unit detail gain `attempt_id`, and its
   validations gain the `attempt_id` they were recorded against.
+- **The unit list carries requirement coverage and the last validation** (row WP5), which api.md
+  §4 always listed: `coverage` (satisfied and total over the current version) and
+  `last_validation` (the newest attempt with checks: whether a blocking check failed, and the
+  counts).
 - **A delete can archive the project first** (row WP5), as api.md §2 said it would "when asked":
   `DELETE /projects/{id}?confirm=true&archive=true` writes the project's archive
   (`<slug>-<UTC stamp>.ideapress.zip`) into `archives/` beside the project directory before
