@@ -210,22 +210,37 @@ def update_project(request: Request, project_id: str, body: UpdateProjectRequest
 
 @router.delete("/projects/{project_id}")
 def delete_project(
-    request: Request, project_id: str, confirm: Annotated[bool, Query()] = False
+    request: Request,
+    project_id: str,
+    confirm: Annotated[bool, Query()] = False,
+    archive: Annotated[bool, Query()] = False,
 ) -> JSONResponse:
-    """Preview or perform a delete.
+    """Preview or perform a delete, archiving the project first when asked.
 
     Without ``?confirm=true`` this removes nothing and returns what *would* be removed. That is
     api.md §2's preview-then-confirm, and it is the difference between a mis-click and the loss of
-    the user's own writing.
+    the user's own writing. ``?archive=true`` with it writes the project's archive first, into
+    ``archive_directory``; an archive that cannot be written deletes nothing (row WP5).
+
+    Raises:
+        ProjectNotFound: No such project.
+        ExportFailed: The archive could not be written; nothing was deleted.
     """
-    preview = _service(request).delete(project_id, confirm=confirm)
+    from ideapress.services.project_archive import delete_project as delete_with_archive
+
+    result = delete_with_archive(
+        request.app.state.runtime, project_id=project_id, confirm=confirm, archive=archive
+    )
+    preview = result["preview"]
     return json_response(
         {
-            "deleted": confirm,
+            "deleted": result["deleted"],
             "project": _as_payload(preview.project),
             "source_count": preview.source_count,
             "directory": str(preview.directory) if preview.directory else None,
             "directory_bytes": preview.directory_bytes,
+            "archive_directory": result["archive_directory"],
+            "archive": result["archive"],
         }
     )
 

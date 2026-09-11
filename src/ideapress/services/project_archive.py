@@ -53,6 +53,8 @@ __all__ = [
     "MAX_RATIO",
     "MAX_TOTAL_BYTES",
     "ArchiveReport",
+    "archive_directory",
+    "delete_project",
     "export_project_archive",
     "import_project_archive",
     "inspect_archive",
@@ -371,6 +373,63 @@ def export_project_archive(runtime: Runtime, *, project_id: str, destination: Pa
         extra={"project_id": project_id, "path": str(target), "units": len(manifest["units"])},
     )
     return target
+
+
+def archive_directory(runtime: Runtime) -> Path:
+    """Where ``DELETE /projects/{id}?archive=true`` writes: ``archives/`` beside the projects.
+
+    Beside the project directory, never inside a project's own: a delete removes that directory,
+    and an archive written into it would be deleted with the project it was meant to keep.
+    """
+    return Path(str(runtime.settings.storage.project_dir)).parent / "archives"
+
+
+def delete_project(
+    runtime: Runtime, *, project_id: str, confirm: bool, archive: bool
+) -> dict[str, Any]:
+    """Preview or perform a delete, writing the project's archive first when asked (row WP5).
+
+    Args:
+        runtime: The process's handles.
+        project_id: Which project.
+        confirm: Whether to delete. Without it nothing is written or removed.
+        archive: Whether a confirmed delete writes the project's archive first, as
+            ``<slug>-<UTC stamp>.ideapress.zip`` in :func:`archive_directory` — the file
+            ``ideapress project import`` reads back.
+
+    Returns:
+        ``preview`` (the :class:`~ideapress.services.projects.DeletePreview`), ``deleted``,
+        ``archive_directory`` and ``archive`` (``{"path", "size_bytes"}``, or ``None`` when none
+        was written).
+
+    Raises:
+        ProjectNotFound: No such project.
+        ExportFailed: The archive could not be written. **Nothing was deleted.**
+    """
+    from ideapress.errors import ExportFailed
+
+    preview = runtime.projects.preview_delete(project_id)
+    directory = archive_directory(runtime)
+    written: dict[str, Any] | None = None
+    if confirm and archive:
+        stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+        target = directory / f"{preview.project.slug}-{stamp}.ideapress.zip"
+        try:
+            path = export_project_archive(runtime, project_id=project_id, destination=target)
+        except OSError as exc:
+            message = (
+                f"The archive could not be written to {directory}: {exc}. Nothing was deleted."
+            )
+            raise ExportFailed(message, details={"path": str(target)}) from exc
+        written = {"path": str(path), "size_bytes": path.stat().st_size}
+    if confirm:
+        preview = runtime.projects.delete(project_id, confirm=True)
+    return {
+        "preview": preview,
+        "deleted": confirm,
+        "archive_directory": str(directory),
+        "archive": written,
+    }
 
 
 def import_project_archive(

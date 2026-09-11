@@ -12,7 +12,13 @@ from mirrorwall import json_response
 # `app.openapi()` raise — which is a 500 on /api/v1/docs that no other test would notice.
 from starlette.responses import JSONResponse, PlainTextResponse, Response
 
-from ideapress.services.export import FORMATS, build_document, export_project, render
+from ideapress.services.export import (
+    FORMAT_DESCRIPTIONS,
+    FORMATS,
+    build_document,
+    export_project,
+    render,
+)
 
 __all__ = ["router"]
 
@@ -53,7 +59,12 @@ def post_export(
 
 @router.get("/export/formats")
 def list_formats() -> JSONResponse:
-    """The export formats this build ships, with their file extensions."""
+    """The export formats this build ships, their file extensions and what each contains."""
     return json_response(
-        {"formats": [{"format": k, "extension": v} for k, v in sorted(FORMATS.items())]}
+        {
+            "formats": [
+                {"format": name, "extension": extension, "description": FORMAT_DESCRIPTIONS[name]}
+                for name, extension in sorted(FORMATS.items())
+            ]
+        }
     )

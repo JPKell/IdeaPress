@@ -328,7 +328,7 @@
     },
     "/api/v1/export/formats": {
       "get": {
-        "description": "The export formats this build ships, with their file extensions.",
+        "description": "The export formats this build ships, their file extensions and what each contains.",
         "operationId": "list_formats_api_v1_export_formats_get",
         "responses": {
           "200": {
@@ -519,7 +519,7 @@
     },
     "/api/v1/projects/{project_id}": {
       "delete": {
-        "description": "Preview or perform a delete.\n\nWithout ``?confirm=true`` this removes nothing and returns what *would* be removed. That is\napi.md \u00a72's preview-then-confirm, and it is the difference between a mis-click and the loss of\nthe user's own writing.",
+        "description": "Preview or perform a delete, archiving the project first when asked.\n\nWithout ``?confirm=true`` this removes nothing and returns what *would* be removed. That is\napi.md \u00a72's preview-then-confirm, and it is the difference between a mis-click and the loss of\nthe user's own writing. ``?archive=true`` with it writes the project's archive first, into\n``archive_directory``; an archive that cannot be written deletes nothing (row WP5).\n\nRaises:\n    ProjectNotFound: No such project.\n    ExportFailed: The archive could not be written; nothing was deleted.",
         "operationId": "delete_project_api_v1_projects__project_id__delete",
         "parameters": [
           {
@@ -538,6 +538,16 @@
             "schema": {
               "default": false,
               "title": "Confirm",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "archive",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Archive",
               "type": "boolean"
             }
           }

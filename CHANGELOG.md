@@ -72,6 +72,12 @@ packaging and release standards §3.
   answered coverage only. Each version now carries its `stage_run_id` and that run's attempts,
   validations, findings and critiques. Attempts in the unit detail gain `attempt_id`, and its
   validations gain the `attempt_id` they were recorded against.
+- **A delete can archive the project first** (row WP5), as api.md §2 said it would "when asked":
+  `DELETE /projects/{id}?confirm=true&archive=true` writes the project's archive
+  (`<slug>-<UTC stamp>.ideapress.zip`) into `archives/` beside the project directory before
+  anything is removed, and answers its path and size; an archive that cannot be written is
+  `500 EXPORT_FAILED` and deletes nothing. Every preview names `archive_directory`.
+  `GET /export/formats` gains each format's `description`, the export page's own words.
 - **Operator prompt overrides** (row W9, prompt standards §6). A record at
   `$XDG_CONFIG_HOME/ideapress/prompts/<prompt_id>.json` replaces the shipped record of the same
   `prompt_id` when the pack loads, and every attempt that rendered it is marked

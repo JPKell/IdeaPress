@@ -232,7 +232,7 @@ def export_dialog(
     deciding what leaves this application and in what shape, so the page says what each format
     contains rather than offering three unexplained buttons.
     """
-    from ideapress.services.export import FORMATS
+    from ideapress.services.export import FORMAT_DESCRIPTIONS, FORMATS
     from ideapress.services.unit_reports import unit_list
 
     units = unit_list(_runtime(request), project_id=project_id)
@@ -248,7 +248,7 @@ def export_dialog(
             {
                 "format": name,
                 "extension": extension,
-                "describes": _FORMAT_DESCRIPTIONS.get(name, ""),
+                "describes": FORMAT_DESCRIPTIONS.get(name, ""),
             }
             for name, extension in sorted(FORMATS.items())
         ],
@@ -257,23 +257,6 @@ def export_dialog(
         uncommitted=[unit["unit_key"] for unit in units if unit["state"] != "committed"],
         written=written,
     )
-
-
-_FORMAT_DESCRIPTIONS = {
-    "markdown": (
-        "The units in reading order, as plain Markdown. No provenance, no coverage — the document "
-        "as a reader would receive it."
-    ),
-    "html": (
-        "One self-contained file with the styling inline. It opens with no network at all: no "
-        "stylesheet link, no script, no font, no image from anywhere."
-    ),
-    "json": (
-        "Everything: the units, their requirement coverage, the validation results and the "
-        "provenance of every committed version. The format to keep, and the one to diff."
-    ),
-}
-"""What each format actually contains, in the words a person choosing between them needs."""
 
 
 @ui_router.post("/projects/{project_id}/export")

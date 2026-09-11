@@ -435,3 +435,59 @@ def test_the_history_of_an_unknown_unit_is_a_named_404(client: TestClient) -> No
     response = client.get(f"/api/v1/projects/{project_id}/units/U-09/history")
     assert response.status_code == 404
     assert response.json()["error"]["code"] == "UNIT_NOT_FOUND"
+
+
+# --- Export formats, and a delete that archives first ---------------------------------------------
+
+
+def test_export_formats_say_what_each_contains(client: TestClient) -> None:
+    formats = client.get("/api/v1/export/formats").json()["formats"]
+    assert [entry["format"] for entry in formats] == ["html", "json", "markdown"]
+    assert all(entry["description"] for entry in formats)
+    html = next(entry for entry in formats if entry["format"] == "html")
+    assert "no network" in html["description"]
+
+
+def test_a_delete_previews_where_the_archive_goes_then_archives_before_deleting(
+    client: TestClient,
+) -> None:
+    from pathlib import Path
+
+    from ideapress.services.project_archive import inspect_archive
+
+    project_id = _drafted(client)
+    preview = client.delete(f"/api/v1/projects/{project_id}", params={"archive": "true"}).json()
+    assert (preview["deleted"], preview["archive"]) == (False, None)
+    directory = Path(preview["archive_directory"])
+    assert not directory.exists(), "a preview writes nothing"
+
+    done = client.delete(
+        f"/api/v1/projects/{project_id}", params={"confirm": "true", "archive": "true"}
+    ).json()
+    assert done["deleted"] is True
+    written = Path(done["archive"]["path"])
+    assert written.parent == directory
+    assert written.name.startswith("local-inference-")
+    assert done["archive"]["size_bytes"] == written.stat().st_size
+    report = inspect_archive(written)
+    assert report.safe
+    assert report.project_title == "Local inference"
+    assert client.get(f"/api/v1/projects/{project_id}").status_code == 404
+
+
+def test_an_archive_that_cannot_be_written_deletes_nothing(client: TestClient) -> None:
+    from pathlib import Path
+
+    project_id = _drafted(client)
+    preview = client.delete(f"/api/v1/projects/{project_id}").json()
+    blocked = Path(preview["archive_directory"])
+    blocked.parent.mkdir(parents=True, exist_ok=True)
+    blocked.write_text("a file where the archive directory would be", encoding="utf-8")
+
+    response = client.delete(
+        f"/api/v1/projects/{project_id}", params={"confirm": "true", "archive": "true"}
+    )
+    assert response.status_code == 500
+    assert response.json()["error"]["code"] == "EXPORT_FAILED"
+    assert "Nothing was deleted" in response.json()["error"]["message"]
+    assert client.get(f"/api/v1/projects/{project_id}").status_code == 200

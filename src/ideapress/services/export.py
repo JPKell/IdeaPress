@@ -49,6 +49,7 @@ if TYPE_CHECKING:
 
 __all__ = [
     "FORMATS",
+    "FORMAT_DESCRIPTIONS",
     "build_document",
     "export_project",
     "refuse_partial_export",
@@ -59,6 +60,24 @@ logger = logging.getLogger(__name__)
 
 FORMATS: Final[dict[str, str]] = {"markdown": "md", "html": "html", "json": "json"}
 """The three shipped at 1.0, and their file extensions."""
+
+FORMAT_DESCRIPTIONS: Final[dict[str, str]] = {
+    "markdown": (
+        "The units in reading order, as plain Markdown. No provenance, no coverage — the document "
+        "as a reader would receive it."
+    ),
+    "html": (
+        "One self-contained file with the styling inline. It opens with no network at all: no "
+        "stylesheet link, no script, no font, no image from anywhere."
+    ),
+    "json": (
+        "Everything: the units, their requirement coverage, the validation results and the "
+        "provenance of every committed version. The format to keep, and the one to diff."
+    ),
+}
+"""What each format actually contains, in the words a person choosing between them needs.
+
+Here rather than on the export page since row WP5, so ``GET /export/formats`` says it too."""
 
 _RENDERERS: Final[dict[str, Callable[[ExportDocument], str]]] = {
     "markdown": render_markdown,
