@@ -282,6 +282,12 @@ class Attempt(Base):
     stage: Mapped[str] = mapped_column(String(30), nullable=False)
     attempt: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     round: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # Which physical model call within that attempt (row WPF7, migration 0012). `0` is the call
+    # whose answer the attempt kept; `1` and up are calls the gateway made and discarded — an empty
+    # generation it retried (`InferenceGateway._retry_empty_truncation`). A discarded call is still
+    # a call the run paid for, so it is a row of its own rather than a footnote on the kept one,
+    # and this column is what lets it share the attempt's number instead of stealing the next one.
+    transport_call: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     backend: Mapped[str] = mapped_column(String(40), nullable=False, default="")
     backend_mode: Mapped[str] = mapped_column(String(40), nullable=False, default="")
     model_provider_kind: Mapped[str | None] = mapped_column(String(40), nullable=True)
@@ -331,6 +337,7 @@ class Attempt(Base):
             "stage",
             "attempt",
             "round",
+            "transport_call",
             name="uq_attempts_run_unit_stage_attempt_round",
         ),
         # Data model §5: attempt lookup uses `(stage_run_id, unit_id, stage)`.

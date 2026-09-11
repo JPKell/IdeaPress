@@ -45,11 +45,11 @@ if TYPE_CHECKING:
     from sqlalchemy.orm import Session
     from toolyard import ToolCallRecord
 
-    from ideapress.domain.inference import StageResult
+    from ideapress.domain.inference import StageRequest, StageResult
     from ideapress.domain.stages import StageId
     from ideapress.services.database import Database
     from ideapress.services.events import StageEventSink
-    from ideapress.services.inference import InferenceGateway
+    from ideapress.services.inference import DiscardedCallRecorder, InferenceGateway
 
 __all__ = ["StageRunner", "StageTask", "boot_id", "process_is_alive", "record_attempt"]
 # `_govern_attempt` and `_pause_for_exceeded_budget` are intentionally private: row J1's tests
@@ -133,6 +133,7 @@ def record_attempt(
     unit_id: str | None = None,
     attempt: int = 1,
     round_: int = 0,
+    transport_call: int = 0,
     prompt_id: str | None = None,
     prompt_version: str | None = None,
     prompt_sha256: str | None = None,
@@ -153,6 +154,11 @@ def record_attempt(
         unit_id: Which unit, when the attempt is about one.
         attempt: Which attempt within the stage.
         round_: The revision round; 0 for the first pass.
+        transport_call: Which physical model call within that attempt (row WPF7). 0 — the default,
+            and what every stage passes — is the call whose answer the attempt kept. 1 and up are
+            calls the gateway made and discarded, an empty generation it retried: recorded because
+            the run paid for them, and numbered here rather than given the next attempt number,
+            which belongs to the stage's content attempts.
         prompt_id, prompt_version, prompt_sha256: Which prompt record produced it.
         outcome: ``completed``, ``validation_failed``, ``provider_error``, ``timeout``,
             ``cancelled``, ``content_rejected`` or ``refused``. The last two are different facts:
@@ -194,6 +200,7 @@ def record_attempt(
             stage=stage,
             attempt=attempt,
             round=round_,
+            transport_call=transport_call,
             prompt_id=prompt_id,
             prompt_version=prompt_version,
             prompt_sha256=prompt_sha256,
@@ -485,7 +492,15 @@ class StageRunner:
         # request, which gives the backend an `X-Request-ID` and — for a routing backend that
         # replays by idempotency key — is what makes a retry new work rather than a replay of the
         # previous run's answer, including a replay of its *failure*.
-        self.gateway.begin_run(task.run_id, model_hint=task.options.get("model_hint"))
+        # The gateway also gets this run's cancel check and its provenance sink, so that the
+        # calls no stage body can see — the transport retry's second call — are checked and
+        # recorded like every other (row WPF7).
+        self.gateway.begin_run(
+            task.run_id,
+            model_hint=task.options.get("model_hint"),
+            checkpoint=lambda: self.checkpoint(task),
+            record_discarded=self._discarded_call_recorder(task),
+        )
         with correlation(project_id=task.project_id, stage=task.stage):
             try:
                 body(task)
@@ -567,6 +582,72 @@ class StageRunner:
             return False
         task.request_cancel()
         return True
+
+    def _discarded_call_recorder(self, task: StageTask) -> DiscardedCallRecorder:
+        """Build the callable the gateway records a thrown-away model call with (row WPF7).
+
+        Args:
+            task: The running stage, which owns the run every row is written against.
+
+        Returns:
+            A recorder that writes one attempt row per discarded call, numbered
+            ``transport_call`` 1 and up, with the call's tokens — so its spend is debited and a
+            reader can see what the run paid for an answer it never used.
+
+        The gateway holds this rather than importing :func:`record_attempt` itself: the one door to
+        a model sits below the runner, and a door that wrote database rows would be two things.
+        """
+
+        def record(
+            request: StageRequest,
+            result: StageResult,
+            *,
+            transport_call: int,
+            error_code: str,
+            error_text: str,
+        ) -> None:
+            record_attempt(
+                self._database,
+                stage_run_id=task.run_id,
+                stage=request.stage,
+                result=result,
+                unit_id=self._unit_row_id(task.project_id, request.correlation.unit_id),
+                attempt=request.correlation.attempt,
+                round_=request.correlation.round,
+                transport_call=transport_call,
+                prompt_id=request.prompt_id,
+                prompt_version=request.prompt_version,
+                prompt_sha256=request.prompt_sha256,
+                outcome="provider_error",
+                error_code=error_code,
+                error_text=error_text,
+                store_content=self.store_content,
+            )
+
+        return record
+
+    def _unit_row_id(self, project_id: str, unit_key: str | None) -> str | None:
+        """Translate a request's unit key into the row identifier an attempt records.
+
+        Args:
+            project_id: The project the run belongs to.
+            unit_key: The key a request carries in its correlation (``U-01``), or ``None`` for a
+                whole-project stage.
+
+        Returns:
+            The unit's row id, or ``None`` when there is no unit or no such row. A missing row is
+            not worth failing a provenance write for: the attempt is still the run's, and the run
+            names the project.
+        """
+        if not unit_key:
+            return None
+        with self._database.read() as session:
+            row = session.scalars(
+                select(UnitRow).where(
+                    UnitRow.project_id == project_id, UnitRow.unit_key == unit_key
+                )
+            ).first()
+        return row.id if row is not None else None
 
     def checkpoint(self, task: StageTask) -> None:
         """Raise if this stage has been cancelled. Called at every model-call boundary.

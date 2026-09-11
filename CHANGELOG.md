@@ -21,6 +21,17 @@ packaging and release standards §3.
 
 ### Fixed
 
+- **A cancel is honoured across the empty-generation retry, and every model call is recorded**
+  (row WPF7, WP6 finding 8). The cancel flag was only read by the stage bodies, and the gateway's
+  transport retry of an empty generation happens underneath them: a `project_review` cancelled
+  three seconds into its first call made a second 2 m 47 s call and ended `failed`. The check now
+  sits at the one door to a model, immediately before every call the fallback and the retry
+  included, so a cancel during an empty generation makes no second call and the run ends
+  `cancelled`. A discarded call is also an attempt row of its own — new `transport_call` column
+  (migration `0012`), `1` and up, with its tokens and its budget debit — where before a run that
+  exhausted its output budget twice recorded no attempt at all and could not say what it had spent.
+  `GET /projects/{id}/tasks/{task_id}` and the unit provenance report both carry `transport_call`.
+
 - **Revising a unit works** (row WP5). `POST /units/{key}/revise` and `ideapress unit revise`
   started a *draft* run, whose first move (`committed → drafting`) is no arrow in data model §3,
   so every revision of a committed unit ended `stage.failed`; its instructions were recorded and

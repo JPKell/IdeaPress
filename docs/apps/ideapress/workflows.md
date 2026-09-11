@@ -295,6 +295,8 @@ only wording differing.
 | The configured LoadCoach is older than 1.1 and a stage is pinned, or the declared classification is above the default | `BACKEND_VERSION_MISMATCH` naming both versions. The 1.1 fields are not silently dropped: dropping the pin would serve the base, and dropping the classification would under-declare — both are the failure the field exists to prevent |
 | A model override was sent and a different model answered | Recorded as a `model_override_not_honoured` degradation naming both models. A pin is a request, not a guarantee, and LoadCoach falling back to a working model is better than a failed stage — but the user is told (ADR-0040) |
 | The backend routes internally (`routes_internally`) | IdeaPress resolves no `[models.stages]` binding, requires none, and performs no unload: model choice and residency belong to the backend that owns them (ADR-0040, [ADR-0038 §1](../../adr/0038-one-model-at-a-time-per-gpu.md)) |
+| The model returned **no text at all** after exhausting its output budget | One transport retry, in Python, at the gateway — the provider returned an empty body, so there is nothing to validate and nothing a model decided. The discarded call is an attempt row of its own (`transport_call` 1) with its tokens and its debit: it is spend, and a run that cannot say what it spent is the gap WP6 found. A second empty answer fails with `CONTEXT_LIMIT_EXCEEDED` naming the budget, and it too is recorded (`transport_call` 2) |
+| A cancel arrives while a model call is in flight | Honoured at the **next model-call boundary**, and every model call is a boundary — the transport retry included, which no stage body can see. The gateway checks the run's cancel flag immediately before each call, so a cancel during an empty generation makes no second call and the run ends `cancelled`, not `failed` (row WPF7) |
 | Context overflow | Reduce bounded context (documented reduction order), then fail with numbers |
 | Next stage's binding names a different model from the resident one | Unload the resident model, then load the incoming one — never both at once ([ADR-0038](../../adr/0038-one-model-at-a-time-per-gpu.md)). The unload and the reload are recorded on the attempt as a `model_switch` degradation with their durations, because on a single-GPU machine a switch costs a full reload and the user is entitled to see what the two-model default is costing them |
 | Preflight finds less free VRAM than the model needs with room for its context | `INSUFFICIENT_VRAM` naming both figures; the stage is not started and the project is untouched and resumable. Only when `ideapress[telemetry]` is installed — without it the invariant holds by serialising and unloading, and no preflight runs |
@@ -351,8 +353,8 @@ A commit is atomic and records, per unit:
 ```text
 unit_id · version · content_hash · committed_at
 workflow_id + version · content_type + version
-stage attempts (each: stage, attempt, backend, model identity, adapter subject, prompt_id +
-                version + hash, usage, timing, outcome, degradations)
+stage attempts (each: stage, attempt, transport_call, backend, model identity, adapter subject,
+                prompt_id + version + hash, usage, timing, outcome, degradations)
 validation report · audit findings · critique verdict · revision rounds and stop reason
 requirement coverage (per requirement: satisfied, by which check, by which stage)
 routing metadata when the backend supplied it — decision id, score, flags, the selected model's

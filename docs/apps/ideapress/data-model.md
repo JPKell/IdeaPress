@@ -98,6 +98,15 @@ The unit of provenance: one bounded model task (or one deterministic stage step)
 ```text
 id ULID PK · stage_run_id FK ON DELETE CASCADE · unit_id FK NULL
 stage TEXT · attempt INT · round INT                    -- revision round, 0 for the first pass
+transport_call INT                                      -- which physical model call within that
+                                                        -- attempt (row WPF7, 0012): 0 = the call
+                                                        -- whose answer the attempt kept, 1+ = a
+                                                        -- call the gateway discarded and retried
+                                                        -- (an empty generation). A discarded call
+                                                        -- is spend, so it is a row with its own
+                                                        -- tokens and debit, sharing the attempt's
+                                                        -- number — the transport retry is not one
+                                                        -- of `max_attempts_per_stage`
 backend TEXT · backend_mode TEXT
 model_provider_kind · model_provider_name · model_digest NULL · model_canonical_id NULL
 prompt_id · prompt_version · prompt_sha256 · rendered_prompt_sha256
@@ -123,7 +132,7 @@ idempotency_key TEXT NULL                               -- sent to LoadCoach; on
                                                         -- retried submission replays rather than
                                                         -- creating a second job
 degradations_json · error_code · error_text · created_at
-UNIQUE (stage_run_id, unit_id, stage, attempt, round)
+UNIQUE (stage_run_id, unit_id, stage, attempt, round, transport_call)
 ```
 
 ### `validations`
