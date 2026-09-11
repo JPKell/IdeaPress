@@ -43,6 +43,26 @@ def no_network(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) 
     monkeypatch.setattr(socket.socket, "connect", _guard)
 
 
+@pytest.fixture(scope="session", autouse=True)
+def isolated_session(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Path]:
+    """The same redirection as :func:`isolated_environment`, for the whole session.
+
+    A module-scoped fixture is built before any function-scoped one, so without this it saw the
+    real environment: three of them built applications over the operator's real
+    ``~/.local/share/ideapress/`` on every run from 2026-08-31 until row WI1 found 1186 test
+    projects there. Each test still gets its own directories from :func:`isolated_environment`.
+    """
+    root = tmp_path_factory.mktemp("session-isolation")
+    with pytest.MonkeyPatch.context() as patch:
+        for key in list(os.environ):
+            if key.startswith("IDEAPRESS_"):
+                patch.delenv(key, raising=False)
+        for name in ("XDG_DATA_HOME", "XDG_CONFIG_HOME", "XDG_STATE_HOME"):
+            patch.setenv(name, str(root / name.lower()))
+        patch.setenv("IDEAPRESS_DATA_DIR", str(root / "data"))
+        yield root
+
+
 @pytest.fixture(autouse=True)
 def isolated_environment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     """Point every XDG path at a temporary directory and clear the ``IDEAPRESS_`` prefix."""
