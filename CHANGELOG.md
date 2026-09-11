@@ -7,6 +7,14 @@ packaging and release standards §3.
 
 ## [Unreleased]
 
+### Fixed
+
+- **`ideapress db backup` writes a backup again.** It handed `weightsdb.backup` the destination
+  *directory* where a file path is expected, so it failed with `IsADirectoryError` with or
+  without `--output` (found at WeightRoomGym row WI1, `history/handoffs/WI1_HANDOFF.md` §7; fixed
+  at row W10). The file is `ideapress-<UTC stamp>.sqlite3` inside `--output` or the default
+  `<data>/backups/`; `--keep` rotates the default directory only.
+
 ### Added
 
 - **Operator prompt overrides** (row W9, prompt standards §6). A record at

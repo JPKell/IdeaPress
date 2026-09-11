@@ -91,7 +91,13 @@ def backup_command(
     output: Annotated[str | None, typer.Option("--output", help="Destination directory.")] = None,
     keep: Annotated[int, typer.Option("--keep", help="How many backups to retain.")] = 5,
 ) -> None:
-    """Write a consistent backup. Mode: local."""
+    """Write a consistent backup. Mode: local.
+
+    The file is ``ideapress-<UTC stamp>.sqlite3`` inside ``--output`` (a directory) or, by
+    default, ``<data>/backups/``. Rotation (``--keep``) applies to the default directory only —
+    a directory the operator named is never pruned (``weightsdb.backup``'s own rule).
+    """
+    from datetime import UTC, datetime
     from pathlib import Path
 
     from weightsdb import backup
@@ -101,7 +107,16 @@ def backup_command(
     for database in _database():
         destination = Path(output) if output else data_dir() / "backups"
         destination.mkdir(parents=True, exist_ok=True, mode=0o700)
-        result = backup(database.engine, destination, keep=keep, prefix="ideapress")
+        # `weightsdb.backup` takes the backup *file*; handing it the directory raised
+        # IsADirectoryError with or without --output (WI1_HANDOFF.md §7; fixed at row W10).
+        stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
+        target = destination / f"ideapress-{stamp}.sqlite3"
+        result = backup(
+            database.engine,
+            target,
+            keep=None if output else keep,
+            prefix=None if output else "ideapress",
+        )
         typer.echo(f"Wrote {result.path} ({result.size_bytes} bytes).")
 
 

@@ -237,3 +237,20 @@ def test_help_does_not_import_the_web_layer() -> None:
         cwd=Path(__file__).resolve().parents[2],
     )
     assert output.stdout.strip() == ""
+
+
+def test_db_backup_writes_a_file_into_the_directory_named(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`ideapress db backup` handed weightsdb the *directory* and failed with IsADirectoryError,
+    with or without --output (WI1_HANDOFF.md §7). It writes a stamped file inside it now."""
+    monkeypatch.setenv("IDEAPRESS_STORAGE__DATABASE_URL", f"sqlite:///{tmp_path}/ideapress.sqlite3")
+    assert runner.invoke(app, ["db", "upgrade"]).exit_code == 0
+    named = tmp_path / "named"
+    result = runner.invoke(app, ["db", "backup", "--output", str(named)])
+    assert result.exit_code == 0, result.output
+    (written,) = list(named.glob("ideapress-*.sqlite3"))
+    assert written.stat().st_size > 0 and written.name in result.stdout
+    default = runner.invoke(app, ["db", "backup"])
+    assert default.exit_code == 0, default.output
+    assert "/backups/ideapress-" in default.stdout
