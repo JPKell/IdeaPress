@@ -25,6 +25,8 @@ from ideapress.errors import StagePreconditionFailed
 from ideapress.services.events import TERMINAL_STAGE_EVENTS
 
 if TYPE_CHECKING:
+    from mirrorwall import Event
+
     from ideapress.domain.stages import StageId
 
 __all__ = ["router"]
@@ -126,6 +128,41 @@ async def get_task_stream(request: Request, project_id: str, task_id: str) -> St
         runtime.events.source(runtime.storage, task_id),
         stream_id=task_id,
         last_event_id=request.headers.get("last-event-id"),
+        generator=GENERATOR,
+        heartbeat_seconds=15.0,
+        poll_interval_seconds=0.05,
+        terminal_events=TERMINAL_STAGE_EVENTS,
+    )
+
+
+def _stage_log_line(event: Event) -> str | None:
+    """One stage event as a ``log_pane`` line — the event's own words, never model output."""
+    from mirrorwall import log_line
+
+    payload = dict(event.payload)
+    kind = str(payload.get("event_type") or event.type)
+    level = "error" if kind.endswith("failed") else "warning" if "retry" in kind else "info"
+    message = payload.get("message")
+    text = kind if not isinstance(message, str) or not message else f"{kind} — {message}"
+    return log_line(text, level=level)
+
+
+@router.get("/projects/{project_id}/tasks/{task_id}/log", include_in_schema=False)
+async def task_log(request: Request, project_id: str, task_id: str) -> StreamingResponse:
+    """The stage's events as a MirrorWall ``log_pane`` stream (row WM2).
+
+    The same source and loop as ``/api/v1/projects/{project_id}/tasks/{task_id}/stream``,
+    rendered as ``log`` frames the pane swaps in and closed with ``log.closed`` after the terminal
+    event; the enveloped stream stays the API.
+    """
+    from mirrorwall import log_pane_response
+
+    runtime = _runtime(request)
+    return log_pane_response(
+        runtime.events.source(runtime.storage, task_id),
+        stream_id=task_id,
+        last_event_id=request.headers.get("last-event-id"),
+        render_line=_stage_log_line,
         generator=GENERATOR,
         heartbeat_seconds=15.0,
         poll_interval_seconds=0.05,

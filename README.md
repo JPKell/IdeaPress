@@ -40,7 +40,7 @@ Declared version ranges from `pyproject.toml` — kept from drifting by
 | `setspec` | `>=0.5,<0.7` |
 | `modelrack` | `>=0.7,<0.9` |
 | `weightsdb` | `>=0.2,<0.3` |
-| `mirrorwall` | `>=0.2.2,<0.3` |
+| `mirrorwall` | `>=0.3.1,<0.4` |
 | `loadledger` | `>=0.3,<0.4` |
 | `commissioner` | `>=0.1.1,<0.2` |
 | `cutctx` | `>=0.1,<0.2` |

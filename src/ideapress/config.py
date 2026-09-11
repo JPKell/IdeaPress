@@ -766,6 +766,27 @@ class LoggingSettings(BaseModel):
     format: Literal["text", "json"] = "text"
 
 
+class ConsoleSettings(BaseModel):
+    """Where WeightRoomGym is, when one fronts this application (row WM2).
+
+    Set, the top bar gains the suite's tab strip: WeightRoomGym itself and the peer applications
+    through it (``<url>/apps/<name>``). Unset — the default — nothing is rendered: an
+    application knows only its own port, and a strip of loopback links another machine cannot
+    reach would be a strip of dead links.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    url: str = Field(
+        default="",
+        description=(
+            "WeightRoomGym's base URL (https://<host>:8769); empty renders no application tab "
+            "strip."
+        ),
+        examples=["https://jordan-main.local:8769"],
+    )
+
+
 class Settings(BaseModel):
     """The complete, validated IdeaPress configuration.
 
@@ -786,6 +807,7 @@ class Settings(BaseModel):
     pricing: PricingSettings = Field(default_factory=PricingSettings)
     budget: BudgetSettings = Field(default_factory=BudgetSettings)
     logging: LoggingSettings = Field(default_factory=LoggingSettings)
+    console: ConsoleSettings = Field(default_factory=ConsoleSettings)
 
     @model_validator(mode="after")
     def _pins_need_the_routing_backend(self) -> Settings:
@@ -1309,4 +1331,8 @@ allow_remote = false        # a remote backend sends your drafts off this machin
 [logging]
 level = "INFO"
 include_content = false     # your prompts and drafts are never logged by default
+
+[console]
+url = ""                    # WeightRoomGym's URL (https://<host>:8769); set, the top bar links
+                            # to it and to the peer applications through it (row WM2)
 """

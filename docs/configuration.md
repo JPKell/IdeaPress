@@ -195,6 +195,14 @@ Structured logging. Project content is never logged at INFO or above (spec §14)
 | `include_content` | bool | `false` | `IDEAPRESS_LOGGING__INCLUDE_CONTENT` | Store and log prompt and response text. Off by default: this is the user's private work, and hashes are enough for provenance. |
 | `format` | one of `text` | `json` | `"text"` | `IDEAPRESS_LOGGING__FORMAT` |  |
 
+## `[console]`
+
+Where WeightRoomGym is, when one fronts this application (row WM2).
+
+| Key | Type | Default | Environment variable | Notes |
+| --- | --- | --- | --- | --- |
+| `url` | str | *(empty)* | `IDEAPRESS_CONSOLE__URL` | WeightRoomGym's base URL (https://<host>:8769); empty renders no application tab strip. |
+
 ## Refusals
 
 Some values are refused at start-up rather than accepted and worked around, because silently

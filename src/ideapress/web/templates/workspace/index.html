@@ -8,11 +8,11 @@
    Works with JavaScript disabled (ADR-0020). The navigator is links, every action is a form, and
    the live region is filled by `workspace.js` only as an enhancement. #}
 {% extends "base.html" %}
-{% from "mirrorwall/components.html" import badge, empty_state, kv_list %}
-{% block head %}<link rel="stylesheet" href="{{ 'css/workspace.css' | asset_url }}">{% endblock %}
+{% from "mirrorwall/components.html" import badge, empty_state, kv_list, log_pane %}
+{% block head %}<link rel="stylesheet" href="{{ 'css/workspace.css' | app_asset_url }}">{% endblock %}
 {% block scripts %}
-<script src="{{ 'js/workspace.js' | asset_url }}" defer></script>
-<script src="{{ 'js/diff.js' | asset_url }}" defer></script>
+<script src="{{ 'js/workspace.js' | app_asset_url }}" defer></script>
+<script src="{{ 'js/diff.js' | app_asset_url }}" defer></script>
 {% endblock %}
 {% block content %}
 
@@ -70,7 +70,9 @@
   <h3 id="live-heading">A stage is running</h3>
   <p data-stage-status role="status">Reload this page to see progress. With JavaScript enabled it
      updates here as it happens.</p>
-  <ul class="stage-log" data-stage-log aria-live="polite"></ul>
+  {#- MirrorWall 0.3's log pane (row WM2): the stage's own events as log frames, bounded and
+      pausable, closed on the terminal event; workspace.js keeps the status line and the reload. -#}
+  {{ log_pane("stage-log", stream_url="/api/v1/projects/" ~ project.id ~ "/tasks/" ~ running_task_id ~ "/log", label="Stage events") }}
 </section>
 {% endif %}
 

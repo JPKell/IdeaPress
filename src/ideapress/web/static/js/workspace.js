@@ -30,6 +30,7 @@
   var source = new EventSource(url);
 
   function append(text, kind) {
+    if (!log) { return; } // the events list is MirrorWall's log pane since row WM2
     var line = document.createElement("li");
     line.textContent = text; // textContent, never innerHTML: this is model output (risk S1).
     if (kind) {

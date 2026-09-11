@@ -69,6 +69,8 @@ def workspace_page(
         "workspace/index.html",
         page="projects",
         page_title=f"{view['project']['title']} — workspace",
+        # htmx only while a stage runs (ADR-0128): the log pane's SSE region is the one swap.
+        mirrorwall={"htmx": bool(view.get("running_task_id"))},
         **view,
     )
 

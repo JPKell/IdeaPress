@@ -6,6 +6,7 @@
     "budget.per_output_token_ceiling",
     "budget.per_project_money_ceiling",
     "budget.per_project_token_ceiling",
+    "console.url",
     "execution.max_concurrent_stages",
     "execution.unload_before_model_switch",
     "inference.data_classification",
@@ -50,11 +51,11 @@
     "$defs": {
       "BudgetSettings": {
         "additionalProperties": false,
-        "description": "``[budget]`` — LoadLedger's two ceilings, and how a partial price counts (D1, D4, ADR-0069).\n\nEvery ceiling is optional and independent: naming neither the money nor the token half of a\nceiling means that ceiling does not exist, and the ledger still accumulates and still renders\n(row J1 exit 1). ``per_output_*`` binds one unit's own attempts (or, for a stage with no unit —\n``plan``, ``project_review`` — the project's pseudo-run); ``per_project_*`` binds every attempt\ntagged with the project, lifetime, and never resets.",
+        "description": "``[budget]`` \u2014 LoadLedger's two ceilings, and how a partial price counts (D1, D4, ADR-0069).\n\nEvery ceiling is optional and independent: naming neither the money nor the token half of a\nceiling means that ceiling does not exist, and the ledger still accumulates and still renders\n(row J1 exit 1). ``per_output_*`` binds one unit's own attempts (or, for a stage with no unit \u2014\n``plan``, ``project_review`` \u2014 the project's pseudo-run); ``per_project_*`` binds every attempt\ntagged with the project, lifetime, and never resets.",
         "properties": {
           "partial_pricing": {
             "default": "floor",
-            "description": "How a money ceiling treats a debit whose estimate did not total (ADR-0069). 'floor': the ceiling may fire late, by the unreported portion. 'strict': such a debit counts as exceeding, so the ceiling never binds late — at the cost of tripping on the first remote response a provider does not fully report.",
+            "description": "How a money ceiling treats a debit whose estimate did not total (ADR-0069). 'floor': the ceiling may fire late, by the unreported portion. 'strict': such a debit counts as exceeding, so the ceiling never binds late \u2014 at the cost of tripping on the first remote response a provider does not fully report.",
             "enum": [
               "floor",
               "strict"
@@ -114,9 +115,26 @@
         "title": "BudgetSettings",
         "type": "object"
       },
+      "ConsoleSettings": {
+        "additionalProperties": false,
+        "description": "Where WeightRoomGym is, when one fronts this application (row WM2).\n\nSet, the top bar gains the suite's tab strip: WeightRoomGym itself and the peer applications\nthrough it (``<url>/apps/<name>``). Unset \u2014 the default \u2014 nothing is rendered: an\napplication knows only its own port, and a strip of loopback links another machine cannot\nreach would be a strip of dead links.",
+        "properties": {
+          "url": {
+            "default": "",
+            "description": "WeightRoomGym's base URL (https://<host>:8769); empty renders no application tab strip.",
+            "examples": [
+              "https://jordan-main.local:8769"
+            ],
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "title": "ConsoleSettings",
+        "type": "object"
+      },
       "ExecutionSettings": {
         "additionalProperties": false,
-        "description": "How many generations may be in flight, and what happens when the model must change.\n\nOne model runs at a time, never two (ADR-0038). The card this suite targets holds one of the\ntwo default models with room for its context and not both, and Ollama will hold a second\nresident until ``keep_alive`` expires — silently, with no error IdeaPress could raise. These\ntwo keys are the policy; :mod:`ideapress.services.inference` is the one choke point that\napplies it.",
+        "description": "How many generations may be in flight, and what happens when the model must change.\n\nOne model runs at a time, never two (ADR-0038). The card this suite targets holds one of the\ntwo default models with room for its context and not both, and Ollama will hold a second\nresident until ``keep_alive`` expires \u2014 silently, with no error IdeaPress could raise. These\ntwo keys are the policy; :mod:`ideapress.services.inference` is the one choke point that\napplies it.",
         "properties": {
           "max_concurrent_stages": {
             "default": 1,
@@ -225,7 +243,7 @@
               }
             ],
             "default": null,
-            "description": "The most sensitive data this backend may receive: public | internal | confidential. Required for Commissioner to approve a remote call through it (row J1, ADR-0054); unset means no ceiling is declared, which a remote target is *denied* under, never assumed public (fail closed — a behaviour change from J1's egress badge, which previously rendered but never gated). Ollama carries no such key: it is never remote.",
+            "description": "The most sensitive data this backend may receive: public | internal | confidential. Required for Commissioner to approve a remote call through it (row J1, ADR-0054); unset means no ceiling is declared, which a remote target is *denied* under, never assumed public (fail closed \u2014 a behaviour change from J1's egress badge, which previously rendered but never gated). Ollama carries no such key: it is never remote.",
             "title": "Max Data Classification"
           },
           "timeout_seconds": {
@@ -240,7 +258,7 @@
       },
       "LoggingSettings": {
         "additionalProperties": false,
-        "description": "Structured logging. Project content is never logged at INFO or above (spec §14).",
+        "description": "Structured logging. Project content is never logged at INFO or above (spec \u00a714).",
         "properties": {
           "format": {
             "default": "text",
@@ -281,7 +299,7 @@
             "additionalProperties": {
               "type": "string"
             },
-            "description": "Per-stage LoRA adapter pins, sent to LoadCoach as its `adapter` override. Sparse: a stage with no key has no pin, and a key present is a pin in effect — there is no second boolean, and it does not ride `honour_stage_bindings` (ADR-0083). Values are LoadCoach's manifest names; IdeaPress holds no adapter registry.",
+            "description": "Per-stage LoRA adapter pins, sent to LoadCoach as its `adapter` override. Sparse: a stage with no key has no pin, and a key present is a pin in effect \u2014 there is no second boolean, and it does not ride `honour_stage_bindings` (ADR-0083). Values are LoadCoach's manifest names; IdeaPress holds no adapter registry.",
             "title": "Stage Adapters",
             "type": "object"
           },
@@ -294,7 +312,7 @@
       },
       "MoneyAmount": {
         "additionalProperties": false,
-        "description": "A configured money amount: a currency code plus whole nanos (billionths of one unit).\n\nKept as a small config-native shape rather than `baseaicore.Money` itself — TOML gives us an\nuntyped ``{currency, nanos}`` table, and this is that table validated. Convert with\n``baseaicore.Money(currency=amount.currency, nanos=amount.nanos)`` at the point of use\n(transcribed from PromptCadence's `config.MoneyAmount`, row J1 D4).",
+        "description": "A configured money amount: a currency code plus whole nanos (billionths of one unit).\n\nKept as a small config-native shape rather than `baseaicore.Money` itself \u2014 TOML gives us an\nuntyped ``{currency, nanos}`` table, and this is that table validated. Convert with\n``baseaicore.Money(currency=amount.currency, nanos=amount.nanos)`` at the point of use\n(transcribed from PromptCadence's `config.MoneyAmount`, row J1 D4).",
         "properties": {
           "currency": {
             "default": "USD",
@@ -381,11 +399,11 @@
       },
       "PricingSettings": {
         "additionalProperties": false,
-        "description": "``[pricing]`` — where a `baseaicore.ModelPricing` catalogue is read from (D3, ADR-0072).\n\nOptional in full: an installation naming no file gets every attempt costed as unpriced, which\nis correct for a pure-Ollama installation and honest for a remote one that has not supplied\nprices yet — never a fabricated ``$0.00`` (ADR-0016).",
+        "description": "``[pricing]`` \u2014 where a `baseaicore.ModelPricing` catalogue is read from (D3, ADR-0072).\n\nOptional in full: an installation naming no file gets every attempt costed as unpriced, which\nis correct for a pure-Ollama installation and honest for a remote one that has not supplied\nprices yet \u2014 never a fabricated ``$0.00`` (ADR-0016).",
         "properties": {
           "file": {
             "default": "",
-            "description": "Path to a JSON price catalogue in the format ADR-0072 defines. Empty means no prices are known; every debit accumulates tokens only and renders '—'.",
+            "description": "Path to a JSON price catalogue in the format ADR-0072 defines. Empty means no prices are known; every debit accumulates tokens only and renders '\u2014'.",
             "title": "File",
             "type": "string"
           }
@@ -408,11 +426,11 @@
       },
       "ResearchSettings": {
         "additionalProperties": false,
-        "description": "`[research]` — the whole configuration of the `research` stage (ADR-0116).\n\nEvery default is closed. An installation that writes no `[research]` block at all fetches\nnothing, because `allowed_hosts` is empty and an empty host list means `http_fetch` is **not\nregistered** — deliberately not ToolYard's own reading, where an empty list means loopback\nonly. That reading is right for a package and wrong for the application holding the user's\nprivate drafts: it would let a URL in a brief reach a service on the user's own machine.",
+        "description": "`[research]` \u2014 the whole configuration of the `research` stage (ADR-0116).\n\nEvery default is closed. An installation that writes no `[research]` block at all fetches\nnothing, because `allowed_hosts` is empty and an empty host list means `http_fetch` is **not\nregistered** \u2014 deliberately not ToolYard's own reading, where an empty list means loopback\nonly. That reading is right for a package and wrong for the application holding the user's\nprivate drafts: it would let a URL in a brief reach a service on the user's own machine.",
         "properties": {
           "allowed_hosts": {
             "default": [],
-            "description": "Hosts `http_fetch` may fetch from, compared case-insensitively. Empty — the default — means the tool is not registered at all, so a fresh installation fetches nothing until an operator names a host.",
+            "description": "Hosts `http_fetch` may fetch from, compared case-insensitively. Empty \u2014 the default \u2014 means the tool is not registered at all, so a fresh installation fetches nothing until an operator names a host.",
             "items": {
               "type": "string"
             },
@@ -526,7 +544,7 @@
       },
       "StageBindings": {
         "additionalProperties": false,
-        "description": "Stage -> model bindings for standalone mode (`[models.stages]`, spec §12).\n\nExtra keys are forbidden and the model validator checks the key set against workflows §2, so a\nbinding for a stage that does not exist — or a model-using stage with no binding — fails\nstartup validation naming the stage. That check is the reason this class is not a bare dict.",
+        "description": "Stage -> model bindings for standalone mode (`[models.stages]`, spec \u00a712).\n\nExtra keys are forbidden and the model validator checks the key set against workflows \u00a72, so a\nbinding for a stage that does not exist \u2014 or a model-using stage with no binding \u2014 fails\nstartup validation naming the stage. That check is the reason this class is not a bare dict.",
         "properties": {
           "audit_deep": {
             "default": "ollama/qwen3.5:9b-q8_0",
@@ -593,7 +611,7 @@
         "properties": {
           "auto_migrate": {
             "default": true,
-            "description": "Run pending migrations at startup. Defaults true on SQLite; a PostgreSQL URL turns it off, because a failed migration there cannot be rolled back automatically (database standards §5.1).",
+            "description": "Run pending migrations at startup. Defaults true on SQLite; a PostgreSQL URL turns it off, because a failed migration there cannot be rolled back automatically (database standards \u00a75.1).",
             "title": "Auto Migrate",
             "type": "boolean"
           },
@@ -635,7 +653,7 @@
       },
       "WorkflowSettings": {
         "additionalProperties": false,
-        "description": "The bounds every loop in workflows §5 runs under.",
+        "description": "The bounds every loop in workflows \u00a75 runs under.",
         "properties": {
           "allow_audit_gated_requirements": {
             "default": true,
@@ -652,7 +670,7 @@
           },
           "context_budget_tokens": {
             "default": 8000,
-            "description": "Token budget for assembled context (workflows §7). Requirements and the unit specification are never dropped to fit it; overflow fails with both numbers.",
+            "description": "Token budget for assembled context (workflows \u00a77). Requirements and the unit specification are never dropped to fit it; overflow fails with both numbers.",
             "minimum": 256,
             "title": "Context Budget Tokens",
             "type": "integer"
@@ -680,7 +698,7 @@
           },
           "project_review_context_budget_tokens": {
             "default": 24000,
-            "description": "Token budget for project_review's whole-document context (workflows §2 stage 15). Nothing here is pinned — units are dropped, latest in reading order first — and the stage refuses with both numbers rather than silently reviewing an empty document.",
+            "description": "Token budget for project_review's whole-document context (workflows \u00a72 stage 15). Nothing here is pinned \u2014 units are dropped, latest in reading order first \u2014 and the stage refuses with both numbers rather than silently reviewing an empty document.",
             "minimum": 256,
             "title": "Project Review Context Budget Tokens",
             "type": "integer"
@@ -692,7 +710,7 @@
           },
           "structured_output_tokens": {
             "default": 8192,
-            "description": "Output-token budget for the structured stages (requirements, outline, audit_fast, audit_deep, critique, project_review), and — when raised above the 8192 default — the thinking floor for the text-writing stages (draft, repair, revise) as well. Includes the model's reasoning: a thinking model spends output tokens before its first word of answer, and 8192 is the measured floor for the default models (spec §15). Raise this when a unit pauses with an exhausted output budget.",
+            "description": "Output-token budget for the structured stages (requirements, outline, audit_fast, audit_deep, critique, project_review), and \u2014 when raised above the 8192 default \u2014 the thinking floor for the text-writing stages (draft, repair, revise) as well. Includes the model's reasoning: a thinking model spends output tokens before its first word of answer, and 8192 is the measured floor for the default models (spec \u00a715). Raise this when a unit pauses with an exhausted output budget.",
             "maximum": 131072,
             "minimum": 1024,
             "title": "Structured Output Tokens",
@@ -704,10 +722,13 @@
       }
     },
     "additionalProperties": false,
-    "description": "The complete, validated IdeaPress configuration.\n\nConstructed only by :func:`load_settings`, which resolves the precedence chain first — never\ncall ``Settings(**raw)`` on unmerged input, or the file/env/CLI layering is bypassed.",
+    "description": "The complete, validated IdeaPress configuration.\n\nConstructed only by :func:`load_settings`, which resolves the precedence chain first \u2014 never\ncall ``Settings(**raw)`` on unmerged input, or the file/env/CLI layering is bypassed.",
     "properties": {
       "budget": {
         "$ref": "#/$defs/BudgetSettings"
+      },
+      "console": {
+        "$ref": "#/$defs/ConsoleSettings"
       },
       "execution": {
         "$ref": "#/$defs/ExecutionSettings"
@@ -753,7 +774,7 @@
       "minimum": 0.0
     },
     {
-      "description": "Token budget for assembled context (workflows §7). Requirements and the unit specification are never dropped to fit it; overflow fails with both numbers.",
+      "description": "Token budget for assembled context (workflows \u00a77). Requirements and the unit specification are never dropped to fit it; overflow fails with both numbers.",
       "key": "workflow.context_budget_tokens",
       "kind": "integer",
       "maximum": null,
@@ -880,6 +901,7 @@
     "budget.per_output_token_ceiling": "default",
     "budget.per_project_money_ceiling": "default",
     "budget.per_project_token_ceiling": "default",
+    "console.url": "default",
     "execution.max_concurrent_stages": "default",
     "execution.unload_before_model_switch": "default",
     "inference.data_classification": "default",

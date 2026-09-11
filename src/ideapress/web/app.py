@@ -16,6 +16,7 @@ from __future__ import annotations
 import logging
 from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any, Final
 
 from baseaicore import SuiteError, new_id
@@ -35,7 +36,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from ideapress.__about__ import __version__
 from ideapress.config import LOOPBACK_HOSTS, Settings
 from ideapress.web.limits import BodySizeLimitMiddleware, SameOriginMiddleware
-from ideapress.web.rendering import render, templates
+from ideapress.web.rendering import APP_STATIC_URL_PREFIX, configure_shell, render, templates
 from ideapress.web.routes import backends as backend_routes
 from ideapress.web.routes import export as export_routes
 from ideapress.web.routes import plan as plan_routes
@@ -263,6 +264,7 @@ def create_app(settings: Settings, *, runtime_builder: Any | None = None) -> Fas
         lifespan=_lifespan,
     )
     app.state.settings = settings
+    configure_shell(console_url=settings.console.url)
     app.state.runtime = None
     app.state.runtime_builder = runtime_builder
     app.state.health_checkers = None
@@ -294,6 +296,10 @@ def create_app(settings: Settings, *, runtime_builder: Any | None = None) -> Fas
     app.include_router(system_routes.ui_router)
 
     # MirrorWall's own assets, from the installed package: no CDN, no network request at page load.
-    mount_static(app, environment=templates())
+    mount_static(
+        app,
+        environment=templates(),
+        extra_dirs={APP_STATIC_URL_PREFIX: Path(__file__).parent / "static"},
+    )
 
     return app

@@ -7,8 +7,25 @@ packaging and release standards §3.
 
 ## [Unreleased]
 
+### Added
+
+- **MirrorWall 0.3 adopted on the pages that want it** (row WM2, `apps/weightroom/design.md`
+  §6): the project list renders dense; the System page shows each health component with the
+  suite's status dot beside its own word; the workspace's running-stage section is MirrorWall's
+  bounded, pausable log pane, fed by the new `GET /api/v1/projects/{id}/tasks/{task}/log` (outside the OpenAPI snapshot) — the same
+  event source as the API stream, rendered as `log` frames and closed with `log.closed` (htmx on
+  that page while a stage runs, ADR-0128); and the top bar gains the suite's tab strip —
+  WeightRoomGym and the peer applications through it — when the new `[console] url` names the
+  console. Unset, the strip is absent and the masthead is byte-for-byte what it was.
+  `mirrorwall>=0.3.1,<0.4`.
+
 ### Fixed
 
+- **The workspace's own stylesheet and scripts are served.** `workspace.css`, `workspace.js`
+  and `diff.js` were rendered through MirrorWall's `asset_url`, which placed them under
+  `/static/mirrorwall/` where nothing served them — so the running-stage section never updated
+  live in a browser and the workspace's own styling never loaded. They are mounted under
+  `/static/ideapress/` now (`app_asset_url`). Found by row WM2's JavaScript-per-page test.
 - **`ideapress db backup` writes a backup again.** It handed `weightsdb.backup` the destination
   *directory* where a file path is expected, so it failed with `IsADirectoryError` with or
   without `--output` (found at WeightRoomGym row WI1, `history/handoffs/WI1_HANDOFF.md` §7; fixed

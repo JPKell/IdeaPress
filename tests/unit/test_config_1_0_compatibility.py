@@ -47,17 +47,19 @@ ADDED_IN_K3: dict[str, set[str]] = {
 # Row M1 (staged for 1.4.0): the `research` stage's whole configuration, a new section with every
 # default closed — no host, so a 1.0 file that never mentioned it fetches nothing.
 ADDED_IN_M1_SECTIONS: set[str] = {"research"}
+ADDED_IN_WM2_SECTIONS: set[str] = {"console"}
+"""Row WM2: `[console] url`, WeightRoomGym's address for the top-bar tab strip."""
 
 
 def _without_1_1_keys(dump: dict[str, Any]) -> dict[str, Any]:
-    """Return ``dump`` with exactly the keys 1.1, rows J1, K3 and M1 added removed, and nothing
-    else."""
+    """Return ``dump`` with exactly the keys 1.1, rows J1, K3, M1 and WM2 added removed, and
+    nothing else."""
     trimmed = {section: dict(values) for section, values in dump.items()}
     for section, keys in {**ADDED_IN_1_1, **ADDED_IN_K3}.items():
         for key in keys:
             assert key in trimmed[section], f"{section}.{key} is missing from the 1.1 dump"
             del trimmed[section][key]
-    for section in ADDED_IN_J1_SECTIONS | ADDED_IN_M1_SECTIONS:
+    for section in ADDED_IN_J1_SECTIONS | ADDED_IN_M1_SECTIONS | ADDED_IN_WM2_SECTIONS:
         assert section in trimmed, f"{section} is missing from the dump"
         del trimmed[section]
     for backend, keys in ADDED_IN_J1_NESTED.items():
