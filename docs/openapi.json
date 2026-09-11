@@ -1339,6 +1339,73 @@
         ]
       }
     },
+    "/api/v1/projects/{project_id}/workspace": {
+      "get": {
+        "description": "The workspace page's own view of one unit, over the API (row WP5).\n\nAssembled by the same ``workspace_view`` the page renders: the navigator, the unit's content\nand provenance, its pause reason with IdeaPress's remedy, its coverage summary, the diff\nagainst ``compare`` when asked, the backend's recorded egress facts, the project's cost, the\nrunning stage and where research may fetch.\n\nArgs:\n    request: The request.\n    project_id: The project.\n    unit: Which unit; the first one when empty or unknown.\n    compare: A version to diff the current one against.\n\nRaises:\n    ProjectNotFound: No such project.",
+        "operationId": "get_workspace_api_v1_projects__project_id__workspace_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "unit",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Unit",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "compare",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Compare"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Workspace",
+        "tags": [
+          "workspace"
+        ]
+      }
+    },
     "/api/v1/settings": {
       "get": {
         "description": "Every runtime-changeable key's effective value, its definition, and the config-only keys.\n\nAnswered over the **configured** settings, so ``configured`` stays what the operator configured\nand ``source`` says whether a stored row or configuration decides each value.",

@@ -349,3 +349,53 @@ def test_a_project_that_never_researched_has_an_empty_record(client: TestClient)
     body = client.get(f"/api/v1/projects/{project_id}/research").json()
     assert (body["notes"], body["tool_calls"]) == ([], [])
     assert client.get("/api/v1/projects/01ZZZZZZZZZZZZZZZZZZZZZZZZ/research").status_code == 404
+
+
+# --- The workspace: one unit's whole view, as IdeaPress assembles it ------------------------------
+
+REVISED = (
+    "Everything happens on your own machine. The model reads what you wrote and answers there, "
+    "with nothing uploaded and no account needed, and no network involved at any point. The "
+    "hardware is yours to provide: that is the trade for keeping the work where you made it."
+)
+
+
+def test_the_workspace_view_is_the_pages_own_data_for_one_unit(client: TestClient) -> None:
+    project_id = _drafted(client)
+    body = client.get(f"/api/v1/projects/{project_id}/workspace", params={"unit": "U-01"}).json()
+
+    assert body["project"]["id"] == project_id
+    assert [unit["unit_key"] for unit in body["units"]] == ["U-01", "U-02"]
+    assert body["selected_unit_key"] == "U-01"
+    assert body["unit"]["content"] == DRAFT
+    assert body["pause"]["paused"] is False
+    assert body["coverage_summary"]["total"] == 2
+    assert body["backend"]["mode"] == "fake"
+    assert (body["diff"], body["running_task_id"]) == (None, None)
+    assert body["research"] == {"allowed_hosts": []}
+
+
+def test_the_workspace_diffs_the_current_version_against_an_earlier_one(client: TestClient) -> None:
+    runtime = _runtime(client)
+    project_id = _drafted(client)
+    _with(runtime, REVISED, NO_FINDINGS, ACCEPTABLE)
+    task = client.post(
+        f"/api/v1/projects/{project_id}/units/U-01/revise",
+        json={"instructions": "Say that no network is involved."},
+    ).json()
+    assert _wait(runtime, task["task_id"]) == "completed"
+
+    body = client.get(
+        f"/api/v1/projects/{project_id}/workspace", params={"unit": "U-01", "compare": 1}
+    ).json()
+    diff = body["diff"]
+    assert (diff["diff_old_version"], diff["diff_new_version"]) == (1, 2)
+    assert diff["unavailable"] == ""
+    assert diff["diff_added"] >= 1
+    assert [entry["version"] for entry in body["unit"]["history"]] == [2, 1]
+
+
+def test_the_workspace_of_a_missing_project_is_a_named_404(client: TestClient) -> None:
+    response = client.get("/api/v1/projects/01ZZZZZZZZZZZZZZZZZZZZZZZZ/workspace")
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "PROJECT_NOT_FOUND"

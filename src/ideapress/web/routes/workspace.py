@@ -19,7 +19,12 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Annotated, Any
 
 from fastapi import APIRouter, Form, Query, Request, status
-from starlette.responses import RedirectResponse, Response
+from mirrorwall import json_response
+
+# Imported at runtime, not under TYPE_CHECKING: FastAPI reads a handler's return annotation
+# when it builds the OpenAPI schema, and a forward reference it cannot resolve makes
+# `app.openapi()` raise — which is a 500 on /api/v1/docs that no other test would notice.
+from starlette.responses import JSONResponse, RedirectResponse, Response
 
 from ideapress.web.csrf import render_form_page
 
@@ -28,14 +33,46 @@ if TYPE_CHECKING:
 
     from ideapress.services.runtime import Runtime
 
-__all__ = ["ui_router"]
+__all__ = ["router", "ui_router"]
 
+router = APIRouter(tags=["workspace"])
 ui_router = APIRouter(include_in_schema=False)
 
 
 def _runtime(request: Request) -> Runtime:
     runtime: Runtime = request.app.state.runtime
     return runtime
+
+
+@router.get("/projects/{project_id}/workspace")
+def get_workspace(
+    request: Request,
+    project_id: str,
+    unit: Annotated[str, Query()] = "",
+    compare: Annotated[int | None, Query()] = None,
+) -> JSONResponse:
+    """The workspace page's own view of one unit, over the API (row WP5).
+
+    Assembled by the same ``workspace_view`` the page renders: the navigator, the unit's content
+    and provenance, its pause reason with IdeaPress's remedy, its coverage summary, the diff
+    against ``compare`` when asked, the backend's recorded egress facts, the project's cost, the
+    running stage and where research may fetch.
+
+    Args:
+        request: The request.
+        project_id: The project.
+        unit: Which unit; the first one when empty or unknown.
+        compare: A version to diff the current one against.
+
+    Raises:
+        ProjectNotFound: No such project.
+    """
+    from ideapress.services.workspace import workspace_view
+
+    view = workspace_view(
+        _runtime(request), project_id=project_id, unit_key=unit or None, compare_version=compare
+    )
+    return json_response(view)
 
 
 @ui_router.get("/projects/{project_id}/workspace")

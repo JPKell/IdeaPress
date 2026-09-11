@@ -63,6 +63,10 @@ packaging and release standards §3.
   allowed hosts and tools, the notes, and every tool call with its `invocation_id` and the
   egress decision it ran under (joined by `source_ref`). The unit report's `research` section
   carries the same two new fields.
+- **The workspace over the API** (row WP5): `GET /projects/{id}/workspace?unit=&compare=`
+  answers the workspace page's own view — the navigator, one unit's content and provenance, its
+  pause reason with IdeaPress's remedy, the coverage summary, a diff between two versions, the
+  backend's recorded egress, the project's cost, the running stage and where research may fetch.
 - **Operator prompt overrides** (row W9, prompt standards §6). A record at
   `$XDG_CONFIG_HOME/ideapress/prompts/<prompt_id>.json` replaces the shipped record of the same
   `prompt_id` when the pack loads, and every attempt that rendered it is marked
