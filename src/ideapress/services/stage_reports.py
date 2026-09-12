@@ -142,6 +142,9 @@ def task_report(
                     "unit_key": units.get(attempt.unit_id or ""),
                     "attempt": attempt.attempt,
                     "round": attempt.round,
+                    # Row WPF7: 0 is the call whose answer the attempt kept, 1 and up the calls
+                    # the gateway discarded — an empty generation it retried.
+                    "transport_call": attempt.transport_call,
                     "outcome": attempt.outcome,
                     "backend": attempt.backend,
                     "model_canonical_id": attempt.model_canonical_id,

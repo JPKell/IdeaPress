@@ -123,6 +123,7 @@ class OpenAICompatibleBackend:
             model_reference=reference,
             provider_kind=self.name,
             supports_structured_output=self.capabilities().structured_output,
+            default_timeout_seconds=float(self._settings.timeout_seconds),
         )
 
     def generate(self, request: StageRequest) -> StageResult:

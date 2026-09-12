@@ -9,6 +9,16 @@ packaging and release standards §3.
 
 ### Added
 
+- **IdeaPress states the context it needs, and refuses a stage that cannot fit it** (row WPF7,
+  WP6 finding 8). New `inference.ollama.served_context_tokens` (default 32768) is sent as `num_ctx`
+  on every Ollama request — one value for every stage, because Ollama reloads a model when a request
+  asks for a different context length — and a stage whose assembled-context budget, output budget
+  and prompt overhead exceed it is refused **before the run**, naming all four numbers, rather than
+  pausing a unit after two model calls have each spent the whole window reasoning and returned
+  nothing. `doctor` reports the same check as `served context`, and `0` reports it as not made: the
+  server's own `OLLAMA_CONTEXT_LENGTH` cannot be read from here. IdeaPress never raises the window
+  on its own — how large a window the card can hold is the operator's memory decision (ADR-0119).
+
 - **MirrorWall 0.3 adopted on the pages that want it** (row WM2, `apps/weightroom/design.md`
   §6): the project list renders dense; the System page shows each health component with the
   suite's status dot beside its own word; the workspace's running-stage section is MirrorWall's
@@ -19,7 +29,52 @@ packaging and release standards §3.
   console. Unset, the strip is absent and the masthead is byte-for-byte what it was.
   `mirrorwall>=0.3.1,<0.4`.
 
+### Changed
+
+- **The configured backend timeout actually reaches a request** (row WPF7).
+  `StageLimits.timeout_seconds` defaulted to 300 seconds and no stage ever set it, so every model
+  call carried a 300-second deadline and `[inference.<backend>] timeout_seconds` was dead
+  configuration — raising it to 900 changed nothing, and a revision under the raised output budget
+  timed out at 300 s and failed its whole draft stage. The field is now `None` by default, meaning
+  the configured backend timeout; a number still wins, so it remains a per-attempt bound Python owns.
+
+- **`inference.ollama.timeout_seconds` now defaults to 900**, from 300 (row WPF7). A timeout has to
+  cover the *whole* output budget at the rate the machine generates — 16 384 tokens at a slow local
+  20 tokens/s is 819 s — and a reasoning model spends most of its budget thinking before its first
+  word. Found live: with the budget raised and the timeout still at 300, a revision was cut off
+  mid-thought and the draft stage failed `PROVIDER_TIMEOUT`. `doctor`'s new `generation timeout`
+  check names both figures when they disagree.
+
+- **`workflow.structured_output_tokens` now defaults to 16384**, from 8192, and
+  **`workflow.project_review_context_budget_tokens` to 14336**, from 24000 (row WPF7). 8192 is the
+  *draft* thinking floor; measured on the reference machine, a five-unit `project_review` on
+  `qwen3.5:9b-q8_0` spends about 11 800 output tokens reasoning before its first word, an audit or a
+  critique 1 700–4 300 and a revision about 7 000 — so the structured stages could not answer within
+  8192 at all. The review's context budget comes down so that the shipped set fits the window
+  IdeaPress asks to be served (14 336 + 16 384 + 512 = 31 232 ≤ 32 768); a five-unit document
+  measures 12 777 tokens and still fits. `doctor` now warns below 16384 rather than below 8192. A
+  file that sets either key keeps its value.
+
 ### Fixed
+
+- **The retry of an empty generation asks for the answer without reasoning** (row WPF7). A second
+  *identical* request spends the output budget the same way: WP6 saw `project_review` produce no text
+  in 8 192 tokens twice, and this row saw the same stage produce none in 16 384 tokens twice, 375
+  seconds a call, on a 32 768-token window — the model was not short of room, it was not stopping.
+  The retry now sets Ollama's `think: false` where the backend declares the control (`modelrack`
+  refuses the field on providers that cannot carry it, so nothing else is asked), and records
+  `empty_generation_retried: … with reasoning suppressed` on the attempt.
+
+- **A cancel is honoured across the empty-generation retry, and every model call is recorded**
+  (row WPF7, WP6 finding 8). The cancel flag was only read by the stage bodies, and the gateway's
+  transport retry of an empty generation happens underneath them: a `project_review` cancelled
+  three seconds into its first call made a second 2 m 47 s call and ended `failed`. The check now
+  sits at the one door to a model, immediately before every call the fallback and the retry
+  included, so a cancel during an empty generation makes no second call and the run ends
+  `cancelled`. A discarded call is also an attempt row of its own — new `transport_call` column
+  (migration `0012`), `1` and up, with its tokens and its budget debit — where before a run that
+  exhausted its output budget twice recorded no attempt at all and could not say what it had spent.
+  `GET /projects/{id}/tasks/{task_id}` and the unit provenance report both carry `transport_call`.
 
 - **Revising a unit works** (row WP5). `POST /units/{key}/revise` and `ideapress unit revise`
   started a *draft* run, whose first move (`committed → drafting`) is no arrow in data model §3,

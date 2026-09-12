@@ -71,6 +71,7 @@ class OllamaBackend:
             token_counts=provider_capabilities.token_counts,
             model_selection=True,
             discloses_model=True,
+            thinking_control=provider_capabilities.thinking_control,
             residency_control=provider_capabilities.force_unload
             and provider_capabilities.residency_query,
         )
@@ -114,6 +115,8 @@ class OllamaBackend:
             model_reference=request.model_hint or "",
             provider_kind=self.name,
             supports_structured_output=self.capabilities().structured_output,
+            context_size=self._settings.served_context_tokens or None,
+            default_timeout_seconds=float(self._settings.timeout_seconds),
         )
         try:
             result = self._provider.generate(generation)
@@ -162,6 +165,8 @@ class OllamaBackend:
             model_reference=request.model_hint or "",
             provider_kind=self.name,
             supports_structured_output=self.capabilities().structured_output,
+            context_size=self._settings.served_context_tokens or None,
+            default_timeout_seconds=float(self._settings.timeout_seconds),
         )
         try:
             yield from to_stage_events(

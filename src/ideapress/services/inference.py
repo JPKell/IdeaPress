@@ -24,7 +24,7 @@ from __future__ import annotations
 import logging
 import threading
 from dataclasses import dataclass, field, replace
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 from ideapress.domain.inference import StageRequest, StageResult
 from ideapress.errors import (
@@ -36,15 +36,45 @@ from ideapress.errors import (
 from ideapress.observability.logging import correlation
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Mapping, Sequence
+    from collections.abc import Callable, Iterator, Mapping, Sequence
 
     from ideapress.config import ExecutionSettings, StageBindings
     from ideapress.domain.inference import InferenceBackend, StageEvent
     from ideapress.domain.stages import StageId
 
-__all__ = ["InferenceGateway", "ModelSwitch", "resolve_binding"]
+__all__ = ["DiscardedCallRecorder", "InferenceGateway", "ModelSwitch", "resolve_binding"]
 
 logger = logging.getLogger(__name__)
+
+
+class DiscardedCallRecorder(Protocol):
+    """Writes an attempt row for a model call whose answer the gateway threw away (row WPF7).
+
+    The gateway knows a call happened and what it cost; it does not know where attempts are
+    written, and importing the recorder would make the one door to a model depend on the runner
+    that drives it. So the runner hands one of these in at
+    :meth:`InferenceGateway.begin_run`, and the gateway calls it for every call it discards.
+    """
+
+    def __call__(
+        self,
+        request: StageRequest,
+        result: StageResult,
+        *,
+        transport_call: int,
+        error_code: str,
+        error_text: str,
+    ) -> None:
+        """Record one discarded call.
+
+        Args:
+            request: What was sent.
+            result: What came back — empty text, and the tokens it was billed for.
+            transport_call: Which discarded call within this attempt, from 1.
+            error_code: Why it was discarded.
+            error_text: The same, in words a person reads.
+        """
+        ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -124,13 +154,22 @@ class InferenceGateway:
     _switch_lock: threading.Lock = field(init=False, repr=False)
     _run_id: str = field(default="", init=False, repr=False)
     _model_hint: str | None = field(default=None, init=False, repr=False)
+    _checkpoint: Callable[[], None] | None = field(default=None, init=False, repr=False)
+    _record_discarded: DiscardedCallRecorder | None = field(default=None, init=False, repr=False)
 
     def __post_init__(self) -> None:
         """Build the semaphore that makes one-at-a-time a fact rather than a default."""
         self._lock = threading.Semaphore(self.execution.max_concurrent_stages)
         self._switch_lock = threading.Lock()
 
-    def begin_run(self, run_id: str, *, model_hint: str | None = None) -> None:
+    def begin_run(
+        self,
+        run_id: str,
+        *,
+        model_hint: str | None = None,
+        checkpoint: Callable[[], None] | None = None,
+        record_discarded: DiscardedCallRecorder | None = None,
+    ) -> None:
         """Tell the gateway which stage run the requests that follow belong to.
 
         Args:
@@ -139,6 +178,17 @@ class InferenceGateway:
                 the run that carries no hint of its own is given this one, so it wins over the
                 stage's binding exactly as a caller's hint does (:meth:`_prepare`): draft, audits,
                 critique and revise alike. The next run's call replaces it.
+            checkpoint: What to call immediately before **every** model call, which raises when the
+                run has been cancelled (row WPF7). The runner passes its own
+                :meth:`~ideapress.services.stages.StageRunner.checkpoint` bound to the task. A
+                stage body checks the flag between its steps; this is what checks it between the
+                two calls of a transport retry, where no stage body can see it, and it is why a
+                cancel during an empty generation makes no second call. ``None`` — the default, and
+                what a test that drives the gateway directly leaves — means no cancel exists.
+            record_discarded: Where to record a model call whose answer the gateway threw away
+                (row WPF7). The runner passes a callable that writes an attempt row with
+                ``transport_call`` 1 and up. ``None`` means nothing records them, which is true for
+                a gateway with no run behind it and for the CLI's direct calls.
 
         Every request forwarded from here on carries this as `correlation.request_id` unless the
         caller set one, which does two things. It gives the backend an `X-Request-ID` to propagate
@@ -155,6 +205,8 @@ class InferenceGateway:
         """
         self._run_id = run_id
         self._model_hint = model_hint
+        self._checkpoint = checkpoint
+        self._record_discarded = record_discarded
 
     @property
     def resident_model(self) -> str | None:
@@ -270,11 +322,41 @@ class InferenceGateway:
                 model_canonical_id=target or None,
             ):
                 try:
-                    result = self.backend.generate(request)
+                    result = self._generate(request)
                 except (BackendUnavailable, ProviderTimeout) as exc:
                     result = self._fall_back(request, exc)
                 result = self._retry_empty_truncation(request, result)
         return self._annotate(result, switch=switch, target=target)
+
+    def _generate(
+        self, request: StageRequest, *, backend: InferenceBackend | None = None
+    ) -> StageResult:
+        """Make one model call, after Python has looked for a cancel (row WPF7).
+
+        Args:
+            request: The prepared request.
+            backend: Which backend to ask, or ``None`` for the configured one. The fallback is the
+                only other value, and it goes through here so that a cancel stops it too.
+
+        Returns:
+            Whatever the backend answered.
+
+        Raises:
+            ideapress.services.stages.StageCancelled: The run was cancelled. Raised by the
+                runner's checkpoint, which this holds as a callable rather than importing —
+                the gateway is below the runner.
+            BackendUnavailable: The backend did not answer.
+            ProviderTimeout: It accepted the request and did not answer in time.
+
+        **Every model call in IdeaPress passes through this method**, the transport retry included,
+        which is the whole point of it: WP6 cancelled a `project_review` during its first call and
+        IdeaPress made a second 2 m 47 s call anyway, because the only cancel checks were in the
+        stage bodies and a retry happens underneath them. A cancel is checked by Python at every
+        model-call boundary (CLAUDE.md), and a retry is a model call.
+        """
+        if self._checkpoint is not None:
+            self._checkpoint()
+        return (backend or self.backend).generate(request)
 
     def _fall_back(self, request: StageRequest, exc: Exception) -> StageResult:
         """Run ``request`` on the configured fallback, or re-raise when there is none.
@@ -321,7 +403,7 @@ class InferenceGateway:
             # The primary may have been a routing backend, in which case nothing resolved a
             # binding. The fallback needs one (ADR-0040).
             fallback_request = replace(request, model_hint=self.model_for(request.stage))
-        result = self.fallback.generate(fallback_request)
+        result = self._generate(fallback_request, backend=self.fallback)
         return replace(
             result,
             backend=result.backend or self.fallback.name,
@@ -368,7 +450,17 @@ class InferenceGateway:
             "inference.empty_generation_retried",
             extra={"model_canonical_id": request.model_hint, "stage": request.stage},
         )
-        retried = self.backend.generate(request)
+        self._record_discard(
+            request,
+            result,
+            transport_call=1,
+            error_code="EMPTY_GENERATION",
+            error_text=(
+                f"the model produced no text at all in {request.limits.max_output_tokens} output "
+                "tokens; this call was discarded and retried once"
+            ),
+        )
+        retried = self._generate(self._without_reasoning(request))
         if not retried.text.strip() and retried.truncated:
             # The retry produced nothing either, so this is not a cold load: the budget is genuinely
             # too small for this model's reasoning on this task. Say that, with the number. Letting
@@ -379,6 +471,13 @@ class InferenceGateway:
                 f"tokens, twice, for the {request.stage!r} stage. A reasoning model spends output "
                 "tokens on thinking before its first word; this budget was exhausted before it "
                 "reached one. Raise the stage's output budget."
+            )
+            self._record_discard(
+                request,
+                retried,
+                transport_call=2,
+                error_code="CONTEXT_LIMIT_EXCEEDED",
+                error_text=message,
             )
             raise ContextLimitExceeded(
                 message,
@@ -394,9 +493,78 @@ class InferenceGateway:
             degradations=(
                 *retried.degradations,
                 "empty_generation_retried: the model exhausted its output budget without emitting "
-                "any text, which a cold load of some models does; retried once",
+                "any text, which a cold load of some models does; retried once"
+                + (
+                    ", with reasoning suppressed"
+                    if self.backend.capabilities().thinking_control
+                    else ""
+                ),
             ),
         )
+
+    def _without_reasoning(self, request: StageRequest) -> StageRequest:
+        """Ask the retry to answer without reasoning, where the backend can carry that (row WPF7).
+
+        Args:
+            request: The request whose first call came back empty.
+
+        Returns:
+            The same request with ``limits.think`` false, or unchanged when the backend declares no
+            thinking control — ModelRack refuses the field on a provider that cannot honour it
+            rather than ignoring it, so asking anyway would turn a recoverable empty generation into
+            a capability error.
+
+        **A second identical request spends the budget the same way.** M7-16's cold-load runaway
+        recovers on any retry, but a reasoning loop does not: WP6 watched `project_review` produce
+        nothing in 8 192 tokens twice, and this row watched the same stage produce nothing in 16 384
+        tokens twice, 375 seconds each. Suppressing reasoning is the one thing that makes the second
+        call *different*, it is Python asking rather than a model deciding, and it is recorded as a
+        degradation so a reader knows this answer came without the model's reasoning.
+        """
+        if not self.backend.capabilities().thinking_control:
+            return request
+        return replace(request, limits=replace(request.limits, think=False))
+
+    def _record_discard(
+        self,
+        request: StageRequest,
+        result: StageResult,
+        *,
+        transport_call: int,
+        error_code: str,
+        error_text: str,
+    ) -> None:
+        """Record a call whose answer was thrown away, when a run is there to record it against.
+
+        Args:
+            request: What was sent.
+            result: What came back, with the tokens it was billed for.
+            transport_call: Which discarded call within this attempt, from 1.
+            error_code: Why it was discarded.
+            error_text: The same, in words.
+
+        A run pays for a call it discards, so the call is an attempt row with its tokens and its
+        debit (row WPF7). WP6 saw the alternative: a `project_review` that spent two full output
+        budgets and recorded **no** attempt at all, so nothing in the product could say what the
+        run had cost. Recording never blocks the generation — a stage that produced text must not
+        fail because its provenance row did not write — so a recorder that raises is logged here
+        and the answer is returned.
+        """
+        if self._record_discarded is None:
+            return
+        try:
+            self._record_discarded(
+                request,
+                result,
+                transport_call=transport_call,
+                error_code=error_code,
+                error_text=error_text,
+            )
+        except Exception:  # noqa: BLE001 — provenance never breaks the stage it describes
+            logger.exception(
+                "inference.discarded_call_not_recorded",
+                extra={"stage": request.stage, "transport_call": transport_call},
+            )
 
     def stream(self, request: StageRequest) -> Iterator[StageEvent]:
         """Stream one bounded model task, serialised the same way.

@@ -8,7 +8,7 @@ and a doctor that called it a failure would teach people to ignore the command.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Final, Literal
 
 from mirrorwall import ComponentStatus, health_payload
 
@@ -20,7 +20,28 @@ if TYPE_CHECKING:
     from ideapress.config import Settings
     from ideapress.services.runtime import Runtime
 
-__all__ = ["Diagnosis", "diagnose", "health_report"]
+__all__ = [
+    "MEASURED_REASONING_TOKENS",
+    "SLOW_TOKENS_PER_SECOND",
+    "Diagnosis",
+    "diagnose",
+    "health_report",
+]
+
+SLOW_TOKENS_PER_SECOND: Final = 20
+"""A deliberately slow local generation rate, for turning a token budget into seconds.
+
+The reference card generates about 45 tokens/s on a 9.7B Q8_0 model; a larger model on the same card
+is slower. 20 keeps the check on the safe side of the machines this runs on, because the failure it
+prevents — a budget cut off mid-thought — costs a whole stage."""
+
+MEASURED_REASONING_TOKENS: Final = 16_384
+"""What a thinking model needed for reasoning alone on the widest shipped prompt (row WPF7).
+
+`workflow.structured_output_tokens`'s default, and the figure below which `doctor` warns: a
+five-unit `project_review` on `qwen3.5:9b-q8_0` spent about 11 800 output tokens before its first
+word of answer. The 8192 this warned about until now is the *draft* thinking floor, which is a
+different and smaller measurement."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -184,17 +205,24 @@ def _configuration_findings(settings: Settings) -> list[Diagnosis]:
     findings.append(
         Diagnosis(
             name="output budget",
-            level="warn" if budget < 8192 else "ok",
+            level="warn" if budget < MEASURED_REASONING_TOKENS else "ok",
             detail=f"workflow.structured_output_tokens = {budget}",
             remedy=(
-                "Below the measured 8192 floor, a reasoning model can exhaust the budget on its "
-                "own thinking and return no text at all. Raise it if units pause on empty "
-                "generations."
-                if budget < 8192
+                f"Below {MEASURED_REASONING_TOKENS}, a reasoning model can exhaust the budget on "
+                "its own thinking and return no text at all: measured on the reference machine, a "
+                "five-unit project_review spent about 11 800 output tokens reasoning before its "
+                "first word. Raise it if a stage fails or a unit pauses on an empty generation."
+                if budget < MEASURED_REASONING_TOKENS
                 else ""
             ),
         )
     )
+
+    # Row WPF7: the budget above is spent from the same window as the prompt and the reasoning, so
+    # the figure that decides whether a stage can answer at all is the served context — and it has
+    # to be *generable* within the request timeout, which is the other way a budget goes unspent.
+    findings.append(_served_context_finding(settings))
+    findings.append(_generation_timeout_finding(settings))
 
     # The exposure refusals happen at load time, so reaching here means they passed — say so,
     # rather than staying silent about the check that did not fire.
@@ -240,6 +268,101 @@ def _configuration_findings(settings: Settings) -> list[Diagnosis]:
         )
     )
     return findings
+
+
+def _generation_timeout_finding(settings: Settings) -> Diagnosis:
+    """Warn when the output budget cannot be generated inside the request timeout (row WPF7).
+
+    Args:
+        settings: The effective settings.
+
+    Returns:
+        `ok`, or `warn` with both figures. Measured the hard way: with the budget raised to
+        16 384 and the timeout still at its old 300 s, a revision on `qwen3.5:9b-q8_0` was cut off
+        mid-thought and the stage failed `PROVIDER_TIMEOUT` — a budget with no time to spend it.
+
+    Only `ollama` mode has a figure to check: LoadCoach queues and may wait for a worker, so its
+    timeout covers more than one generation, and `openai_compatible` names a remote service whose
+    rate is not this machine's.
+    """
+    if settings.inference.mode != "ollama":
+        return Diagnosis(
+            name="generation timeout",
+            level="ok",
+            detail="Not this backend's to judge: the timeout covers more than one generation.",
+        )
+    timeout = settings.inference.ollama.timeout_seconds
+    budget = settings.workflow.structured_output_tokens
+    needed = budget // SLOW_TOKENS_PER_SECOND
+    return Diagnosis(
+        name="generation timeout",
+        level="warn" if timeout < needed else "ok",
+        detail=(
+            f"inference.ollama.timeout_seconds = {timeout}; "
+            f"{budget} output tokens at {SLOW_TOKENS_PER_SECOND} tokens/s is {needed} s"
+        ),
+        remedy=(
+            f"A reasoning model spends most of its budget thinking before its first word, so a "
+            f"timeout below {needed} s cuts the answer off and fails the stage. Raise "
+            f"`inference.ollama.timeout_seconds`, or lower "
+            f"`workflow.structured_output_tokens`."
+            if timeout < needed
+            else ""
+        ),
+    )
+
+
+def _served_context_finding(settings: Settings) -> Diagnosis:
+    """Report every stage whose budgets cannot fit the context the backend serves (row WPF7).
+
+    Args:
+        settings: The effective settings.
+
+    Returns:
+        One diagnosis for the whole stage list: ``ok`` when every stage fits, ``fail`` naming the
+        stages that do not, and ``warn`` when the served context is not stated — in `loadcoach` and
+        `openai_compatible` mode the window belongs to the service on the other side, and on
+        `ollama` with the setting at 0 IdeaPress inherits `OLLAMA_CONTEXT_LENGTH`, which it cannot
+        read. The check that cannot be made is reported as not made rather than passed.
+    """
+    from ideapress.domain.stages import MODEL_STAGES
+    from ideapress.services.context_fit import context_shortfall, served_context_tokens
+
+    served = served_context_tokens(settings)
+    if served <= 0:
+        return Diagnosis(
+            name="served context",
+            level="warn",
+            detail=(
+                "Not stated for this backend, so the pre-run budget check is off."
+                if settings.inference.mode != "ollama"
+                else "inference.ollama.served_context_tokens = 0, so the server's own "
+                "OLLAMA_CONTEXT_LENGTH applies and the pre-run budget check is off."
+            ),
+            remedy=(
+                ""
+                if settings.inference.mode != "ollama"
+                else "Set it to what this endpoint serves. A prompt, its reasoning and its answer "
+                "come out of one window: a served context smaller than a stage's budgets produces "
+                "an empty generation, not a short answer."
+            ),
+        )
+    problems = {
+        stage: problem
+        for stage in sorted(MODEL_STAGES)
+        if (problem := context_shortfall(settings, stage)) is not None
+    }
+    return Diagnosis(
+        name="served context",
+        level="fail" if problems else "ok",
+        detail=(
+            f"{len(problems)} stage(s) need more than the {served} tokens served: "
+            f"{', '.join(problems)}"
+            if problems
+            else f"All {len(MODEL_STAGES)} model-using stages fit the {served} tokens served."
+        ),
+        remedy=next(iter(problems.values()), ""),
+    )
 
 
 def _backend_findings(runtime: Runtime, settings: Settings) -> list[Diagnosis]:

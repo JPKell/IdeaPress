@@ -31,6 +31,8 @@ DIAGNOSIS_NAMES: frozenset[str] = frozenset(
         "prompts",
         "stage model bindings",
         "output budget",
+        "served context",
+        "generation timeout",
         "bind",
         "telemetry",
         "loadcoach task profiles",

@@ -50,6 +50,12 @@ ADDED_IN_M1_SECTIONS: set[str] = {"research"}
 ADDED_IN_WM2_SECTIONS: set[str] = {"console"}
 """Row WM2: `[console] url`, WeightRoomGym's address for the top-bar tab strip."""
 
+ADDED_IN_WPF7_NESTED: dict[str, set[str]] = {
+    "ollama": {"served_context_tokens"},
+}
+"""Row WPF7: the context IdeaPress asks Ollama to serve, and checks its budgets against. New, and
+it moves no existing value: 0 means what every build before it did, the server's own default."""
+
 
 def _without_1_1_keys(dump: dict[str, Any]) -> dict[str, Any]:
     """Return ``dump`` with exactly the keys 1.1, rows J1, K3, M1 and WM2 added removed, and
@@ -62,7 +68,7 @@ def _without_1_1_keys(dump: dict[str, Any]) -> dict[str, Any]:
     for section in ADDED_IN_J1_SECTIONS | ADDED_IN_M1_SECTIONS | ADDED_IN_WM2_SECTIONS:
         assert section in trimmed, f"{section} is missing from the dump"
         del trimmed[section]
-    for backend, keys in ADDED_IN_J1_NESTED.items():
+    for backend, keys in {**ADDED_IN_J1_NESTED, **ADDED_IN_WPF7_NESTED}.items():
         for key in keys:
             assert key in trimmed["inference"][backend], f"inference.{backend}.{key} is missing"
             del trimmed["inference"][backend][key]

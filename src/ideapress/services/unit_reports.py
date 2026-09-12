@@ -36,6 +36,10 @@ def _attempt_view(attempt: AttemptRow, egress: dict[str, Any] | None = None) -> 
         "stage": attempt.stage,
         "attempt": attempt.attempt,
         "round": attempt.round,
+        # Which physical call within that attempt (row WPF7): 0 is the answer the attempt kept,
+        # 1 and up are calls the gateway discarded and retried. Without it two rows of one attempt
+        # are indistinguishable in a report but for their outcome.
+        "transport_call": attempt.transport_call,
         "outcome": attempt.outcome,
         "backend": attempt.backend,
         "model_canonical_id": attempt.model_canonical_id,

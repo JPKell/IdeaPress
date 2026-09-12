@@ -19,6 +19,7 @@ from sqlalchemy import select
 from ideapress.errors import StagePreconditionFailed
 from ideapress.infrastructure.db.models import StageRun as StageRunRow
 from ideapress.infrastructure.db.models import Unit as UnitRow
+from ideapress.services.context_fit import context_shortfall
 from ideapress.services.plan import build_plan, store_plan
 from ideapress.services.stages import record_attempt
 
@@ -35,13 +36,37 @@ __all__ = ["start_plan", "start_stage"]
 logger = logging.getLogger(__name__)
 
 
+def _refuse_if_it_cannot_fit(
+    settings: Settings, stage: str, *, project_id: str, target_words: int | None = None
+) -> None:
+    """Refuse a stage whose budgets cannot fit the context the backend serves (row WPF7).
+
+    Args:
+        settings: The effective settings.
+        stage: The stage about to run.
+        project_id: For the error's details.
+        target_words: The longest unit a text stage will write.
+
+    Raises:
+        StagePreconditionFailed: The stage's assembled context, its output allowance and its prompt
+            together exceed the served context. Before the run, in one message with every number
+            — rather than after two model calls have each spent a full window on reasoning and
+            returned nothing, which is how WP6 met this.
+    """
+    problem = context_shortfall(settings, stage, target_words=target_words)
+    if problem is None:
+        return
+    raise StagePreconditionFailed(problem, details={"project_id": project_id, "stage": stage})
+
+
 def start_plan(runtime: Runtime, *, project_id: str) -> StageTask:
     """Start the plan stage: compile requirements, then outline units, then gate the plan.
 
     Raises:
         ProjectNotFound: No such project.
         StageAlreadyRunning: A stage is already running for this project.
-        StagePreconditionFailed: The project has no brief, so there is nothing to compile from.
+        StagePreconditionFailed: The project has no brief, so there is nothing to compile from, or
+            its budgets cannot fit the context the backend serves (row WPF7).
     """
     project = runtime.projects.get(project_id)
     if not project.brief_text.strip():
@@ -52,6 +77,8 @@ def start_plan(runtime: Runtime, *, project_id: str) -> StageTask:
         raise StagePreconditionFailed(message, details={"project_id": project_id})
 
     runtime.refresh_settings()  # a stored runtime setting takes effect as a stage starts
+    _refuse_if_it_cannot_fit(runtime.settings, "requirements", project_id=project_id)
+    _refuse_if_it_cannot_fit(runtime.settings, "outline", project_id=project_id)
 
     def body(task: StageTask) -> None:
         runner = runtime.runner
@@ -229,7 +256,8 @@ def start_stage(
 
     Raises:
         ValidationError: An override this stage's run would not apply (:func:`check_overrides`).
-        StagePreconditionFailed: The stage has no body yet, or the project has no plan.
+        StagePreconditionFailed: The stage has no body yet, the project has no plan, or the stage's
+            budgets cannot fit the context the backend serves (row WPF7).
     """
     from ideapress.services.stage_registry import STAGE_BODIES
 
@@ -241,6 +269,7 @@ def start_stage(
             select(UnitRow).where(UnitRow.project_id == project_id).order_by(UnitRow.ordinal)
         ).all()
         keys = [row.unit_key for row in planned]
+        targets = {row.unit_key: row.target_words for row in planned}
     if not keys and stage != "research":
         # `research` is the one stage that runs before a plan exists: workflows §2 puts it at
         # position 2 and the plan at position 4, so requiring units here would make the stage
@@ -260,6 +289,14 @@ def start_stage(
         raise StagePreconditionFailed(message, details={"stage": stage})
 
     runtime.refresh_settings()  # a stored runtime setting takes effect as a stage starts
+    _refuse_if_it_cannot_fit(
+        runtime.settings,
+        stage,
+        project_id=project_id,
+        # The longest unit the run will write decides whether a text stage fits: its output budget
+        # is four tokens per target word above the thinking floor.
+        target_words=max((targets.get(key) or 0 for key in selected), default=0) or None,
+    )
     return runtime.runner.start(
         project_id=project_id,
         stage=stage,

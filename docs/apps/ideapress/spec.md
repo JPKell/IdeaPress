@@ -382,14 +382,58 @@ Long documents stream to disk rather than being held in memory more than once.
 its reasoning before the first word of its answer, from the same allowance — measured on the
 reference machine, `qwen3.5:9b-q8_0` compiling requirements from a six-line brief produced nothing
 at all at 4 096 tokens and finished in 278 tokens of answer at 8 192. The structured stages
-therefore run under `workflow.structured_output_tokens` (default 8192, range 1024–131072), which is
+therefore run under `workflow.structured_output_tokens` (default 16384, range 1024–131072), which is
 configuration rather than a constant: a model that thinks longer than the reference machine's
 exhausts the budget with empty output, and the user's lever for that is `config.toml`, not a code
 edit. The text-writing stages (draft, repair, revise) budget a thinking floor plus four tokens per
 target word, and the floor is the larger of the measured 8192 and the same setting — so one knob is
-the lever for every empty-generation pause, whichever stage hits it. A unit that exhausts an output
+the lever for every empty-generation pause, whichever stage hits it. **The default is 16384 because
+the widest shipped prompt needs it** (row WPF7): the 8192 below is the *draft* floor, and a five-unit
+`project_review` on `qwen3.5:9b-q8_0` spent about 11 800 output tokens reasoning before its first
+word — measured at an 8 792-token budget, a draft's first call after a cold load spent every one of
+them thinking and returned nothing, which is the retry's own reason for existing. A unit that exhausts an output
 budget twice **pauses with the stage and the budget in the reason** while the remaining units
 continue; it never aborts the stage.
+
+**The output budget is spent from the same window as the prompt, so the served context is the
+figure that decides whether a stage can answer at all** (row WPF7). A local server serves a fixed
+context length, and the prompt, the reasoning and the answer all come out of it: raising
+`structured_output_tokens` above what the window leaves cannot be honoured, because `num_predict`
+cannot exceed the room the prompt left. WP6 met every consequence of that on the reference machine,
+where Ollama served 8 192 tokens (`OLLAMA_CONTEXT_LENGTH`, the operator's memory cap,
+[ADR-0119](../../adr/0119-model-servers-run-under-a-host-memory-cap.md) decision 1): `project_review`
+assembled a 12 777-token context under its 24 000-token budget — which the server truncated — and
+two units paused, each after two calls that spent the whole window reasoning and returned nothing.
+The measurements, all on `qwen3.5:9b-q8_0`, same machine, 2026-09-11:
+
+| Stage | Prompt | Reasoning before the first word | Answer |
+|---|---|---|---|
+| `critique`, short unit | 2 289 | ≈ 1 700 | 237 characters |
+| `critique`, long unit | 4 723 | ≈ 4 300 | 334 characters |
+| `audit_fast`, long unit | 5 581 | ≈ 4 300 | 287 characters |
+| `revise` | 538 | ≈ 5 300 – 7 000 | ≈ 900 characters |
+| `project_review`, five units | 12 777 | ≈ 11 800 | 1 757 characters |
+
+So IdeaPress **states the window it needs and checks its budgets against it**:
+`inference.ollama.served_context_tokens` (default 32768) is sent as `num_ctx` on every request — one
+value for every stage, because Ollama reloads a model when a request asks for a different context
+length — and a stage whose assembled-context budget, output budget and prompt overhead exceed it is
+**refused before the run**, naming all four numbers. `0` leaves the server's own default and turns
+the check off, because a check with no figure to check against would be a guess. IdeaPress never
+raises the window on its own: how large a window the card can hold is the operator's memory decision
+(ADR-0119 decision 3), and the host cap is what keeps a large one safe. On the reference card a
+9.7B Q8_0 model at 32 768 tokens holds 11.6 GB of 16 GB.
+
+**A budget large enough for most prompts is not large enough for a reasoning loop**, so the retry
+of an empty generation asks for the answer *without* reasoning where the backend can carry that
+(workflows §6.2). Measured: `project_review` on two committed units produced nothing in 16 384 tokens
+twice, 375 seconds a call, on a served window of 32 768 — the model was not short of room, it was not
+stopping.
+
+`project_review_context_budget_tokens` defaults to **14336** for the same reason: with the
+16384-token output budget and the prompt it fits the default window (14 336 + 16 384 + 512 = 31 232),
+where the previous 24 000 fitted nothing IdeaPress asks to be served. A five-unit document measured
+12 777 tokens, so it still fits without compaction.
 
 ## 16. Cross-platform considerations
 

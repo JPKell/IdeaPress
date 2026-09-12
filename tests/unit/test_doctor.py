@@ -37,6 +37,8 @@ def test_doctor_runs_with_no_configuration_at_all() -> None:
         "prompts",
         "stage model bindings",
         "output budget",
+        "served context",
+        "generation timeout",
         "bind",
         "telemetry",
     ],
@@ -88,7 +90,8 @@ def test_a_low_output_budget_is_warned_about_with_the_reason() -> None:
     findings = {f.name: f for f in _configuration_findings(settings)}
     budget = findings["output budget"]
     assert budget.level == "warn"
-    assert "8192" in (budget.remedy or "")
+    assert "16384" in (budget.remedy or ""), "the measured reasoning need, not the draft floor"
+    assert "11 800" in (budget.remedy or ""), "what the measurement was"
 
 
 def test_the_default_budget_is_not_warned_about() -> None:
@@ -96,6 +99,60 @@ def test_the_default_budget_is_not_warned_about() -> None:
 
     findings = {f.name: f for f in _configuration_findings(load_settings().settings)}
     assert findings["output budget"].level == "ok"
+
+
+def test_a_stage_that_cannot_fit_the_served_window_is_a_failure_that_names_it() -> None:
+    """Row WPF7: the figure that decides whether a stage can answer at all, checked in advance."""
+    from ideapress.services.diagnostics import _configuration_findings  # noqa: PLC2701
+
+    settings = load_settings().settings.model_copy(deep=True)
+    settings.inference.ollama.served_context_tokens = 8192
+    findings = {f.name: f for f in _configuration_findings(settings)}
+    served = findings["served context"]
+    assert served.level == "fail"
+    assert "8192" in served.detail
+    assert "project_review" in served.detail
+    assert "no text at all" in (served.remedy or "")
+
+
+def test_the_defaults_fit_the_window_they_ask_for_and_doctor_says_so() -> None:
+    from ideapress.services.diagnostics import _configuration_findings  # noqa: PLC2701
+
+    findings = {f.name: f for f in _configuration_findings(load_settings().settings)}
+    assert findings["served context"].level == "ok"
+    assert "32768" in findings["served context"].detail
+
+
+def test_a_budget_that_cannot_be_generated_in_time_is_warned_about() -> None:
+    """Row WPF7, learned live: a raised budget with the old timeout fails the stage mid-thought."""
+    from ideapress.services.diagnostics import _configuration_findings  # noqa: PLC2701
+
+    settings = load_settings().settings.model_copy(deep=True)
+    settings.inference.ollama.timeout_seconds = 300
+    findings = {f.name: f for f in _configuration_findings(settings)}
+    timeout = findings["generation timeout"]
+    assert timeout.level == "warn"
+    assert "300" in timeout.detail
+    assert "819" in timeout.detail, "what the budget needs, in seconds"
+    assert "timeout_seconds" in (timeout.remedy or "")
+
+
+def test_the_default_timeout_covers_the_default_budget() -> None:
+    from ideapress.services.diagnostics import _configuration_findings  # noqa: PLC2701
+
+    findings = {f.name: f for f in _configuration_findings(load_settings().settings)}
+    assert findings["generation timeout"].level == "ok"
+
+
+def test_an_unstated_window_is_reported_as_unchecked_rather_than_passed() -> None:
+    """A check that cannot be made is not a check that passed."""
+    from ideapress.services.diagnostics import _configuration_findings  # noqa: PLC2701
+
+    settings = load_settings().settings.model_copy(deep=True)
+    settings.inference.ollama.served_context_tokens = 0
+    findings = {f.name: f for f in _configuration_findings(settings)}
+    assert findings["served context"].level == "warn"
+    assert "OLLAMA_CONTEXT_LENGTH" in findings["served context"].detail
 
 
 def test_a_lan_bind_is_reported_with_its_allowlist() -> None:

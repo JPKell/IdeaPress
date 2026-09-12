@@ -19,6 +19,7 @@
     "inference.loadcoach.timeout_seconds",
     "inference.mode",
     "inference.ollama.base_url",
+    "inference.ollama.served_context_tokens",
     "inference.ollama.timeout_seconds",
     "inference.openai_compatible.api_key_env",
     "inference.openai_compatible.base_url",
@@ -344,8 +345,17 @@
             "title": "Base Url",
             "type": "string"
           },
+          "served_context_tokens": {
+            "default": 32768,
+            "description": "The context IdeaPress asks Ollama to serve on every request (`num_ctx`), and the figure its budgets are checked against before a stage starts. One value for every stage, because Ollama reloads a model when a request asks for a different context length. Ollama's own default comes from the server's `OLLAMA_CONTEXT_LENGTH` (8192 on the reference machine, ADR-0119) and is smaller than IdeaPress's default budgets need: prompt, reasoning and answer all come out of the same window, so a served context that cannot hold them produces an empty generation rather than a short one. 0 leaves the server's default and turns the pre-run check off; nothing else here changes. Whatever is set, the host memory cap of ADR-0119 is what keeps a large window from harming the machine.",
+            "maximum": 1048576,
+            "minimum": 0,
+            "title": "Served Context Tokens",
+            "type": "integer"
+          },
           "timeout_seconds": {
-            "default": 300,
+            "default": 900,
+            "description": "How long one request may take. It has to cover the **whole** output budget at the rate the machine actually generates: `workflow.structured_output_tokens` of 16384 at a slow local 20 tokens/s is 819 seconds, and a reasoning model spends most of that budget thinking before its first word. The 300 of earlier builds was sized for an 8192-token budget and timed a revision out mid-thought (row WPF7).",
             "minimum": 1,
             "title": "Timeout Seconds",
             "type": "integer"
@@ -697,8 +707,8 @@
             "type": "integer"
           },
           "project_review_context_budget_tokens": {
-            "default": 24000,
-            "description": "Token budget for project_review's whole-document context (workflows \u00a72 stage 15). Nothing here is pinned \u2014 units are dropped, latest in reading order first \u2014 and the stage refuses with both numbers rather than silently reviewing an empty document.",
+            "default": 14336,
+            "description": "Token budget for project_review's whole-document context (workflows \u00a72 stage 15). Nothing here is pinned \u2014 units are dropped, latest in reading order first \u2014 and the stage refuses with both numbers rather than silently reviewing an empty document. With the output budget and the prompt it must fit `inference.ollama.served_context_tokens`, or the stage is refused before it runs (row WPF7): 24000 was the default until that check existed, and no served window IdeaPress asks for held it.",
             "minimum": 256,
             "title": "Project Review Context Budget Tokens",
             "type": "integer"
@@ -709,8 +719,8 @@
             "type": "boolean"
           },
           "structured_output_tokens": {
-            "default": 8192,
-            "description": "Output-token budget for the structured stages (requirements, outline, audit_fast, audit_deep, critique, project_review), and \u2014 when raised above the 8192 default \u2014 the thinking floor for the text-writing stages (draft, repair, revise) as well. Includes the model's reasoning: a thinking model spends output tokens before its first word of answer, and 8192 is the measured floor for the default models (spec \u00a715). Raise this when a unit pauses with an exhausted output budget.",
+            "default": 16384,
+            "description": "Output-token budget for the structured stages (requirements, outline, audit_fast, audit_deep, critique, project_review), and \u2014 above the 8192 thinking floor \u2014 the floor for the text-writing stages (draft, repair, revise) as well. Includes the model's reasoning: a thinking model spends output tokens before its first word of answer, and the measured need on the reference machine is 1 700 to 4 300 tokens for an audit or a critique, about 7 000 for a revision and about 11 800 for a five-unit project review (spec \u00a715, row WPF7) \u2014 which is why the default is 16384 rather than the 8192 floor a draft needs. With the stage's context budget and its prompt it must fit `inference.ollama.served_context_tokens`, or the stage is refused before it runs.",
             "maximum": 131072,
             "minimum": 1024,
             "title": "Structured Output Tokens",
@@ -916,6 +926,7 @@
     "inference.mode": "default",
     "inference.ollama": "default",
     "inference.ollama.base_url": "default",
+    "inference.ollama.served_context_tokens": "default",
     "inference.ollama.timeout_seconds": "default",
     "inference.openai_compatible": "default",
     "inference.openai_compatible.api_key_env": "default",

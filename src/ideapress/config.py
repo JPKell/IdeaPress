@@ -190,7 +190,34 @@ class OllamaSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     base_url: str = Field(default="http://127.0.0.1:11434")
-    timeout_seconds: int = Field(default=300, ge=1)
+    timeout_seconds: int = Field(
+        default=900,
+        ge=1,
+        description=(
+            "How long one request may take. It has to cover the **whole** output budget at the "
+            "rate the machine actually generates: `workflow.structured_output_tokens` of 16384 at "
+            "a slow local 20 tokens/s is 819 seconds, and a reasoning model spends most of that "
+            "budget thinking before its first word. The 300 of earlier builds was sized for an "
+            "8192-token budget and timed a revision out mid-thought (row WPF7)."
+        ),
+    )
+    served_context_tokens: int = Field(
+        default=32_768,
+        ge=0,
+        le=1_048_576,
+        description=(
+            "The context IdeaPress asks Ollama to serve on every request (`num_ctx`), and the "
+            "figure its budgets are checked against before a stage starts. One value for every "
+            "stage, because Ollama reloads a model when a request asks for a different context "
+            "length. Ollama's own default comes from the server's `OLLAMA_CONTEXT_LENGTH` (8192 "
+            "on the reference machine, ADR-0119) and is smaller than IdeaPress's default budgets "
+            "need: prompt, reasoning and answer all come out of the same window, so a served "
+            "context that cannot hold them produces an empty generation rather than a short one. "
+            "0 leaves the server's default and turns the pre-run check off; nothing else here "
+            "changes. Whatever is set, the host memory cap of ADR-0119 is what keeps a large "
+            "window from harming the machine."
+        ),
+    )
 
 
 class LoadCoachSettings(BaseModel):
@@ -530,12 +557,16 @@ class WorkflowSettings(BaseModel):
         ),
     )
     project_review_context_budget_tokens: int = Field(
-        default=24_000,
+        default=14_336,
         ge=256,
         description=(
             "Token budget for project_review's whole-document context (workflows §2 stage 15). "
             "Nothing here is pinned — units are dropped, latest in reading order first — and the "
-            "stage refuses with both numbers rather than silently reviewing an empty document."
+            "stage refuses with both numbers rather than silently reviewing an empty document. "
+            "With the output budget and the prompt it must fit "
+            "`inference.ollama.served_context_tokens`, or the stage is refused before it runs "
+            "(row WPF7): 24000 was the default until that check existed, and no served window "
+            "IdeaPress asks for held it."
         ),
     )
     allow_audit_gated_requirements: bool = Field(
@@ -548,16 +579,20 @@ class WorkflowSettings(BaseModel):
         ),
     )
     structured_output_tokens: int = Field(
-        default=8_192,
+        default=16_384,
         ge=1_024,
         le=131_072,
         description=(
             "Output-token budget for the structured stages (requirements, outline, audit_fast, "
-            "audit_deep, critique, project_review), and — when raised above the 8192 default — "
-            "the thinking floor for the text-writing stages (draft, repair, revise) as well. "
-            "Includes the model's reasoning: a thinking model spends output tokens before its "
-            "first word of answer, and 8192 is the measured floor for the default models "
-            "(spec §15). Raise this when a unit pauses with an exhausted output budget."
+            "audit_deep, critique, project_review), and — above the 8192 thinking floor — the "
+            "floor for the text-writing stages (draft, repair, revise) as well. Includes the "
+            "model's reasoning: a thinking model spends output tokens before its first word of "
+            "answer, and the measured need on the reference machine is 1 700 to 4 300 tokens "
+            "for an audit or a critique, about 7 000 for a revision and about 11 800 for a "
+            "five-unit project review (spec §15, row WPF7) — which is why the default is 16384 "
+            "rather than the 8192 floor a draft needs. With the stage's context budget and its "
+            "prompt it must fit `inference.ollama.served_context_tokens`, or the stage is "
+            "refused before it runs."
         ),
     )
 
@@ -1242,7 +1277,18 @@ data_classification = "public"
 
 [inference.ollama]
 base_url = "http://127.0.0.1:11434"
-timeout_seconds = 300
+# Long enough for the whole output budget at the rate this machine generates: 16384 tokens at a
+# slow local 20 tokens/s is 819 seconds, and a reasoning model spends most of its budget thinking
+# before its first word. `doctor` warns when the two settings disagree (row WPF7).
+timeout_seconds = 900
+# The context IdeaPress asks Ollama to serve on every request (`num_ctx`), and the figure its
+# budgets are checked against before a stage starts: a prompt, the model's reasoning and its answer
+# all come out of one window, so a window too small for them produces no text at all rather than a
+# short answer. Ollama's own default (`OLLAMA_CONTEXT_LENGTH`, 8192 on the reference machine per
+# ADR-0119) is smaller than IdeaPress's default budgets need. Measured on the reference card: a
+# 9.7B Q8_0 model at 32768 holds 11.6 GB of 16 GB. 0 leaves the server's default and turns the
+# pre-run check off. The host memory cap of ADR-0119 is what keeps a large window safe.
+served_context_tokens = 32768
 
 [execution]
 # One generation in flight, and one model resident, at a time (ADR-0038). A value above 1 is
@@ -1290,7 +1336,7 @@ allow_audit_gated_requirements = true
 # stages (draft, repair, revise). A reasoning model spends output tokens thinking before its
 # first word of answer; a unit paused for an exhausted output budget needs this raised.
 # Accepted range: 1024-131072.
-structured_output_tokens = 8192
+structured_output_tokens = 16384
 
 # The `research` stage (workflows §2 row 2, ADR-0116). Every default is closed: with no host named
 # `http_fetch` is not registered at all, so a fresh install fetches nothing. `allowed_tools` is the

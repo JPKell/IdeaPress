@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import contextlib
 from dataclasses import replace
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from baseaicore import RuntimeProfile
 from modelrack import ProviderError
@@ -33,6 +33,10 @@ from ideapress.infrastructure.backends._modelrack import (
     to_stage_result,
     translate_errors,
 )
+
+FAKE_TIMEOUT_SECONDS: Final = 300.0
+"""What the fake tells ModelRack its deadline is. It answers instantly, so this is a placeholder for
+a figure the builder requires rather than a bound anything reaches (row WPF7)."""
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
@@ -151,6 +155,7 @@ class FakeBackend:
             token_counts=provider_capabilities.token_counts,
             model_selection=True,
             discloses_model=True,
+            thinking_control=provider_capabilities.thinking_control,
             residency_control=provider_capabilities.force_unload,
         )
 
@@ -193,6 +198,8 @@ class FakeBackend:
             model_reference=request.model_hint or "",
             provider_kind="fake",
             supports_structured_output=self.capabilities().structured_output,
+            # The fake serves instantly; the figure only has to be a figure.
+            default_timeout_seconds=FAKE_TIMEOUT_SECONDS,
         )
         try:
             result = self._provider.generate(generation)
@@ -208,6 +215,8 @@ class FakeBackend:
             model_reference=request.model_hint or "",
             provider_kind="fake",
             supports_structured_output=self.capabilities().structured_output,
+            # The fake serves instantly; the figure only has to be a figure.
+            default_timeout_seconds=FAKE_TIMEOUT_SECONDS,
         )
         try:
             yield from to_stage_events(
