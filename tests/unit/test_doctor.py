@@ -37,6 +37,7 @@ def test_doctor_runs_with_no_configuration_at_all() -> None:
         "prompts",
         "stage model bindings",
         "output budget",
+        "served context",
         "bind",
         "telemetry",
     ],
@@ -96,6 +97,39 @@ def test_the_default_budget_is_not_warned_about() -> None:
 
     findings = {f.name: f for f in _configuration_findings(load_settings().settings)}
     assert findings["output budget"].level == "ok"
+
+
+def test_a_stage_that_cannot_fit_the_served_window_is_a_failure_that_names_it() -> None:
+    """Row WPF7: the figure that decides whether a stage can answer at all, checked in advance."""
+    from ideapress.services.diagnostics import _configuration_findings  # noqa: PLC2701
+
+    settings = load_settings().settings.model_copy(deep=True)
+    settings.inference.ollama.served_context_tokens = 8192
+    findings = {f.name: f for f in _configuration_findings(settings)}
+    served = findings["served context"]
+    assert served.level == "fail"
+    assert "8192" in served.detail
+    assert "project_review" in served.detail
+    assert "no text at all" in (served.remedy or "")
+
+
+def test_the_defaults_fit_the_window_they_ask_for_and_doctor_says_so() -> None:
+    from ideapress.services.diagnostics import _configuration_findings  # noqa: PLC2701
+
+    findings = {f.name: f for f in _configuration_findings(load_settings().settings)}
+    assert findings["served context"].level == "ok"
+    assert "32768" in findings["served context"].detail
+
+
+def test_an_unstated_window_is_reported_as_unchecked_rather_than_passed() -> None:
+    """A check that cannot be made is not a check that passed."""
+    from ideapress.services.diagnostics import _configuration_findings  # noqa: PLC2701
+
+    settings = load_settings().settings.model_copy(deep=True)
+    settings.inference.ollama.served_context_tokens = 0
+    findings = {f.name: f for f in _configuration_findings(settings)}
+    assert findings["served context"].level == "warn"
+    assert "OLLAMA_CONTEXT_LENGTH" in findings["served context"].detail
 
 
 def test_a_lan_bind_is_reported_with_its_allowlist() -> None:

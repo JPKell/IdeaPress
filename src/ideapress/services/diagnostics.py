@@ -196,6 +196,10 @@ def _configuration_findings(settings: Settings) -> list[Diagnosis]:
         )
     )
 
+    # Row WPF7: the budget above is spent from the same window as the prompt and the reasoning, so
+    # the figure that decides whether a stage can answer at all is the served context.
+    findings.append(_served_context_finding(settings))
+
     # The exposure refusals happen at load time, so reaching here means they passed — say so,
     # rather than staying silent about the check that did not fire.
     loopback = settings.server.host in {"127.0.0.1", "localhost", "::1"}
@@ -240,6 +244,59 @@ def _configuration_findings(settings: Settings) -> list[Diagnosis]:
         )
     )
     return findings
+
+
+def _served_context_finding(settings: Settings) -> Diagnosis:
+    """Report every stage whose budgets cannot fit the context the backend serves (row WPF7).
+
+    Args:
+        settings: The effective settings.
+
+    Returns:
+        One diagnosis for the whole stage list: ``ok`` when every stage fits, ``fail`` naming the
+        stages that do not, and ``warn`` when the served context is not stated — in `loadcoach` and
+        `openai_compatible` mode the window belongs to the service on the other side, and on
+        `ollama` with the setting at 0 IdeaPress inherits `OLLAMA_CONTEXT_LENGTH`, which it cannot
+        read. The check that cannot be made is reported as not made rather than passed.
+    """
+    from ideapress.domain.stages import MODEL_STAGES
+    from ideapress.services.context_fit import context_shortfall, served_context_tokens
+
+    served = served_context_tokens(settings)
+    if served <= 0:
+        return Diagnosis(
+            name="served context",
+            level="warn",
+            detail=(
+                "Not stated for this backend, so the pre-run budget check is off."
+                if settings.inference.mode != "ollama"
+                else "inference.ollama.served_context_tokens = 0, so the server's own "
+                "OLLAMA_CONTEXT_LENGTH applies and the pre-run budget check is off."
+            ),
+            remedy=(
+                ""
+                if settings.inference.mode != "ollama"
+                else "Set it to what this endpoint serves. A prompt, its reasoning and its answer "
+                "come out of one window: a served context smaller than a stage's budgets produces "
+                "an empty generation, not a short answer."
+            ),
+        )
+    problems = {
+        stage: problem
+        for stage in sorted(MODEL_STAGES)
+        if (problem := context_shortfall(settings, stage)) is not None
+    }
+    return Diagnosis(
+        name="served context",
+        level="fail" if problems else "ok",
+        detail=(
+            f"{len(problems)} stage(s) need more than the {served} tokens served: "
+            f"{', '.join(problems)}"
+            if problems
+            else f"All {len(MODEL_STAGES)} model-using stages fit the {served} tokens served."
+        ),
+        remedy=next(iter(problems.values()), ""),
+    )
 
 
 def _backend_findings(runtime: Runtime, settings: Settings) -> list[Diagnosis]:

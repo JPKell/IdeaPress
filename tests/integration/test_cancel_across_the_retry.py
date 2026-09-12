@@ -244,3 +244,32 @@ def test_both_calls_are_recorded_when_the_budget_is_genuinely_too_small(runtime:
     assert [row.transport_call for row in rows] == [1, 2]
     assert [row.error_code for row in rows] == ["EMPTY_GENERATION", "CONTEXT_LIMIT_EXCEEDED"]
     assert all(row.outcome == "provider_error" for row in rows)
+
+
+def test_a_stage_whose_budgets_cannot_fit_is_refused_before_it_starts(runtime: Runtime) -> None:
+    """Row WPF7's other half: the operator is told which stage cannot fit, before any model call.
+
+    WP6 met this the other way round — two model calls, each spending a whole window on reasoning,
+    then *the model produced no text at all in 8192 output tokens*, advising a raise of the number
+    the served context could not honour.
+    """
+    from ideapress.errors import StagePreconditionFailed
+    from ideapress.services.stage_bodies import start_plan
+
+    _with_backend(runtime, _scripted(GOOD_REQUIREMENTS, GOOD_PLAN))
+    runtime.settings.inference.ollama.served_context_tokens = 8192
+    project_id = runtime.projects.create(title="Local inference", brief=BRIEF).id
+
+    with pytest.raises(StagePreconditionFailed) as refused:
+        start_plan(runtime, project_id=project_id)
+
+    assert "8192" in refused.value.message, "the window it would have run in"
+    assert "requirements" in refused.value.message, "the stage that does not fit"
+    assert refused.value.details["stage"] == "requirements"
+    from ideapress.infrastructure.db.models import StageRun as StageRunRow
+
+    with runtime.storage.read() as session:
+        runs = session.scalars(
+            select(StageRunRow).where(StageRunRow.project_id == project_id)
+        ).all()
+    assert list(runs) == [], "a refused stage starts no run at all"

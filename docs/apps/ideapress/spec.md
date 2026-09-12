@@ -391,6 +391,38 @@ the lever for every empty-generation pause, whichever stage hits it. A unit that
 budget twice **pauses with the stage and the budget in the reason** while the remaining units
 continue; it never aborts the stage.
 
+**The output budget is spent from the same window as the prompt, so the served context is the
+figure that decides whether a stage can answer at all** (row WPF7). A local server serves a fixed
+context length, and the prompt, the reasoning and the answer all come out of it: raising
+`structured_output_tokens` above what the window leaves cannot be honoured, because `num_predict`
+cannot exceed the room the prompt left. WP6 met every consequence of that on the reference machine,
+where Ollama served 8 192 tokens (`OLLAMA_CONTEXT_LENGTH`, the operator's memory cap,
+[ADR-0119](../../adr/0119-model-servers-run-under-a-host-memory-cap.md) decision 1): `project_review`
+assembled a 12 777-token context under its 24 000-token budget — which the server truncated — and
+two units paused, each after two calls that spent the whole window reasoning and returned nothing.
+The measurements, all on `qwen3.5:9b-q8_0`, same machine, 2026-09-11:
+
+| Stage | Prompt | Reasoning before the first word | Answer |
+|---|---|---|---|
+| `critique`, short unit | 2 289 | ≈ 1 700 | 237 characters |
+| `critique`, long unit | 4 723 | ≈ 4 300 | 334 characters |
+| `audit_fast`, long unit | 5 581 | ≈ 4 300 | 287 characters |
+| `revise` | 538 | ≈ 5 300 – 7 000 | ≈ 900 characters |
+| `project_review`, five units | 12 777 | ≈ 11 800 | 1 757 characters |
+
+So IdeaPress **states the window it needs and checks its budgets against it**:
+`inference.ollama.served_context_tokens` (default 32768) is sent as `num_ctx` on every request — one
+value for every stage, because Ollama reloads a model when a request asks for a different context
+length — and a stage whose assembled-context budget, output budget and prompt overhead exceed it is
+**refused before the run**, naming all four numbers. `0` leaves the server's own default and turns
+the check off, because a check with no figure to check against would be a guess. IdeaPress never
+raises the window on its own: how large a window the card can hold is the operator's memory decision
+(ADR-0119 decision 3), and the host cap is what keeps a large one safe. On the reference card a
+9.7B Q8_0 model at 32 768 tokens holds 11.6 GB of 16 GB.
+
+`project_review_context_budget_tokens` defaults to **20480** for the same reason: with the output
+budget and the prompt it fits the default window, where the previous 24 000 did not.
+
 ## 16. Cross-platform considerations
 
 Fully portable — no platform-specific code beyond the shared path handling. IdeaPress shows no

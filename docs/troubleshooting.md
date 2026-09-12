@@ -28,6 +28,7 @@ prints it:
 | `prompts` | The prompt pack is present, parses, and matches its manifest |
 | `stage model bindings` | Every model-using stage has a `[models.stages]` binding, unless `inference.mode = "loadcoach"` |
 | `output budget` | `workflow.structured_output_tokens` is at or above the measured 8192 floor |
+| `served context` | Every stage's context budget, output budget and prompt fit `inference.ollama.served_context_tokens`. `0` reports the check as not made, because the server's own `OLLAMA_CONTEXT_LENGTH` cannot be read from here |
 | `bind` | The server bind (loopback, or a non-loopback bind with `allowed_hosts` acknowledged) |
 | `telemetry` | Whether `ideapress[telemetry]` is installed, which gates the VRAM preflight |
 | `loadcoach task profiles` | Every stage's task profile exists on the running LoadCoach (`inference.mode = "loadcoach"` only) |
@@ -61,7 +62,7 @@ a defect: pause, raise, resume.
 | `BACKEND_VERSION_MISMATCH` | LoadCoach speaks a different API major | The message names both versions. Upgrade whichever is older |
 | `MODEL_NOT_CONFIGURED` | A stage has no `[models.stages]` binding | The message names the stage and the key. `ideapress config init` writes a full example |
 | `PROVIDER_TIMEOUT` | It accepted the request and did not answer in time | Raise `timeout_seconds`, or use a smaller model. Different from being down |
-| `CONTEXT_LIMIT_EXCEEDED` | The request exceeded what the model serves | Usually the output budget above. The message carries the numbers |
+| `CONTEXT_LIMIT_EXCEEDED` | The request exceeded what the model serves | Usually the served context above, not the output budget: a prompt, the model's reasoning and its answer come out of one window, so a window too small for them returns no text at all. The message carries the numbers, and a stage whose budgets cannot fit is refused before it runs |
 | `INSUFFICIENT_VRAM` | The preflight found less free VRAM than the model needs with its context | The message carries **both** figures. Close what is holding the card. Only raised with `ideapress[telemetry]` |
 | `VALIDATION_FAILED` | Deterministic checks did not pass | The report names each one. Repair runs automatically; a unit pauses after `max_attempts_per_stage` |
 | `REQUIREMENTS_UNMET` | A blocking requirement is not satisfied | The coverage report names it, and whether a check or an audit was deciding |

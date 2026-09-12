@@ -191,6 +191,23 @@ class OllamaSettings(BaseModel):
 
     base_url: str = Field(default="http://127.0.0.1:11434")
     timeout_seconds: int = Field(default=300, ge=1)
+    served_context_tokens: int = Field(
+        default=32_768,
+        ge=0,
+        le=1_048_576,
+        description=(
+            "The context IdeaPress asks Ollama to serve on every request (`num_ctx`), and the "
+            "figure its budgets are checked against before a stage starts. One value for every "
+            "stage, because Ollama reloads a model when a request asks for a different context "
+            "length. Ollama's own default comes from the server's `OLLAMA_CONTEXT_LENGTH` (8192 "
+            "on the reference machine, ADR-0119) and is smaller than IdeaPress's default budgets "
+            "need: prompt, reasoning and answer all come out of the same window, so a served "
+            "context that cannot hold them produces an empty generation rather than a short one. "
+            "0 leaves the server's default and turns the pre-run check off; nothing else here "
+            "changes. Whatever is set, the host memory cap of ADR-0119 is what keeps a large "
+            "window from harming the machine."
+        ),
+    )
 
 
 class LoadCoachSettings(BaseModel):
@@ -530,12 +547,16 @@ class WorkflowSettings(BaseModel):
         ),
     )
     project_review_context_budget_tokens: int = Field(
-        default=24_000,
+        default=20_480,
         ge=256,
         description=(
             "Token budget for project_review's whole-document context (workflows §2 stage 15). "
             "Nothing here is pinned — units are dropped, latest in reading order first — and the "
-            "stage refuses with both numbers rather than silently reviewing an empty document."
+            "stage refuses with both numbers rather than silently reviewing an empty document. "
+            "With the output budget and the prompt it must fit "
+            "`inference.ollama.served_context_tokens`, or the stage is refused before it runs "
+            "(row WPF7): 24000 was the default until that check existed, and no served window "
+            "IdeaPress asks for held it."
         ),
     )
     allow_audit_gated_requirements: bool = Field(
@@ -1243,6 +1264,14 @@ data_classification = "public"
 [inference.ollama]
 base_url = "http://127.0.0.1:11434"
 timeout_seconds = 300
+# The context IdeaPress asks Ollama to serve on every request (`num_ctx`), and the figure its
+# budgets are checked against before a stage starts: a prompt, the model's reasoning and its answer
+# all come out of one window, so a window too small for them produces no text at all rather than a
+# short answer. Ollama's own default (`OLLAMA_CONTEXT_LENGTH`, 8192 on the reference machine per
+# ADR-0119) is smaller than IdeaPress's default budgets need. Measured on the reference card: a
+# 9.7B Q8_0 model at 32768 holds 11.6 GB of 16 GB. 0 leaves the server's default and turns the
+# pre-run check off. The host memory cap of ADR-0119 is what keeps a large window safe.
+served_context_tokens = 32768
 
 [execution]
 # One generation in flight, and one model resident, at a time (ADR-0038). A value above 1 is

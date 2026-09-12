@@ -9,6 +9,16 @@ packaging and release standards §3.
 
 ### Added
 
+- **IdeaPress states the context it needs, and refuses a stage that cannot fit it** (row WPF7,
+  WP6 finding 8). New `inference.ollama.served_context_tokens` (default 32768) is sent as `num_ctx`
+  on every Ollama request — one value for every stage, because Ollama reloads a model when a request
+  asks for a different context length — and a stage whose assembled-context budget, output budget
+  and prompt overhead exceed it is refused **before the run**, naming all four numbers, rather than
+  pausing a unit after two model calls have each spent the whole window reasoning and returned
+  nothing. `doctor` reports the same check as `served context`, and `0` reports it as not made: the
+  server's own `OLLAMA_CONTEXT_LENGTH` cannot be read from here. IdeaPress never raises the window
+  on its own — how large a window the card can hold is the operator's memory decision (ADR-0119).
+
 - **MirrorWall 0.3 adopted on the pages that want it** (row WM2, `apps/weightroom/design.md`
   §6): the project list renders dense; the System page shows each health component with the
   suite's status dot beside its own word; the workspace's running-stage section is MirrorWall's
@@ -18,6 +28,13 @@ packaging and release standards §3.
   WeightRoomGym and the peer applications through it — when the new `[console] url` names the
   console. Unset, the strip is absent and the masthead is byte-for-byte what it was.
   `mirrorwall>=0.3.1,<0.4`.
+
+### Changed
+
+- **`workflow.project_review_context_budget_tokens` now defaults to 20480**, from 24000 (row WPF7).
+  With the output budget and the prompt, 24000 fitted no window IdeaPress asks to be served, so a
+  fresh installation would have had its own `project_review` refused. A file that sets the key
+  keeps its value.
 
 ### Fixed
 
