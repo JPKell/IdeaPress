@@ -115,6 +115,7 @@ class OllamaBackend:
             provider_kind=self.name,
             supports_structured_output=self.capabilities().structured_output,
             context_size=self._settings.served_context_tokens or None,
+            default_timeout_seconds=float(self._settings.timeout_seconds),
         )
         try:
             result = self._provider.generate(generation)
@@ -164,6 +165,7 @@ class OllamaBackend:
             provider_kind=self.name,
             supports_structured_output=self.capabilities().structured_output,
             context_size=self._settings.served_context_tokens or None,
+            default_timeout_seconds=float(self._settings.timeout_seconds),
         )
         try:
             yield from to_stage_events(

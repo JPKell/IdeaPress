@@ -162,6 +162,7 @@ def build_generation_request(
     provider_kind: str,
     supports_structured_output: bool,
     context_size: int | None = None,
+    default_timeout_seconds: float,
 ) -> tuple[GenerationRequest, tuple[str, ...]]:
     """Translate one :class:`StageRequest` into ModelRack's request.
 
@@ -173,6 +174,9 @@ def build_generation_request(
             the stage asked for one, the format is downgraded to text and a degradation is
             returned — never a silent claim that a schema was enforced (workflows §6.2).
         context_size: A runtime-profile context override, when one is configured.
+        default_timeout_seconds: The configured backend timeout, used for any request that sets no
+            deadline of its own — which is every stage request (row WPF7). Passed in rather than
+            read here, because each adapter owns its own `[inference.<backend>]` section.
 
     Returns:
         The ModelRack request, and the degradations the translation itself introduced.
@@ -212,7 +216,11 @@ def build_generation_request(
             max_output_tokens=request.limits.max_output_tokens,
         ),
         response_format=response_format,
-        timeout_seconds=request.limits.timeout_seconds,
+        timeout_seconds=(
+            request.limits.timeout_seconds
+            if request.limits.timeout_seconds is not None
+            else default_timeout_seconds
+        ),
     )
     return generation, tuple(degradations)
 

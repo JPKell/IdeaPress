@@ -190,7 +190,14 @@ class StageLimits:
     """Output tokens, **including a thinking model's reasoning**. The default is deliberately
     generous for that reason: 64 tokens is enough for a one-sentence answer from a non-thinking
     model and produces empty text from a thinking one."""
-    timeout_seconds: float = 300.0
+    timeout_seconds: float | None = None
+    """This attempt's own deadline, or ``None`` — the default — for the configured backend's
+    (`[inference.<backend>] timeout_seconds`).
+
+    It was 300.0, and no stage ever set it, so every request carried a 300-second deadline and the
+    configured timeout was dead configuration: row WPF7 raised `inference.ollama.timeout_seconds` to
+    900 and watched a revision time out at 300 anyway. A number here still wins, which is what makes
+    it a per-attempt bound Python owns (workflows §11) rather than one a model could stretch."""
     temperature: float = 0.2
     seed: int | None = None
 

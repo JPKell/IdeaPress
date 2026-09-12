@@ -31,6 +31,13 @@ packaging and release standards §3.
 
 ### Changed
 
+- **The configured backend timeout actually reaches a request** (row WPF7).
+  `StageLimits.timeout_seconds` defaulted to 300 seconds and no stage ever set it, so every model
+  call carried a 300-second deadline and `[inference.<backend>] timeout_seconds` was dead
+  configuration — raising it to 900 changed nothing, and a revision under the raised output budget
+  timed out at 300 s and failed its whole draft stage. The field is now `None` by default, meaning
+  the configured backend timeout; a number still wins, so it remains a per-attempt bound Python owns.
+
 - **`inference.ollama.timeout_seconds` now defaults to 900**, from 300 (row WPF7). A timeout has to
   cover the *whole* output budget at the rate the machine generates — 16 384 tokens at a slow local
   20 tokens/s is 819 s — and a reasoning model spends most of its budget thinking before its first

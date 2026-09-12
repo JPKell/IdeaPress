@@ -180,3 +180,49 @@ def test_zero_asks_for_nothing_and_leaves_the_server_its_default() -> None:
     )
 
     assert seen == [None]
+
+
+def test_a_stage_request_gets_the_configured_timeout_not_a_domain_default() -> None:
+    """Row WPF7, found live: `inference.ollama.timeout_seconds` was dead configuration.
+
+    `StageLimits.timeout_seconds` was 300.0 and no stage set it, so every request carried a
+    300-second deadline whatever the file said — a revision under the raised output budget timed out
+    at 300 s and failed the whole draft stage twice before this was found.
+    """
+    from modelrack.testing import FakeProvider
+
+    from ideapress.config import OllamaSettings
+    from ideapress.domain.inference import Correlation, StageLimits, StageRequest
+    from ideapress.infrastructure.backends.fake import default_fake_script
+    from ideapress.infrastructure.backends.ollama import OllamaBackend
+
+    provider = FakeProvider(default_fake_script(), seed=3)
+    backend = OllamaBackend(
+        OllamaSettings(timeout_seconds=900),
+        provider=provider,  # type: ignore[arg-type]  # structural
+    )
+    seen: list[float | None] = []
+    original = provider.generate
+
+    def watched(request):  # type: ignore[no-untyped-def]  # a probe
+        seen.append(request.timeout_seconds)
+        return original(request)
+
+    provider.generate = watched  # type: ignore[method-assign]  # observes the deadline asked for
+
+    def run(limits: StageLimits) -> None:
+        backend.generate(
+            StageRequest(
+                stage="revise",
+                system="s",
+                user="u",
+                limits=limits,
+                correlation=Correlation(project_id="01PROJECT"),
+                model_hint="ollama/qwen3.5:9b-q8_0",
+            )
+        )
+
+    run(StageLimits(temperature=0.2, max_output_tokens=16_384))
+    run(StageLimits(temperature=0.2, max_output_tokens=16_384, timeout_seconds=42.0))
+
+    assert seen == [900.0, 42.0], "the configured timeout, and a caller's own bound winning"
