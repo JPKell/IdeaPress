@@ -214,6 +214,10 @@ def build_generation_request(
             temperature=request.limits.temperature,
             seed=request.limits.seed,
             max_output_tokens=request.limits.max_output_tokens,
+            # `None` unless a caller asked; ModelRack refuses the field on a provider that cannot
+            # carry it rather than ignoring it (ADR-0007 rule 2), so only the retry sets it and only
+            # against a backend that declares the control.
+            think=request.limits.think,
         ),
         response_format=response_format,
         timeout_seconds=(

@@ -200,6 +200,14 @@ class StageLimits:
     it a per-attempt bound Python owns (workflows §11) rather than one a model could stretch."""
     temperature: float = 0.2
     seed: int | None = None
+    think: bool | None = None
+    """Whether to ask for the model's reasoning. ``None`` — every stage — asks for nothing and is
+    byte-identical to a request built before this existed.
+
+    ``False`` is used by one caller: the retry of a generation that came back empty after spending
+    its whole budget on reasoning (row WPF7). A second identical request would spend it the same
+    way, which is what WP6 and this row's own live review both measured; asking the model to answer
+    without reasoning is a different request, and it is Python asking, not a model deciding."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -343,6 +351,12 @@ class BackendCapabilities:
     included — it is not the question of who normally chooses. That is ``routes_internally``."""
     discloses_model: bool = False
     residency_control: bool = False
+    thinking_control: bool = False
+    """Whether a request may ask for the model's reasoning to be suppressed.
+
+    Ollama can (`modelrack` declares `thinking_control`); LoadCoach's wire carries no such field and
+    a remote OpenAI-compatible service is not asked. Read by the retry of an empty generation, which
+    is the one place IdeaPress uses it (row WPF7)."""
     routes_internally: bool = False
     """Whether the backend chooses the model itself, and owns residency for it.
 

@@ -460,7 +460,7 @@ class InferenceGateway:
                 "tokens; this call was discarded and retried once"
             ),
         )
-        retried = self._generate(request)
+        retried = self._generate(self._without_reasoning(request))
         if not retried.text.strip() and retried.truncated:
             # The retry produced nothing either, so this is not a cold load: the budget is genuinely
             # too small for this model's reasoning on this task. Say that, with the number. Letting
@@ -493,9 +493,37 @@ class InferenceGateway:
             degradations=(
                 *retried.degradations,
                 "empty_generation_retried: the model exhausted its output budget without emitting "
-                "any text, which a cold load of some models does; retried once",
+                "any text, which a cold load of some models does; retried once"
+                + (
+                    ", with reasoning suppressed"
+                    if self.backend.capabilities().thinking_control
+                    else ""
+                ),
             ),
         )
+
+    def _without_reasoning(self, request: StageRequest) -> StageRequest:
+        """Ask the retry to answer without reasoning, where the backend can carry that (row WPF7).
+
+        Args:
+            request: The request whose first call came back empty.
+
+        Returns:
+            The same request with ``limits.think`` false, or unchanged when the backend declares no
+            thinking control — ModelRack refuses the field on a provider that cannot honour it
+            rather than ignoring it, so asking anyway would turn a recoverable empty generation into
+            a capability error.
+
+        **A second identical request spends the budget the same way.** M7-16's cold-load runaway
+        recovers on any retry, but a reasoning loop does not: WP6 watched `project_review` produce
+        nothing in 8 192 tokens twice, and this row watched the same stage produce nothing in 16 384
+        tokens twice, 375 seconds each. Suppressing reasoning is the one thing that makes the second
+        call *different*, it is Python asking rather than a model deciding, and it is recorded as a
+        degradation so a reader knows this answer came without the model's reasoning.
+        """
+        if not self.backend.capabilities().thinking_control:
+            return request
+        return replace(request, limits=replace(request.limits, think=False))
 
     def _record_discard(
         self,

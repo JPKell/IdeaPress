@@ -303,3 +303,73 @@ def test_a_non_empty_truncation_is_not_retried() -> None:
         )
     )
     assert calls == 1
+
+
+def test_the_retry_of_an_empty_generation_asks_for_no_reasoning() -> None:
+    """Row WPF7: a second identical request spends the budget the same way.
+
+    WP6 watched `project_review` produce nothing in 8 192 tokens twice; this row watched the same
+    stage produce nothing in 16 384 tokens twice, 375 seconds a call. Suppressing reasoning is what
+    makes the retry a different request — asked by Python, and recorded as a degradation.
+    """
+    from dataclasses import replace as dataclass_replace
+
+    gateway, backend = _gateway()
+    asked: list[bool | None] = []
+    original = backend.generate
+
+    def first_is_empty(request: StageRequest) -> StageResult:
+        asked.append(request.limits.think)
+        real = original(request)
+        if len(asked) == 1:
+            return dataclass_replace(real, text="", finish_reason="length")
+        return real
+
+    backend.generate = first_is_empty  # type: ignore[method-assign]  # simulates the runaway
+
+    result = gateway.run(
+        StageRequest(
+            stage="project_review",
+            system="s",
+            user="u",
+            correlation=Correlation(project_id="01PROJECT"),
+        )
+    )
+
+    assert backend.capabilities().thinking_control, "the fake carries Ollama's own control"
+    assert asked == [None, False], (
+        "the first call asks for nothing; the retry asks for no reasoning"
+    )
+    assert any("with reasoning suppressed" in d for d in result.degradations)
+
+
+def test_a_backend_without_the_control_retries_the_request_unchanged() -> None:
+    """ModelRack refuses `think` on a provider that cannot carry it, so IdeaPress must not ask."""
+    from dataclasses import replace as dataclass_replace
+
+    from ideapress.domain.inference import BackendCapabilities
+
+    gateway, backend = _gateway()
+    backend._capabilities_override = BackendCapabilities(  # noqa: SLF001 — the point of the test
+        streaming=True, structured_output=True, thinking_control=False
+    )
+    asked: list[bool | None] = []
+    original = backend.generate
+
+    def first_is_empty(request: StageRequest) -> StageResult:
+        asked.append(request.limits.think)
+        real = original(request)
+        if len(asked) == 1:
+            return dataclass_replace(real, text="", finish_reason="length")
+        return real
+
+    backend.generate = first_is_empty  # type: ignore[method-assign]  # simulates the runaway
+
+    result = gateway.run(
+        StageRequest(
+            stage="critique", system="s", user="u", correlation=Correlation(project_id="01PROJECT")
+        )
+    )
+
+    assert asked == [None, None]
+    assert not any("reasoning suppressed" in d for d in result.degradations)

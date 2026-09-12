@@ -424,6 +424,12 @@ raises the window on its own: how large a window the card can hold is the operat
 (ADR-0119 decision 3), and the host cap is what keeps a large one safe. On the reference card a
 9.7B Q8_0 model at 32 768 tokens holds 11.6 GB of 16 GB.
 
+**A budget large enough for most prompts is not large enough for a reasoning loop**, so the retry
+of an empty generation asks for the answer *without* reasoning where the backend can carry that
+(workflows §6.2). Measured: `project_review` on two committed units produced nothing in 16 384 tokens
+twice, 375 seconds a call, on a served window of 32 768 — the model was not short of room, it was not
+stopping.
+
 `project_review_context_budget_tokens` defaults to **14336** for the same reason: with the
 16384-token output budget and the prompt it fits the default window (14 336 + 16 384 + 512 = 31 232),
 where the previous 24 000 fitted nothing IdeaPress asks to be served. A five-unit document measured

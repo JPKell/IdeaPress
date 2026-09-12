@@ -57,6 +57,14 @@ packaging and release standards §3.
 
 ### Fixed
 
+- **The retry of an empty generation asks for the answer without reasoning** (row WPF7). A second
+  *identical* request spends the output budget the same way: WP6 saw `project_review` produce no text
+  in 8 192 tokens twice, and this row saw the same stage produce none in 16 384 tokens twice, 375
+  seconds a call, on a 32 768-token window — the model was not short of room, it was not stopping.
+  The retry now sets Ollama's `think: false` where the backend declares the control (`modelrack`
+  refuses the field on providers that cannot carry it, so nothing else is asked), and records
+  `empty_generation_retried: … with reasoning suppressed` on the attempt.
+
 - **A cancel is honoured across the empty-generation retry, and every model call is recorded**
   (row WPF7, WP6 finding 8). The cancel flag was only read by the stage bodies, and the gateway's
   transport retry of an empty generation happens underneath them: a `project_review` cancelled

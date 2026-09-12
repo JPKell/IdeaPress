@@ -71,6 +71,7 @@ class OllamaBackend:
             token_counts=provider_capabilities.token_counts,
             model_selection=True,
             discloses_model=True,
+            thinking_control=provider_capabilities.thinking_control,
             residency_control=provider_capabilities.force_unload
             and provider_capabilities.residency_query,
         )
