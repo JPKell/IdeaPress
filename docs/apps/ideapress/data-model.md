@@ -187,7 +187,7 @@ api_tokens:     as in FreeWeight
 ### `tool_call_records`
 Every research tool call, whatever its outcome (1.4,
 [ADR-0116](../../adr/0116-research-runs-under-toolyard-and-fetches-only-a-named-host.md), migration
-`0010`).
+`0010`, corrected by `0013`).
 
 ```text
 id ULID PK · project_id FK ON DELETE CASCADE · attempt_id FK ON DELETE CASCADE
@@ -203,7 +203,11 @@ reason TEXT NULL · reason_detail TEXT NULL              -- ToolYard's closed re
 result_summary · result_sha256 · duration_ms
 risk_class · egress                                     -- the spec's own declarations, copied so
                                                         -- the row survives a tool being withdrawn
-started_at · created_at
+started_at · created_at                                 -- weightsdb.UtcDateTime, like every other
+                                                        -- timestamp here: naive UTC on both
+                                                        -- dialects (0010 shipped these as
+                                                        -- tz-aware, which only PostgreSQL
+                                                        -- distinguishes; 0013 converts)
 INDEX (project_id, started_at) · INDEX (attempt_id)
 ```
 

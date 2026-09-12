@@ -57,6 +57,15 @@ packaging and release standards §3.
 
 ### Fixed
 
+- **`tool_call_records` timestamps match the model on PostgreSQL** (migration `0013`). `0010`
+  created `started_at` and `created_at` as `TIMESTAMP WITH TIME ZONE` while `ToolCallRecordRow`
+  maps both with `weightsdb.UtcDateTime`, whose storage type is a plain `DateTime`. SQLite gives
+  both spellings the same column, which is why the gate's default leg never saw it; PostgreSQL does
+  not, so the table took naive UTC instants into a tz-aware column for the session's `TimeZone` to
+  interpret, and the migration-parity check on that dialect failed. `0010` now creates the columns
+  the model's way and `0013` converts a database that ran the old one — `AT TIME ZONE 'UTC'`, so a
+  stored instant is unchanged. SQLite databases are untouched and need no downtime.
+
 - **The retry of an empty generation asks for the answer without reasoning** (row WPF7). A second
   *identical* request spends the output budget the same way: WP6 saw `project_review` produce no text
   in 8 192 tokens twice, and this row saw the same stage produce none in 16 384 tokens twice, 375

@@ -25,6 +25,7 @@ join.
 from __future__ import annotations
 
 import sqlalchemy as sa
+import weightsdb
 from alembic import op
 
 # revision identifiers, used by Alembic.
@@ -52,8 +53,8 @@ def upgrade() -> None:
         sa.Column("duration_ms", sa.Integer(), nullable=False),
         sa.Column("risk_class", sa.String(length=20), nullable=False),
         sa.Column("egress", sa.String(length=20), nullable=False),
-        sa.Column("started_at", sa.DateTime(timezone=True), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("started_at", weightsdb.UtcDateTime(), nullable=False),
+        sa.Column("created_at", weightsdb.UtcDateTime(), nullable=False),
         sa.ForeignKeyConstraint(
             ["attempt_id"],
             ["attempts.id"],

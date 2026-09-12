@@ -113,6 +113,76 @@ def test_models_and_migration_agree_on_postgresql(postgres_database: Database) -
     assert parity.matches, parity.diff
 
 
+def test_0013_heals_a_postgresql_database_that_ran_the_original_0010(
+    postgres_database: Database,
+) -> None:
+    """A 1.3.0–1.4.0 PostgreSQL database disagrees with the model on two timestamps.
+
+    The original `0010` created `started_at` and `created_at` as `TIMESTAMP WITH TIME ZONE`, while
+    `ToolCallRecordRow` maps both with `weightsdb.UtcDateTime` — a plain `DateTime` underneath. The
+    columns are recreated here in their original shape, because `0010` itself has since been
+    corrected, and `0013` must still convert the databases that ran the old one: the instant a row
+    already holds survives the conversion, read back as the naive UTC the decorator writes.
+    """
+    runner = migration_runner(postgres_database.engine)
+    runner.upgrade("0012")
+    with postgres_database.engine.begin() as connection:
+        for column in ("started_at", "created_at"):
+            connection.execute(
+                text(
+                    f"ALTER TABLE tool_call_records ALTER COLUMN {column} "
+                    f"TYPE TIMESTAMP WITH TIME ZONE USING {column} AT TIME ZONE 'UTC'"
+                )
+            )
+        connection.execute(text("SET TimeZone='UTC'"))
+        connection.execute(
+            text(
+                "INSERT INTO projects (id, title, slug, content_type, content_type_version,"
+                " workflow_id, workflow_version, status, brief_text, author_material_json,"
+                " config_json, created_at, updated_at)"
+                " VALUES ('01PROJECT', 'T', 't', 'article', '1.0', 'default', '1.0', 'active',"
+                " 'b', '[]', '{}', '2026-09-01T00:00:00', '2026-09-01T00:00:00')"
+            )
+        )
+        connection.execute(
+            text(
+                "INSERT INTO stage_runs (id, project_id, stage, state, units_total,"
+                " units_completed, units_paused, started_at, options_json, backend, backend_mode)"
+                " VALUES ('01RUN', '01PROJECT', 'research', 'completed', 1, 1, 0,"
+                " '2026-09-01T00:00:00', '{}', 'ollama', 'ollama')"
+            )
+        )
+        connection.execute(
+            text(
+                "INSERT INTO attempts (id, stage_run_id, stage, attempt, round, backend,"
+                " backend_mode, outcome, degradations_json, created_at, transport_call)"
+                " VALUES ('01ATTEMPT', '01RUN', 'research', 1, 1, 'ollama', 'ollama',"
+                " 'accepted', '[]', '2026-09-01T00:00:00', 0)"
+            )
+        )
+        connection.execute(
+            text(
+                "INSERT INTO tool_call_records (id, project_id, attempt_id, invocation_id,"
+                " tool_name, args_sha256, status, result_summary, result_sha256, duration_ms,"
+                " risk_class, egress, started_at, created_at)"
+                " VALUES ('01RECORD', '01PROJECT', '01ATTEMPT', 'inv-1', 'fetch', 'sha256:a',"
+                " 'ok', 's', 'sha256:b', 5, 'low', 'allowed', '2026-09-08 10:30:00+00',"
+                " '2026-09-08 10:30:01+00')"
+            )
+        )
+
+    runner.upgrade("head")
+
+    parity = runner.check_parity(Base.metadata)
+    assert parity.matches, parity.diff
+    with postgres_database.engine.begin() as connection:
+        stored = connection.execute(
+            text("SELECT started_at, created_at FROM tool_call_records WHERE id = '01RECORD'")
+        ).one()
+    assert stored.started_at.isoformat() == "2026-09-08T10:30:00"
+    assert stored.created_at.isoformat() == "2026-09-08T10:30:01"
+
+
 def test_downgrade_removes_every_table_on_postgresql(postgres_database: Database) -> None:
     upgrade(postgres_database)
     migration_runner(postgres_database.engine).downgrade("base")
