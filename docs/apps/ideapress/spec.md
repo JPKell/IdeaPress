@@ -382,12 +382,16 @@ Long documents stream to disk rather than being held in memory more than once.
 its reasoning before the first word of its answer, from the same allowance — measured on the
 reference machine, `qwen3.5:9b-q8_0` compiling requirements from a six-line brief produced nothing
 at all at 4 096 tokens and finished in 278 tokens of answer at 8 192. The structured stages
-therefore run under `workflow.structured_output_tokens` (default 8192, range 1024–131072), which is
+therefore run under `workflow.structured_output_tokens` (default 16384, range 1024–131072), which is
 configuration rather than a constant: a model that thinks longer than the reference machine's
 exhausts the budget with empty output, and the user's lever for that is `config.toml`, not a code
 edit. The text-writing stages (draft, repair, revise) budget a thinking floor plus four tokens per
 target word, and the floor is the larger of the measured 8192 and the same setting — so one knob is
-the lever for every empty-generation pause, whichever stage hits it. A unit that exhausts an output
+the lever for every empty-generation pause, whichever stage hits it. **The default is 16384 because
+the widest shipped prompt needs it** (row WPF7): the 8192 below is the *draft* floor, and a five-unit
+`project_review` on `qwen3.5:9b-q8_0` spent about 11 800 output tokens reasoning before its first
+word — measured at an 8 792-token budget, a draft's first call after a cold load spent every one of
+them thinking and returned nothing, which is the retry's own reason for existing. A unit that exhausts an output
 budget twice **pauses with the stage and the budget in the reason** while the remaining units
 continue; it never aborts the stage.
 
@@ -420,8 +424,10 @@ raises the window on its own: how large a window the card can hold is the operat
 (ADR-0119 decision 3), and the host cap is what keeps a large one safe. On the reference card a
 9.7B Q8_0 model at 32 768 tokens holds 11.6 GB of 16 GB.
 
-`project_review_context_budget_tokens` defaults to **20480** for the same reason: with the output
-budget and the prompt it fits the default window, where the previous 24 000 did not.
+`project_review_context_budget_tokens` defaults to **14336** for the same reason: with the
+16384-token output budget and the prompt it fits the default window (14 336 + 16 384 + 512 = 31 232),
+where the previous 24 000 fitted nothing IdeaPress asks to be served. A five-unit document measured
+12 777 tokens, so it still fits without compaction.
 
 ## 16. Cross-platform considerations
 

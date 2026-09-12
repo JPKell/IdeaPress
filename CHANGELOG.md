@@ -31,10 +31,15 @@ packaging and release standards §3.
 
 ### Changed
 
-- **`workflow.project_review_context_budget_tokens` now defaults to 20480**, from 24000 (row WPF7).
-  With the output budget and the prompt, 24000 fitted no window IdeaPress asks to be served, so a
-  fresh installation would have had its own `project_review` refused. A file that sets the key
-  keeps its value.
+- **`workflow.structured_output_tokens` now defaults to 16384**, from 8192, and
+  **`workflow.project_review_context_budget_tokens` to 14336**, from 24000 (row WPF7). 8192 is the
+  *draft* thinking floor; measured on the reference machine, a five-unit `project_review` on
+  `qwen3.5:9b-q8_0` spends about 11 800 output tokens reasoning before its first word, an audit or a
+  critique 1 700–4 300 and a revision about 7 000 — so the structured stages could not answer within
+  8192 at all. The review's context budget comes down so that the shipped set fits the window
+  IdeaPress asks to be served (14 336 + 16 384 + 512 = 31 232 ≤ 32 768); a five-unit document
+  measures 12 777 tokens and still fits. `doctor` now warns below 16384 rather than below 8192. A
+  file that sets either key keeps its value.
 
 ### Fixed
 

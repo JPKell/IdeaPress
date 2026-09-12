@@ -89,7 +89,8 @@ def test_a_low_output_budget_is_warned_about_with_the_reason() -> None:
     findings = {f.name: f for f in _configuration_findings(settings)}
     budget = findings["output budget"]
     assert budget.level == "warn"
-    assert "8192" in (budget.remedy or "")
+    assert "16384" in (budget.remedy or ""), "the measured reasoning need, not the draft floor"
+    assert "11 800" in (budget.remedy or ""), "what the measurement was"
 
 
 def test_the_default_budget_is_not_warned_about() -> None:

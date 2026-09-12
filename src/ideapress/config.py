@@ -547,7 +547,7 @@ class WorkflowSettings(BaseModel):
         ),
     )
     project_review_context_budget_tokens: int = Field(
-        default=20_480,
+        default=14_336,
         ge=256,
         description=(
             "Token budget for project_review's whole-document context (workflows §2 stage 15). "
@@ -569,16 +569,20 @@ class WorkflowSettings(BaseModel):
         ),
     )
     structured_output_tokens: int = Field(
-        default=8_192,
+        default=16_384,
         ge=1_024,
         le=131_072,
         description=(
             "Output-token budget for the structured stages (requirements, outline, audit_fast, "
-            "audit_deep, critique, project_review), and — when raised above the 8192 default — "
-            "the thinking floor for the text-writing stages (draft, repair, revise) as well. "
-            "Includes the model's reasoning: a thinking model spends output tokens before its "
-            "first word of answer, and 8192 is the measured floor for the default models "
-            "(spec §15). Raise this when a unit pauses with an exhausted output budget."
+            "audit_deep, critique, project_review), and — above the 8192 thinking floor — the "
+            "floor for the text-writing stages (draft, repair, revise) as well. Includes the "
+            "model's reasoning: a thinking model spends output tokens before its first word of "
+            "answer, and the measured need on the reference machine is 1 700 to 4 300 tokens "
+            "for an audit or a critique, about 7 000 for a revision and about 11 800 for a "
+            "five-unit project review (spec §15, row WPF7) — which is why the default is 16384 "
+            "rather than the 8192 floor a draft needs. With the stage's context budget and its "
+            "prompt it must fit `inference.ollama.served_context_tokens`, or the stage is "
+            "refused before it runs."
         ),
     )
 
@@ -1319,7 +1323,7 @@ allow_audit_gated_requirements = true
 # stages (draft, repair, revise). A reasoning model spends output tokens thinking before its
 # first word of answer; a unit paused for an exhausted output budget needs this raised.
 # Accepted range: 1024-131072.
-structured_output_tokens = 8192
+structured_output_tokens = 16384
 
 # The `research` stage (workflows §2 row 2, ADR-0116). Every default is closed: with no host named
 # `http_fetch` is not registered at all, so a fresh install fetches nothing. `allowed_tools` is the

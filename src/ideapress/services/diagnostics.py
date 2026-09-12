@@ -8,7 +8,7 @@ and a doctor that called it a failure would teach people to ignore the command.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Final, Literal
 
 from mirrorwall import ComponentStatus, health_payload
 
@@ -20,7 +20,15 @@ if TYPE_CHECKING:
     from ideapress.config import Settings
     from ideapress.services.runtime import Runtime
 
-__all__ = ["Diagnosis", "diagnose", "health_report"]
+__all__ = ["MEASURED_REASONING_TOKENS", "Diagnosis", "diagnose", "health_report"]
+
+MEASURED_REASONING_TOKENS: Final = 16_384
+"""What a thinking model needed for reasoning alone on the widest shipped prompt (row WPF7).
+
+`workflow.structured_output_tokens`'s default, and the figure below which `doctor` warns: a
+five-unit `project_review` on `qwen3.5:9b-q8_0` spent about 11 800 output tokens before its first
+word of answer. The 8192 this warned about until now is the *draft* thinking floor, which is a
+different and smaller measurement."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -184,13 +192,14 @@ def _configuration_findings(settings: Settings) -> list[Diagnosis]:
     findings.append(
         Diagnosis(
             name="output budget",
-            level="warn" if budget < 8192 else "ok",
+            level="warn" if budget < MEASURED_REASONING_TOKENS else "ok",
             detail=f"workflow.structured_output_tokens = {budget}",
             remedy=(
-                "Below the measured 8192 floor, a reasoning model can exhaust the budget on its "
-                "own thinking and return no text at all. Raise it if units pause on empty "
-                "generations."
-                if budget < 8192
+                f"Below {MEASURED_REASONING_TOKENS}, a reasoning model can exhaust the budget on "
+                "its own thinking and return no text at all: measured on the reference machine, a "
+                "five-unit project_review spent about 11 800 output tokens reasoning before its "
+                "first word. Raise it if a stage fails or a unit pauses on an empty generation."
+                if budget < MEASURED_REASONING_TOKENS
                 else ""
             ),
         )

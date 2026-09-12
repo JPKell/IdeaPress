@@ -248,12 +248,17 @@ def test_example_config_is_valid(tmp_path: Path) -> None:
 
 
 def test_structured_output_tokens_defaults_and_loads_from_file(tmp_path: Path) -> None:
-    """M7 finding 1c: the budget is a `config.toml` lever, defaulting to the measured floor."""
-    assert load_settings().settings.workflow.structured_output_tokens == 8192
+    """M7 finding 1c: the budget is a `config.toml` lever.
 
-    config = _write(tmp_path / "ideapress.toml", "[workflow]\nstructured_output_tokens = 16384\n")
+    The default is the measured *reasoning* need, not the draft thinking floor (row WPF7): a
+    five-unit `project_review` on `qwen3.5:9b-q8_0` spent about 11 800 output tokens before its
+    first word of answer, so 8192 could not have held it.
+    """
+    assert load_settings().settings.workflow.structured_output_tokens == 16384
+
+    config = _write(tmp_path / "ideapress.toml", "[workflow]\nstructured_output_tokens = 24576\n")
     loaded = load_settings(config_path=config)
-    assert loaded.settings.workflow.structured_output_tokens == 16384
+    assert loaded.settings.workflow.structured_output_tokens == 24576
     assert loaded.sources["workflow.structured_output_tokens"] == "file"
 
 
