@@ -190,7 +190,17 @@ class OllamaSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     base_url: str = Field(default="http://127.0.0.1:11434")
-    timeout_seconds: int = Field(default=300, ge=1)
+    timeout_seconds: int = Field(
+        default=900,
+        ge=1,
+        description=(
+            "How long one request may take. It has to cover the **whole** output budget at the "
+            "rate the machine actually generates: `workflow.structured_output_tokens` of 16384 at "
+            "a slow local 20 tokens/s is 819 seconds, and a reasoning model spends most of that "
+            "budget thinking before its first word. The 300 of earlier builds was sized for an "
+            "8192-token budget and timed a revision out mid-thought (row WPF7)."
+        ),
+    )
     served_context_tokens: int = Field(
         default=32_768,
         ge=0,
@@ -1267,7 +1277,10 @@ data_classification = "public"
 
 [inference.ollama]
 base_url = "http://127.0.0.1:11434"
-timeout_seconds = 300
+# Long enough for the whole output budget at the rate this machine generates: 16384 tokens at a
+# slow local 20 tokens/s is 819 seconds, and a reasoning model spends most of its budget thinking
+# before its first word. `doctor` warns when the two settings disagree (row WPF7).
+timeout_seconds = 900
 # The context IdeaPress asks Ollama to serve on every request (`num_ctx`), and the figure its
 # budgets are checked against before a stage starts: a prompt, the model's reasoning and its answer
 # all come out of one window, so a window too small for them produces no text at all rather than a

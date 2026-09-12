@@ -31,6 +31,13 @@ packaging and release standards §3.
 
 ### Changed
 
+- **`inference.ollama.timeout_seconds` now defaults to 900**, from 300 (row WPF7). A timeout has to
+  cover the *whole* output budget at the rate the machine generates — 16 384 tokens at a slow local
+  20 tokens/s is 819 s — and a reasoning model spends most of its budget thinking before its first
+  word. Found live: with the budget raised and the timeout still at 300, a revision was cut off
+  mid-thought and the draft stage failed `PROVIDER_TIMEOUT`. `doctor`'s new `generation timeout`
+  check names both figures when they disagree.
+
 - **`workflow.structured_output_tokens` now defaults to 16384**, from 8192, and
   **`workflow.project_review_context_budget_tokens` to 14336**, from 24000 (row WPF7). 8192 is the
   *draft* thinking floor; measured on the reference machine, a five-unit `project_review` on

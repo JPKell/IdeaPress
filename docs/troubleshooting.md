@@ -29,6 +29,7 @@ prints it:
 | `stage model bindings` | Every model-using stage has a `[models.stages]` binding, unless `inference.mode = "loadcoach"` |
 | `output budget` | `workflow.structured_output_tokens` is at or above the measured 8192 floor |
 | `served context` | Every stage's context budget, output budget and prompt fit `inference.ollama.served_context_tokens`. `0` reports the check as not made, because the server's own `OLLAMA_CONTEXT_LENGTH` cannot be read from here |
+| `generation timeout` | `inference.ollama.timeout_seconds` covers the whole output budget at a slow 20 tokens/s. A budget the machine has no time to spend fails the stage `PROVIDER_TIMEOUT` mid-answer |
 | `bind` | The server bind (loopback, or a non-loopback bind with `allowed_hosts` acknowledged) |
 | `telemetry` | Whether `ideapress[telemetry]` is installed, which gates the VRAM preflight |
 | `loadcoach task profiles` | Every stage's task profile exists on the running LoadCoach (`inference.mode = "loadcoach"` only) |

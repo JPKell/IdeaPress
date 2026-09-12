@@ -354,7 +354,8 @@
             "type": "integer"
           },
           "timeout_seconds": {
-            "default": 300,
+            "default": 900,
+            "description": "How long one request may take. It has to cover the **whole** output budget at the rate the machine actually generates: `workflow.structured_output_tokens` of 16384 at a slow local 20 tokens/s is 819 seconds, and a reasoning model spends most of that budget thinking before its first word. The 300 of earlier builds was sized for an 8192-token budget and timed a revision out mid-thought (row WPF7).",
             "minimum": 1,
             "title": "Timeout Seconds",
             "type": "integer"

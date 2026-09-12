@@ -66,7 +66,7 @@ Direct Ollama, the default backend.
 | Key | Type | Default | Environment variable | Notes |
 | --- | --- | --- | --- | --- |
 | `base_url` | str | `"http://127.0.0.1:11434"` | `IDEAPRESS_INFERENCE__OLLAMA__BASE_URL` |  |
-| `timeout_seconds` | int | `300` | `IDEAPRESS_INFERENCE__OLLAMA__TIMEOUT_SECONDS` |  |
+| `timeout_seconds` | int | `900` | `IDEAPRESS_INFERENCE__OLLAMA__TIMEOUT_SECONDS` | How long one request may take. It has to cover the **whole** output budget at the rate the machine actually generates: `workflow.structured_output_tokens` of 16384 at a slow local 20 tokens/s is 819 seconds, and a reasoning model spends most of that budget thinking before its first word. The 300 of earlier builds was sized for an 8192-token budget and timed a revision out mid-thought (row WPF7). |
 | `served_context_tokens` | int | `32768` | `IDEAPRESS_INFERENCE__OLLAMA__SERVED_CONTEXT_TOKENS` | The context IdeaPress asks Ollama to serve on every request (`num_ctx`), and the figure its budgets are checked against before a stage starts. One value for every stage, because Ollama reloads a model when a request asks for a different context length. Ollama's own default comes from the server's `OLLAMA_CONTEXT_LENGTH` (8192 on the reference machine, ADR-0119) and is smaller than IdeaPress's default budgets need: prompt, reasoning and answer all come out of the same window, so a served context that cannot hold them produces an empty generation rather than a short one. 0 leaves the server's default and turns the pre-run check off; nothing else here changes. Whatever is set, the host memory cap of ADR-0119 is what keeps a large window from harming the machine. |
 
 ## `[inference.loadcoach]`

@@ -20,7 +20,20 @@ if TYPE_CHECKING:
     from ideapress.config import Settings
     from ideapress.services.runtime import Runtime
 
-__all__ = ["MEASURED_REASONING_TOKENS", "Diagnosis", "diagnose", "health_report"]
+__all__ = [
+    "MEASURED_REASONING_TOKENS",
+    "SLOW_TOKENS_PER_SECOND",
+    "Diagnosis",
+    "diagnose",
+    "health_report",
+]
+
+SLOW_TOKENS_PER_SECOND: Final = 20
+"""A deliberately slow local generation rate, for turning a token budget into seconds.
+
+The reference card generates about 45 tokens/s on a 9.7B Q8_0 model; a larger model on the same card
+is slower. 20 keeps the check on the safe side of the machines this runs on, because the failure it
+prevents — a budget cut off mid-thought — costs a whole stage."""
 
 MEASURED_REASONING_TOKENS: Final = 16_384
 """What a thinking model needed for reasoning alone on the widest shipped prompt (row WPF7).
@@ -206,8 +219,10 @@ def _configuration_findings(settings: Settings) -> list[Diagnosis]:
     )
 
     # Row WPF7: the budget above is spent from the same window as the prompt and the reasoning, so
-    # the figure that decides whether a stage can answer at all is the served context.
+    # the figure that decides whether a stage can answer at all is the served context — and it has
+    # to be *generable* within the request timeout, which is the other way a budget goes unspent.
     findings.append(_served_context_finding(settings))
+    findings.append(_generation_timeout_finding(settings))
 
     # The exposure refusals happen at load time, so reaching here means they passed — say so,
     # rather than staying silent about the check that did not fire.
@@ -253,6 +268,48 @@ def _configuration_findings(settings: Settings) -> list[Diagnosis]:
         )
     )
     return findings
+
+
+def _generation_timeout_finding(settings: Settings) -> Diagnosis:
+    """Warn when the output budget cannot be generated inside the request timeout (row WPF7).
+
+    Args:
+        settings: The effective settings.
+
+    Returns:
+        `ok`, or `warn` with both figures. Measured the hard way: with the budget raised to
+        16 384 and the timeout still at its old 300 s, a revision on `qwen3.5:9b-q8_0` was cut off
+        mid-thought and the stage failed `PROVIDER_TIMEOUT` — a budget with no time to spend it.
+
+    Only `ollama` mode has a figure to check: LoadCoach queues and may wait for a worker, so its
+    timeout covers more than one generation, and `openai_compatible` names a remote service whose
+    rate is not this machine's.
+    """
+    if settings.inference.mode != "ollama":
+        return Diagnosis(
+            name="generation timeout",
+            level="ok",
+            detail="Not this backend's to judge: the timeout covers more than one generation.",
+        )
+    timeout = settings.inference.ollama.timeout_seconds
+    budget = settings.workflow.structured_output_tokens
+    needed = budget // SLOW_TOKENS_PER_SECOND
+    return Diagnosis(
+        name="generation timeout",
+        level="warn" if timeout < needed else "ok",
+        detail=(
+            f"inference.ollama.timeout_seconds = {timeout}; "
+            f"{budget} output tokens at {SLOW_TOKENS_PER_SECOND} tokens/s is {needed} s"
+        ),
+        remedy=(
+            f"A reasoning model spends most of its budget thinking before its first word, so a "
+            f"timeout below {needed} s cuts the answer off and fails the stage. Raise "
+            f"`inference.ollama.timeout_seconds`, or lower "
+            f"`workflow.structured_output_tokens`."
+            if timeout < needed
+            else ""
+        ),
+    )
 
 
 def _served_context_finding(settings: Settings) -> Diagnosis:
